@@ -10,6 +10,16 @@ const secret = () => {
   return new TextEncoder().encode(s);
 };
 export const err = (message: string, status = 400) => NextResponse.json({ error: message }, { status });
+export const authConfigured = () => (process.env.AUTH_SECRET || '').length >= 32;
+// Always answer with JSON (never an empty 500) so the UI can show the real reason.
+export function serverError(e: unknown) {
+  console.error('[auth] server error:', e);
+  const x = e as { code?: string; message?: string };
+  if (x?.code === 'P2021' || x?.code === 'P2022') return err('Database is not set up yet (migrations not applied). Run: npm run db:migrate:deploy', 500);
+  if (x?.code && ['P1000', 'P1001', 'P1002', 'P1017', 'P2024'].includes(x.code)) return err('Cannot reach the database. Check DATABASE_URL.', 500);
+  if (x?.message?.includes('AUTH_SECRET')) return err('Server is missing AUTH_SECRET (32+ characters).', 500);
+  return err('Server error. Please try again.', 500);
+}
 export async function startSession(userId: string) {
   const token = await new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(userId).setIssuedAt().setExpirationTime('30d').sign(secret());
   (await cookies()).set(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 60 * 60 * 24 * 30 });

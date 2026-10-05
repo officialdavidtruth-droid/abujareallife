@@ -1,4 +1,5 @@
 'use client';
 import dynamic from 'next/dynamic';
-const Sim = dynamic(() => import('../components/Sim'), { ssr: false, loading: () => <div style={{ color: '#fff', padding: 24 }}>Loading Abuja…</div> });
+import Loader from '../components/Loader';
+const Sim = dynamic(() => import('../components/Sim'), { ssr: false, loading: () => <Loader label="Loading Abuja" /> });
 export default function Page() { return <Sim />; }

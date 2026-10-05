@@ -7,6 +7,8 @@ import Human from './Human';
 import Creator from './Creator';
 import Account, { type AccountUser } from './Account';
 import AuthScreen from './AuthScreen';
+import Loader from './Loader';
+import AssetLoader from './AssetLoader';
 import Neighborhood from './Neighborhood';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 
@@ -196,8 +198,10 @@ export default function Sim() {
   }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
   return <div className="sim">
+    {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
     {user && look && outside && <Neighborhood look={look} onNear={dt => { S.needs.social = cl(S.needs.social + dt * 2); }} />}
+    {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} onDone={l => { const n = { ...l, name: user.username }; setLook(n); saveNow(n); setEditing(false); }} />}
     <div className="top"><div className="pill">Day {Math.floor(ui.min / 1440) + 1} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
@@ -208,9 +212,9 @@ export default function Sim() {
       <button className="pill" onClick={() => setEditing(true)}>✏️ Character</button>
       <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button></div>
     <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
-      {NEEDS.map(([k, l, e]) => <div key={k} className="nrow"><span>{e} {l}</span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
+      {NEEDS.map(([k, l, e]) => <div key={k} className={'nrow' + (ui.needs[k] < 25 ? ' low' : '')}><span>{e} {l}</span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
-    {ui.toast && <div className="toast">{ui.toast}</div>}
+    {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {!outside && <div className="hint">Click the floor to walk · Click any object for actions · Drag to rotate · Scroll to zoom</div>}
     <style>{CSS}</style>
   </div>;

@@ -61,7 +61,7 @@ export default function Neighborhood({ look, onNear }: { look: Look; onNear: (dt
   const peers = useRef<Record<string, Peer>>({}), me = useRef({ x: 0, z: 8, tx: 0, tz: 8, r: Math.PI, walk: false }), ch = useRef<RealtimeChannel | null>(null);
   const muted = useRef(new Set<string>()), lastSend = useRef(0);
   const [roster, setRoster] = useState<string[]>([]), [log, setLog] = useState<{ u: string; t: string }[]>([]), [bub, setBub] = useState<Record<string, string>>({});
-  const [txt, setTxt] = useState(''), [status, setStatus] = useState(supabase ? 'Connecting…' : 'off'), [, force] = useState(0);
+  const [txt, setTxt] = useState(''), [status, setStatus] = useState(supabase ? 'Connecting…' : 'solo'), [, force] = useState(0);
 
   const say = (u: string, t: string) => {
     setLog(l => [...l.slice(-30), { u, t }]); setBub(b => ({ ...b, [u]: t }));
@@ -99,11 +99,10 @@ export default function Neighborhood({ look, onNear }: { look: Look; onNear: (dt
     lastSend.current = now; setTxt(''); say(look.name, t);
     ch.current?.send({ type: 'broadcast', event: 'chat', payload: { u: look.name, t } });
   };
-  if (status === 'off') return <div className="nOff"><b>Multiplayer isn’t set up yet.</b><span>Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment, then reload.</span></div>;
   return <div className="nWrap">
     <Canvas shadows dpr={[1, 1.75]} camera={{ position: [7, 10, 17], fov: 42 }}><color attach="background" args={['#bfdcf2']} />
       <Scene me={me} peers={peers} ch={ch} look={look} roster={roster} bub={bub} onNear={onNear} /></Canvas>
-    <div className="nRoster"><b>🏙️ Abuja Neighborhood · {status}</b><span>{roster.length} online</span>
+    <div className="nRoster"><b>🏙️ Abuja Neighborhood · {status}</b>{supabase ? <span>{roster.length} online</span> : <span>Multiplayer is off. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel, then redeploy, to see other players.</span>}
       {roster.filter(n => n !== look.name).map(n => <button key={n} onClick={() => { muted.current.has(n) ? muted.current.delete(n) : muted.current.add(n); force(x => x + 1); }}>{muted.current.has(n) ? '🔇' : '💬'} {n}</button>)}</div>
     <div className="nChat"><div className="nLog">{log.slice(-6).map((m, i) => <div key={i}><b>{m.u}:</b> {m.t}</div>)}</div>
       <div className="nIn"><input value={txt} maxLength={120} placeholder="Say something…" onChange={e => setTxt(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} /><button onClick={send}>Send</button></div></div>

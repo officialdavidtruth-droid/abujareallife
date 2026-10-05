@@ -1,4 +1,4 @@
- // Collision + path-finding for the house. Pure functions (no React / three) so they are easy to test.
+// Collision + path-finding for the house. Pure functions (no React / three) so they are easy to test.
 export type Box = [number, number, number, number]; // [x0, x1, z0, z1] footprint in world metres
 export type Blk = { id: string; b: Box };
 export type P = [number, number];

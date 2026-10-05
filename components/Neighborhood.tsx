@@ -6,14 +6,14 @@ import * as THREE from 'three';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import Human from './Human';
 import { supabase } from '../lib/supabaseClient';
-import { MODELS, type Look } from '../lib/characterModels';
+import { sanitizeLook, type Look } from '../lib/characterModels';
 
 type Peer = { look: Look; x: number; z: number; tx: number; tz: number; walk: boolean; r: number; init: boolean };
 type Peers = MutableRefObject<Record<string, Peer>>;
 type Me = MutableRefObject<{ x: number; z: number; tx: number; tz: number; r: number; walk: boolean }>;
 const hex = (c: unknown, d: string) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : d);
 const num = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? THREE.MathUtils.clamp(v, -28, 28) : d);
-const cleanLook = (l: Partial<Look> | undefined, name: string): Look => ({ name, model: MODELS.some(m => m.id === l?.model) ? String(l?.model) : MODELS[0].id, skin: hex(l?.skin, '#8b552f'), outfit: hex(l?.outfit, '#126c4b'), height: THREE.MathUtils.clamp(Number(l?.height) || 1, .9, 1.1) });
+const cleanLook = (l: Partial<Look> | undefined, name: string): Look => sanitizeLook(l, name);
 const turn = (r: number, t: number, f: number) => r + ((((t - r + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * f;
 const cam = new THREE.Vector3();
 

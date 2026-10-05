@@ -53,3 +53,10 @@ components/World.tsx, .env.local, prisma/seed.ts, next.config.ts, tsconfig.json
 ## Step 4 setup (server-owned money)
 - Run npm run db:migrate:deploy again (applies 0003_economy)
 - Prices and pay live in lib/economy.ts; change them there
+
+## Human character + new interactions
+- The Xbot robot model is gone. The character is now a procedural human (lib/humanRig.ts): man/woman, 5 hair styles, hair/skin/top/trousers colours, real walk/sit/sleep poses.
+- New objects: wardrobe & mirror (change outfit), dining table, workout mat, speaker (Afrobeats/dance), bookshelf, plant, front door (go outside). New actions: video games, scroll social media, side hustle, order food, brush off the day with yoga/squats, etc.
+- Emote buttons on the right side of the screen: wave, dance, cheer, stretch, think.
+- Characters now walk around furniture instead of through it.
+- prisma/setup-database.sql sets up the database (Supabase > SQL Editor > Run). Old saved characters keep working; they just get default hair.

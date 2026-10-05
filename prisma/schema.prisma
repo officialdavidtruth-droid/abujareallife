@@ -41,7 +41,11 @@ enum MissionStatus {
 
 model User {
   id           String     @id @default(cuid())
-  email        String     @unique
+  username     String     @unique
+  usernameKey  String     @unique
+  passwordHash String
+  email        String?    @unique
+  emailVerifiedAt DateTime?
   name         String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -51,6 +55,8 @@ model User {
   properties   Property[]
   vehicles     Vehicle[]
   missions     PlayerMission[]
+  codes        EmailCode[]
+  save         Save?
 }
 
 model Character {
@@ -174,4 +180,25 @@ model Transaction {
   createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+model EmailCode {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Save {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  look      Json
+  state     Json
+  updatedAt DateTime @updatedAt
 }

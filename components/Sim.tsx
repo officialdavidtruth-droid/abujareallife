@@ -1,8 +1,13 @@
 'use client';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, RoundedBox, Html } from '@react-three/drei';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
+import Human from './Human';
+import Creator from './Creator';
+import Account, { type AccountUser } from './Account';
+import AuthScreen from './AuthScreen';
+import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
 type Pose = 'stand' | 'sit' | 'sleep';
@@ -87,6 +92,7 @@ function tick(dt: number) {
     }
   }
 }
+const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min, cash: S.cash } }) }).catch(() => {});
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
 const snap = () => ({ needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
@@ -98,33 +104,20 @@ const B = ({ p, s, c, r = .04 }: { p: [number, number, number]; s: [number, numb
 const Zone = ({ x, z, w, d, c, y = .02 }: { x: number; z: number; w: number; d: number; c: string; y?: number }) =>
   <mesh rotation-x={-Math.PI / 2} position={[x, y, z]} receiveShadow><planeGeometry args={[w, d]} /><meshStandardMaterial color={c} roughness={.9} /></mesh>;
 
-function Avatar({ bubble }: { bubble: string }) {
+function Avatar({ bubble, look }: { bubble: string; look: Look }) {
   const g = useRef<THREE.Group>(null!), inner = useRef<THREE.Group>(null!), plumb = useRef<THREE.Mesh>(null!), pg = useRef<THREE.Group>(null!);
-  const L = useRef<THREE.Group>(null!), R = useRef<THREE.Group>(null!), AL = useRef<THREE.Group>(null!), AR = useRef<THREE.Group>(null!);
   useFrame(({ clock }) => {
-    const sleep = S.pose === 'sleep', sit = S.pose === 'sit', walking = S.cur?.t === 'walk' && S.speed > 0;
+    const sleep = S.pose === 'sleep', sit = S.pose === 'sit';
     g.current.position.set(sleep ? -4.6 : S.pos[0], sleep ? .64 : 0, sleep ? -1.75 : S.pos[1]); g.current.rotation.y = sleep ? 0 : S.rot;
     inner.current.rotation.x = sleep ? -Math.PI / 2 : 0; inner.current.position.y = sit ? -.3 : 0;
-    const sw = walking ? Math.sin(clock.elapsedTime * 9) * .7 : 0;
-    L.current.rotation.x = sit ? -1.45 : sw; R.current.rotation.x = sit ? -1.45 : -sw; AL.current.rotation.x = -sw * .8; AR.current.rotation.x = sw * .8;
-    pg.current.position.set(0, sleep ? 1.1 : 2.45 + Math.sin(clock.elapsedTime * 2) * .06, sleep ? -1.9 : 0); plumb.current.rotation.y = clock.elapsedTime * 1.6;
+    pg.current.position.set(0, sleep ? 1.1 : 2.45 * look.height + Math.sin(clock.elapsedTime * 2) * .06, sleep ? -1.9 : 0); plumb.current.rotation.y = clock.elapsedTime * 1.6;
     const m = mood(), col = m > 60 ? '#35e07a' : m > 35 ? '#f2c230' : '#ef4b4b';
     const mat = plumb.current.material as THREE.MeshStandardMaterial; mat.color.set(col); mat.emissive.set(col);
   });
-  const skin = '#8b552f';
   return <group ref={g}>
-    <group ref={inner}>
-      <mesh position={[0, 1.15, 0]} castShadow><capsuleGeometry args={[.26, .5, 8, 16]} /><meshStandardMaterial color="#126c4b" /></mesh>
-      <mesh position={[0, 1.72, 0]} castShadow><sphereGeometry args={[.27, 24, 18]} /><meshStandardMaterial color={skin} /></mesh>
-      <mesh position={[0, 1.77, -.03]}><sphereGeometry args={[.285, 24, 14, 0, Math.PI * 2, 0, Math.PI * .55]} /><meshStandardMaterial color="#151515" /></mesh>
-      {[-.09, .09].map(x => <mesh key={x} position={[x, 1.74, .24]}><sphereGeometry args={[.03, 8, 8]} /><meshBasicMaterial color="#111" /></mesh>)}
-      <group ref={L} position={[-.13, .8, 0]}><mesh position={[0, -.36, 0]} castShadow><capsuleGeometry args={[.1, .5, 6, 10]} /><meshStandardMaterial color="#222831" /></mesh></group>
-      <group ref={R} position={[.13, .8, 0]}><mesh position={[0, -.36, 0]} castShadow><capsuleGeometry args={[.1, .5, 6, 10]} /><meshStandardMaterial color="#222831" /></mesh></group>
-      <group ref={AL} position={[-.36, 1.42, 0]}><mesh position={[0, -.28, 0]} castShadow><capsuleGeometry args={[.08, .45, 6, 10]} /><meshStandardMaterial color={skin} /></mesh></group>
-      <group ref={AR} position={[.36, 1.42, 0]}><mesh position={[0, -.28, 0]} castShadow><capsuleGeometry args={[.08, .45, 6, 10]} /><meshStandardMaterial color={skin} /></mesh></group>
-    </group>
+    <group ref={inner}><Human look={look} getState={() => S.pose !== 'stand' ? S.pose : S.cur?.t === 'walk' && S.speed > 0 ? 'walk' : 'idle'} /></group>
     <group ref={pg}><mesh ref={plumb}><octahedronGeometry args={[.14]} /><meshStandardMaterial emissiveIntensity={.8} /></mesh></group>
-    <Html position={[0, 3, 0]} center zIndexRange={[5, 0]}><div className="bubble">{bubble}</div></Html>
+    <Html position={[0, 2.9 * look.height + .2, 0]} center zIndexRange={[5, 0]}><div className="bubble">{bubble}</div></Html>
   </group>;
 }
 
@@ -154,7 +147,7 @@ function Lights() {
     <pointLight ref={lamp} position={[0, 3.2, 0]} color="#ffd9a0" /></>;
 }
 
-function World({ ui, sel, setSel }: { ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void }) {
+function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void; look: Look }) {
   useFrame((_, dt) => tick(Math.min(dt, .1)));
   return <>
     <Lights />
@@ -169,7 +162,7 @@ function World({ ui, sel, setSel }: { ui: UI; sel: Obj | null; setSel: (o: Obj |
     {OBJ.map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
       onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(o); }}
       onPointerOver={() => { document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = 'auto'; }}>{VIS[o.id](ui)}</group>)}
-    <Avatar bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} />
+    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]}><div className="pie"><b>{sel.name}</b>
       {sel.acts.map(a => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash} onClick={() => { enq(sel, a); setSel(null); }}>{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : `${a.dur} min`}</small></button>)}</div></Html>}
     <OrbitControls enablePan={false} target={[0, 0, 0]} minDistance={7} maxDistance={20} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
@@ -177,21 +170,32 @@ function World({ ui, sel, setSel }: { ui: UI; sel: Obj | null; setSel: (o: Obj |
 }
 
 export default function Sim() {
-  const [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null);
+  const [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null);
+  lookRef.current = look;
+  async function enter(u: AccountUser) {
+    const r = await (await fetch('/api/save')).json();
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.state.cash }); setLook({ ...r.save.look, name: u.username }); } else { setLook(null); setEditing(true); }
+    setUser(u);
+  }
+  async function logout() { await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); setLook(null); setEditing(false); setUser(null); }
   useEffect(() => {
     Object.assign(S, NEW());
-    try { const s = JSON.parse(localStorage.getItem('abuja-sims-v2') || 'null'); if (s) Object.assign(S, { needs: s.needs, min: s.min, cash: s.cash }); } catch { /* fresh game */ }
-    const a = setInterval(() => setUi(snap()), 200), b = setInterval(() => localStorage.setItem('abuja-sims-v2', JSON.stringify({ needs: S.needs, min: S.min, cash: S.cash })), 3000);
+    (async () => { try { const me = await (await fetch('/api/auth/me')).json(); if (me.user) await enter(me.user); } catch { /* offline */ } setReady(true); })();
+    const a = setInterval(() => setUi(snap()), 200), b = setInterval(() => { if (lookRef.current) saveNow(lookRef.current); }, 5000);
     return () => { clearInterval(a); clearInterval(b); };
   }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
   return <div className="sim">
-    <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} /></Canvas>
+    {ready && !user && <AuthScreen onAuth={enter} />}
+    {user && look && <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
+    {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} onDone={l => { const n = { ...l, name: user.username }; setLook(n); saveNow(n); setEditing(false); }} />}
     <div className="top"><div className="pill">Day {Math.floor(ui.min / 1440) + 1} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
       <div className="pill">{[0, 1, 2, 3].map(s => <button key={s} className={ui.speed === s ? 'on' : ''} onClick={() => { S.speed = s; }}>{s === 0 ? '⏸' : '▶'.repeat(s)}</button>)}</div>
       <div className="pill gold">{naira(ui.cash)}</div><div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
+      {user && <Account user={user} onUser={setUser} onLogout={logout} />}
+      <button className="pill" onClick={() => setEditing(true)}>✏️ Character</button>
       <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button></div>
-    <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>David</b><span>Mood {Math.round(ui.mood)}%</span></div>
+    <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
       {NEEDS.map(([k, l, e]) => <div key={k} className="nrow"><span>{e} {l}</span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div className="toast">{ui.toast}</div>}
@@ -200,7 +204,8 @@ export default function Sim() {
   </div>;
 }
 
-const CSS = `.sim{position:fixed;inset:0;font-family:Inter,system-ui,sans-serif;color:#fff;user-select:none}.sim canvas{display:block}
+const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(circle at 40% 20%,#1c4a39,#07100d)}.card,.box{width:min(380px,92vw);background:#0c1713f5;border:1px solid #ffffff2a;border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:10px}.card h1{margin:0;font-size:22px}.logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,#d99a42,#6f4721);display:grid;place-items:center;font-weight:900}.muted{color:#9fb5aa;font-size:12px;margin:0}.card label{font-size:11px;color:#9fb5aa;display:flex;flex-direction:column;gap:6px}.card input,.box input,.vb input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:10px;color:#fff;font-size:14px}.tabs{display:flex;gap:6px}.tabs button,.row button{flex:1;background:#14261f;border:1px solid #2a4337;color:#cfe;border-radius:9px;padding:9px;cursor:pointer}.tabs .on{background:#1d7654}.pri{background:#d99a42;color:#1a1208;border:0;border-radius:11px;padding:12px;font-weight:800;cursor:pointer}.pri:disabled{opacity:.4}.bad{color:#ff8b8b;font-size:12px;margin:0}.vb{display:flex;flex-direction:column;gap:8px}.vb p,.box p{font-size:12px;margin:0}.row{display:flex;gap:6px}.modal{position:fixed;inset:0;z-index:55;background:#0008;display:grid;place-items:center}.box h3{margin:0}.box{color:#fff}
+`+`.sim{position:fixed;inset:0;font-family:Inter,system-ui,sans-serif;color:#fff;user-select:none}.sim canvas{display:block}
 .top{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}.top>*{pointer-events:auto}
 .pill{background:#10201ad9;border:1px solid #ffffff2a;border-radius:999px;padding:7px 12px;font-size:12px;color:#fff;backdrop-filter:blur(8px);cursor:default}button.pill{cursor:pointer}
 .pill button{background:none;border:0;color:#9fb;font-size:11px;padding:0 6px;cursor:pointer}.pill button.on{color:#f0b94a;font-weight:800}.pill.on{background:#1d7654}.gold{color:#f3c56f;font-weight:800}

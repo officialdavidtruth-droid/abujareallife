@@ -7,6 +7,7 @@ import Human from './Human';
 import Creator from './Creator';
 import Account, { type AccountUser } from './Account';
 import AuthScreen from './AuthScreen';
+import Neighborhood from './Neighborhood';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
@@ -170,14 +171,15 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
 }
 
 export default function Sim() {
-  const [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null);
+  const [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
     if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.state.cash }); setLook({ ...r.save.look, name: u.username }); } else { setLook(null); setEditing(true); }
     setUser(u);
   }
-  async function logout() { await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); setLook(null); setEditing(false); setUser(null); }
+  async function logout() {
+    setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); setLook(null); setEditing(false); setUser(null); }
   useEffect(() => {
     Object.assign(S, NEW());
     (async () => { try { const me = await (await fetch('/api/auth/me')).json(); if (me.user) await enter(me.user); } catch { /* offline */ } setReady(true); })();
@@ -187,11 +189,13 @@ export default function Sim() {
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
   return <div className="sim">
     {ready && !user && <AuthScreen onAuth={enter} />}
-    {user && look && <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
+    {user && look && outside && <Neighborhood look={look} onNear={dt => { S.needs.social = cl(S.needs.social + dt * 2); }} />}
+    {user && look && !outside && <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} onDone={l => { const n = { ...l, name: user.username }; setLook(n); saveNow(n); setEditing(false); }} />}
     <div className="top"><div className="pill">Day {Math.floor(ui.min / 1440) + 1} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
       <div className="pill">{[0, 1, 2, 3].map(s => <button key={s} className={ui.speed === s ? 'on' : ''} onClick={() => { S.speed = s; }}>{s === 0 ? '⏸' : '▶'.repeat(s)}</button>)}</div>
       <div className="pill gold">{naira(ui.cash)}</div><div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
+      {user && look && <button className="pill" onClick={() => { setSel(null); setOutside(o => !o); }}>{outside ? '🏠 Go home' : '🏙️ Neighborhood'}</button>}
       {user && <Account user={user} onUser={setUser} onLogout={logout} />}
       <button className="pill" onClick={() => setEditing(true)}>✏️ Character</button>
       <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button></div>
@@ -199,7 +203,7 @@ export default function Sim() {
       {NEEDS.map(([k, l, e]) => <div key={k} className="nrow"><span>{e} {l}</span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div className="toast">{ui.toast}</div>}
-    <div className="hint">Click the floor to walk · Click any object for actions · Drag to rotate · Scroll to zoom</div>
+    {!outside && <div className="hint">Click the floor to walk · Click any object for actions · Drag to rotate · Scroll to zoom</div>}
     <style>{CSS}</style>
   </div>;
 }

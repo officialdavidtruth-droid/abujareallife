@@ -32,8 +32,13 @@ Copy this folder's contents over your project root (same paths, overwrite when a
 - package.json (replaces; adds bcryptjs, jose, @supabase/supabase-js)
 - .env.example (replaces)
 
-## Not touched (keep yours)
-lib/prisma.ts, app/globals.css, app/layout.tsx, components/World.tsx, .env.local, prisma/seed.ts
+## Also included unchanged (so the folder is complete)
+app/layout.tsx, app/globals.css, lib/prisma.ts
+
+## Not included (keep yours)
+components/World.tsx, .env.local, prisma/seed.ts, next.config.ts, tsconfig.json
+
+**Important:** merge files into your folders. Do NOT delete and replace the whole app/ folder in GitHub, or app/layout.tsx will go missing (Next.js then fails with "page.tsx doesn't have a root layout").
 
 ## After copying
 1. npm install

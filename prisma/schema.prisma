@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum JobStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PropertyType {
+  ROOM
+  APARTMENT
+  HOUSE
+  MANSION
+}
+
+enum VehicleType {
+  CAR
+  SUV
+  MOTORCYCLE
+  BUS
+}
+
+enum MissionStatus {
+  AVAILABLE
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  character    Character?
+  transactions Transaction[]
+  inventory    InventoryItem[]
+  properties   Property[]
+  vehicles     Vehicle[]
+  missions     PlayerMission[]
+}
+
+model Character {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName   String
+  lastName    String
+  gender      Gender   @default(OTHER)
+  age         Int      @default(24)
+  level       Int      @default(1)
+  xp          Int      @default(0)
+  cash        Int      @default(50000)
+  bankBalance Int      @default(0)
+  health      Int      @default(100)
+  energy      Int      @default(100)
+  hunger      Int      @default(100)
+  mood        Int      @default(75)
+  fitness     Int      @default(50)
+  district    String   @default("Wuse")
+  appearance  Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobId       String?
+  job         Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+}
+
+model Job {
+  id          String     @id @default(cuid())
+  title       String     @unique
+  company     String
+  district    String
+  salary      Int
+  energyCost  Int        @default(15)
+  xpReward    Int        @default(50)
+  status      JobStatus  @default(ACTIVE)
+  characters  Character[]
+}
+
+model Property {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  district    String
+  type        PropertyType
+  price       Int
+  rent        Int            @default(0)
+  purchasedAt DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+
+  @@index([userId])
+  @@index([district])
+}
+
+model Vehicle {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  type        VehicleType
+  price       Int
+  fuel        Int         @default(100)
+  condition   Int         @default(100)
+  purchasedAt DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+
+  @@index([userId])
+}
+
+model InventoryItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemKey   String
+  name      String
+  quantity  Int      @default(1)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, itemKey])
+}
+
+model Mission {
+  id          String          @id @default(cuid())
+  key         String          @unique
+  title       String
+  description String
+  rewardCash  Int             @default(0)
+  rewardXp    Int             @default(0)
+  createdAt   DateTime        @default(now())
+  players     PlayerMission[]
+}
+
+model PlayerMission {
+  id          String        @id @default(cuid())
+  userId      String
+  missionId   String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mission     Mission       @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  status      MissionStatus @default(AVAILABLE)
+  progress    Int           @default(0)
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([userId, missionId])
+  @@index([userId, status])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String
+  amount      Int
+  description String
+  balanceType String   @default("CASH")
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

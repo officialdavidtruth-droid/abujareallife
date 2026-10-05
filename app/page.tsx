@@ -1,7 +1,10 @@
 'use client';
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import World, { District, PlayerLook } from '../components/World';
+import type { District, PlayerLook } from '../components/World';
+
+const World = dynamic(() => import('../components/World'), { ssr: false, loading: () => <div className="canvasLoading">Loading Abuja 3D world…</div> });
 
 type Tab='home'|'phone'|'jobs'|'bank'|'map'|'profile';
 type Game={name:string;cash:number;bank:number;energy:number;mood:number;health:number;fitness:number;hunger:number;district:District;day:number;hour:number;job:string;level:number;xp:number;rentPaid:boolean;inventory:string[];missions:string[];feed:string[];look:PlayerLook;property:string;car:string};

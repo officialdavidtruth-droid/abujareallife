@@ -70,21 +70,61 @@ function Car({x,z,rot=0}:{x:number;z:number;rot?:number}){
  </group>
 }
 
-function Scene({look,district,setDistrict,onMove}:{look:PlayerLook;district:District;setDistrict:(d:District)=>void;onMove:(moving:boolean)=>void}){
+function PlayerController({look,target,onMove}:{look:PlayerLook;target:[number,number,number];onMove:(moving:boolean)=>void}){
  const [moving,setMoving]=useState(false);
- const target= districtPositions[district];
- const [pos,setPos]=useState<[number,number,number]>([0,0,0]);
+ const [pos,setPos]=useState<[number,number,number]>(target);
  const keys=useRef<Record<string,boolean>>({});
- useEffect(()=>{setPos([target[0],0,target[2]]);},[district]);
+ const lastMoving=useRef(false);
+ useEffect(()=>{setPos([target[0],0,target[2]]);},[target]);
  useEffect(()=>{
-   const down=(e:KeyboardEvent)=>{if(['INPUT','TEXTAREA','SELECT'].includes((e.target as HTMLElement)?.tagName))return; const k=e.key.toLowerCase(); if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)){keys.current[k]=true;setMoving(true);onMove(true);e.preventDefault();}};
-   const up=(e:KeyboardEvent)=>{keys.current[e.key.toLowerCase()]=false; const active=Object.values(keys.current).some(Boolean);setMoving(active);onMove(active);};
-   window.addEventListener('keydown',down);window.addEventListener('keyup',up);return()=>{window.removeEventListener('keydown',down);window.removeEventListener('keyup',up)}
+   const updateMoving=(next:boolean)=>{
+     setMoving(prev=>{
+       if(prev!==next) onMove(next);
+       return next;
+     });
+   };
+   const down=(e:KeyboardEvent)=>{
+     if(['INPUT','TEXTAREA','SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
+     const k=e.key.toLowerCase();
+     if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)){
+       keys.current[k]=true;
+       if(!lastMoving.current){ lastMoving.current=true; updateMoving(true); }
+       e.preventDefault();
+     }
+   };
+   const up=(e:KeyboardEvent)=>{
+     keys.current[e.key.toLowerCase()]=false;
+     const active=Object.values(keys.current).some(Boolean);
+     if(!active && lastMoving.current){ lastMoving.current=false; updateMoving(false); }
+   };
+   window.addEventListener('keydown',down);
+   window.addEventListener('keyup',up);
+   return()=>{
+     window.removeEventListener('keydown',down);
+     window.removeEventListener('keyup',up);
+   };
  },[onMove]);
  useFrame((_,delta)=>{
-   const k=keys.current; let dx=0,dz=0; if(k.w||k.arrowup)dz-=1;if(k.s||k.arrowdown)dz+=1;if(k.a||k.arrowleft)dx-=1;if(k.d||k.arrowright)dx+=1;
-   if(dx||dz){const len=Math.hypot(dx,dz)||1;dx/=len;dz/=len;setPos(v=>[THREE.MathUtils.clamp(v[0]+dx*delta*2.4,-10,10),0,THREE.MathUtils.clamp(v[2]+dz*delta*2.4,-10,10)]);}
+   const k=keys.current; let dx=0,dz=0;
+   if(k.w||k.arrowup)dz-=1;
+   if(k.s||k.arrowdown)dz+=1;
+   if(k.a||k.arrowleft)dx-=1;
+   if(k.d||k.arrowright)dx+=1;
+   if(dx||dz){
+     const len=Math.hypot(dx,dz)||1;
+     dx/=len; dz/=len;
+     setPos(v=>[
+       THREE.MathUtils.clamp(v[0]+dx*delta*2.4,-10,10),
+       0,
+       THREE.MathUtils.clamp(v[2]+dz*delta*2.4,-10,10)
+     ]);
+   }
  });
+ return <group position={pos}><Avatar look={look} moving={moving}/></group>;
+}
+
+function Scene({look,district,onMove}:{look:PlayerLook;district:District;onMove:(moving:boolean)=>void}){
+ const target=districtPositions[district];
  return <Canvas shadows camera={{position:[9,9,11],fov:44}} onCreated={({camera})=>camera.lookAt(0,0,0)}>
    <color attach="background" args={['#101820']}/><fog attach="fog" args={['#101820',16,30]}/>
    <ambientLight intensity={1.8}/><directionalLight position={[7,12,4]} intensity={3.2} castShadow shadow-mapSize={[2048,2048]}/><Environment preset="city"/>
@@ -94,11 +134,11 @@ function Scene({look,district,setDistrict,onMove}:{look:PlayerLook;district:Dist
    <Building x={-2.4} z={-3.2} w={1.5} h={1.3} d={1.3} color="#294d43" label="GYM"/><Building x={2.3} z={1.7} w={1.5} h={1.5} d={1.4} color="#70433d" label="CAFE"/><Building x={0} z={-5} w={1.7} h={1.5} d={1.5} color="#3f5368" label="HOSPITAL"/>
    <Car x={-1.5} z={-.75} rot={Math.PI/2}/><Car x={2.2} z={.75} rot={-Math.PI/2}/><Car x={5.5} z={-1.2}/>
    <Npc x={-3} z={-1} name="Ada" skin="#7d4b2d" shirt="#e0a21b"/><Npc x={2.8} z={3.2} name="Ibrahim" skin="#6d432c" shirt="#3c7b68"/><Npc x={-4} z={2.2} name="Chioma" skin="#8a5837" shirt="#9c4c5b"/>
-   <group position={pos}><Avatar look={look} moving={moving}/></group>
+   <PlayerController look={look} target={target} onMove={onMove}/>
    <OrbitControls enablePan={false} minDistance={5} maxDistance={16} maxPolarAngle={Math.PI/2.12}/>
  </Canvas>
 }
 
 export default function World({look,district,setDistrict,onMove}:{look:PlayerLook;district:District;setDistrict:(d:District)=>void;onMove:(moving:boolean)=>void}){
- return <div className="canvasWrap"><Scene look={look} district={district} setDistrict={setDistrict} onMove={onMove}/><div className="districtButtons">{(Object.keys(districtPositions) as District[]).map(d=><button key={d} onClick={()=>setDistrict(d)} className={district===d?'active':''}>{d}</button>)}</div></div>
+ return <div className="canvasWrap"><Scene look={look} district={district} onMove={onMove}/><div className="districtButtons">{(Object.keys(districtPositions) as District[]).map(d=><button key={d} onClick={()=>setDistrict(d)} className={district===d?'active':''}>{d}</button>)}</div></div>
 }

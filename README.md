@@ -27,3 +27,17 @@ Import this repository/ZIP into Vercel. Framework preset: Next.js. Build command
 
 ## Next production systems
 The client foundation is intentionally dependency-light. For persistent multiplayer, connect the same game state model to a database/auth provider and a realtime transport layer. Do not put secrets in client components.
+
+
+## Prisma + PostgreSQL
+
+This project uses Prisma for database migrations and PostgreSQL for production persistence.
+
+1. Copy `.env.example` to `.env` and set `DATABASE_URL`.
+2. Install dependencies: `npm install`.
+3. Generate Prisma Client: `npm run db:generate`.
+4. Create/apply a local development migration: `npm run db:migrate -- --name init`.
+5. Seed jobs and missions: `npm run db:seed`.
+6. For Vercel/production deployments, run `npm run db:migrate:deploy` during your deployment workflow.
+
+For Vercel, use a hosted PostgreSQL provider (for example Neon, Supabase, or Vercel Postgres) and set `DATABASE_URL` in the project's Environment Variables. Do not commit `.env`.

@@ -200,5 +200,8 @@ model Save {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   look      Json
   state     Json
+  cash      Int      @default(20000)
+  jobAct    String?
+  jobAt     DateTime?
   updatedAt DateTime @updatedAt
 }

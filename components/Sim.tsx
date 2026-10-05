@@ -71,7 +71,7 @@ function tick(dt: number) {
     if (t?.t === 'act') {
       if (t.a.pow && !S.power) { say('No light — fuel the generator first.'); S.q = []; }
       else if ((t.a.cost || 0) > S.cash) { say("You can't afford that."); S.q = []; }
-      else { S.cash -= t.a.cost || 0; S.cur = t; S.prog = 0; }
+      else { S.cash -= t.a.cost || 0; S.cur = t; S.prog = 0; if (t.a.cost || t.a.pay) econ('start', t.a); }
     } else if (t) S.cur = t; else if (S.free) auto();
   }
   const c = S.cur;
@@ -87,13 +87,21 @@ function tick(dt: number) {
     const f = Math.min(gm, c.a.dur - S.prog) / c.a.dur; S.prog += gm;
     (Object.entries(c.a.fx) as [N, number][]).forEach(([k, v]) => { S.needs[k] = cl(S.needs[k] + v * f); });
     if (S.prog >= c.a.dur) {
-      if (c.a.pay) { S.cash += c.a.pay; say(`Gig done: +${naira(c.a.pay)}`); }
+      if (c.a.pay) econ('finish', c.a);
       if (c.a.k === 'gen') { S.power = true; say('💡 Light is back!'); }
       S.cur = null;
     }
   }
 }
-const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min, cash: S.cash } }) }).catch(() => {});
+const econ = async (kind: 'start' | 'finish', a: Act) => {
+  try {
+    const r = await fetch('/api/economy/' + kind, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ act: a.k }) }), d = await r.json();
+    if (typeof d.cash === 'number') S.cash = d.cash;
+    if (!r.ok) { say(d.error || 'Payment problem.'); if (kind === 'start' && S.cur?.t === 'act' && S.cur.a.k === a.k) S.cur = null; }
+    else if (kind === 'finish' && d.paid) say(`Gig done: +${naira(d.paid)}`);
+  } catch { say('Offline — payment not recorded.'); }
+};
+const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min } }) }).catch(() => {});
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
 const snap = () => ({ needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
@@ -175,7 +183,7 @@ export default function Sim() {
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.state.cash }); setLook({ ...r.save.look, name: u.username }); } else { setLook(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); setLook({ ...r.save.look, name: u.username }); } else { setLook(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {

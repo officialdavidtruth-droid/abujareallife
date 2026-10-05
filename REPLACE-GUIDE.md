@@ -11,7 +11,7 @@ Copy this folder's contents over your project root (same paths, overwrite when a
 - app/api/email/send/route.ts
 - app/api/email/verify/route.ts
 - app/api/save/route.ts
-- components/Sim.tsx (updated for step 3)
+- components/Sim.tsx (updated for steps 3 and 4)
 - components/Neighborhood.tsx (step 3, new)
 - components/Human.tsx
 - components/Creator.tsx
@@ -21,6 +21,11 @@ Copy this folder's contents over your project root (same paths, overwrite when a
 - lib/verification.ts
 - lib/characterModels.ts
 - lib/supabaseClient.ts (step 3, new)
+- lib/economy.ts (step 4, new)
+- app/api/economy/start/route.ts (step 4, new)
+- app/api/economy/finish/route.ts (step 4, new)
+- app/api/save/route.ts (updated for step 4)
+- prisma/migrations/0003_economy/migration.sql (step 4, new)
 - prisma/schema.prisma (replaces)
 - prisma/migrations/0002_accounts/migration.sql
 - public/models/Xbot.glb
@@ -39,3 +44,7 @@ lib/prisma.ts, app/globals.css, app/layout.tsx, components/World.tsx, .env.local
 - Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (Supabase > Project Settings > API) to .env.local and Vercel
 - Supabase > Realtime > Settings: make sure public access is allowed for channels
 - Run npm install again (new dependency)
+
+## Step 4 setup (server-owned money)
+- Run npm run db:migrate:deploy again (applies 0003_economy)
+- Prices and pay live in lib/economy.ts; change them there

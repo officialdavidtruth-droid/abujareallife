@@ -9,6 +9,8 @@ import { CITY } from '../lib/cityData';
 import type { Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
 import { NET, useCityNet } from '../lib/cityNet';
+import { useCityVoice } from '../lib/cityVoice';
+import CityPeople from './CityPeople';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
 
 /* ───────────── types & helpers ───────────── */
@@ -511,7 +513,7 @@ const START = { x: 0, z: 16 };
 const sm = THREE.MathUtils.smoothstep;
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
 const CAR_R = 1, CAR_OFFS = [-1.35, 0, 1.35];
-function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub }: { look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string> }) {
+function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }: { look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: Math.PI });
   const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!), hemi = useRef<THREE.HemisphereLight>(null!), stars = useRef<THREE.Group>(null!);
   const carG = useRef<THREE.Group>(null!), carTag = useRef<HTMLDivElement | null>(null), spot = useRef<THREE.SpotLight>(null!), nameTag = useRef<HTMLDivElement | null>(null);
@@ -695,10 +697,10 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub }: { look:
       <TrainLine />
       <Airport />
       <group ref={group}>
-        <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getSpeed={() => (running.current ? 2.4 : 1.1)} />
+        <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : m.call ? 'phone' : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />
         <Html position={[0, 2.8, 0]} center><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag">{look.name}</div></div></Html>
       </group>
-      <RemotePlayers roster={roster} ver={ver} bub={bub} />
+      <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
       {near && nearBuilding && <Html position={[nearBuilding.x, 3.9, nearBuilding.z + nearBuilding.d / 2 + .8]} center><div className="cityBizTag">{near.name}<br /><small>{near.type}</small></div></Html>}
       <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.12} rotateSpeed={.7} minDistance={3.5} maxDistance={24} minPolarAngle={.25} maxPolarAngle={Math.PI / 2.15} target={[START.x, 1.5, START.z]} />
     </>
@@ -706,7 +708,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub }: { look:
 }
 
 /* ───────────── other real players ───────────── */
-function Remote({ name, bub }: { name: string; bub?: string }) {
+const rWalk = (n: string) => { const q = NET.peers[n]; return !!q && q.mv > 0 && Math.hypot(q.tx - q.x, q.tz - q.z) > .08; };
+function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n: string) => void }) {
   const body = useRef<THREE.Group>(null!), car = useRef<THREE.Group>(null!), hum = useRef<THREE.Group>(null!), tag = useRef<HTMLDivElement | null>(null);
   const kit = pkit(), colour = useMemo(() => COLORS[Math.floor(hs(name) * COLORS.length)], [name]);
   useFrame((_, dtRaw) => {
@@ -721,37 +724,16 @@ function Remote({ name, bub }: { name: string; bub?: string }) {
   });
   const p = NET.peers[name]; if (!p) return null;
   return <>
-    <group ref={body}>
-      <Human look={p.look} getState={() => ((NET.peers[name]?.mv || 0) > 0 && Math.hypot((NET.peers[name]?.tx || 0) - (NET.peers[name]?.x || 0), (NET.peers[name]?.tz || 0) - (NET.peers[name]?.z || 0)) > .08 ? 'walk' : 'idle')} getSpeed={() => ((NET.peers[name]?.mv || 0) === 2 ? 2.4 : 1.1)} />
-      <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, pointerEvents: 'none' }} ref={el => { tag.current = el; }}>{bub && <div className="cwSay">{bub}</div>}<div className="cityNameTag">{name}</div></div></Html>
+    <group ref={body} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onPick(name); }}>
+      <Human look={p.look} getState={() => (rWalk(name) ? 'walk' : 'idle')} getAnim={() => { const q = NET.peers[name]; if (!q || rWalk(name)) return undefined; return q.anim && Date.now() < q.animUntil ? q.anim : q.call ? 'phone' : undefined; }} getSpeed={() => ((NET.peers[name]?.mv || 0) === 2 ? 2.4 : 1.1)} />
+      <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} ref={el => { tag.current = el; }}>{bub && <div className="cwSay">{bub}</div>}<div className="cityNameTag cwTapTag" onClick={() => onPick(name)}>{name}</div></div></Html>
     </group>
     <group ref={car} visible={false}><CarModel kit={kit} color={colour} kind={0} /></group>
   </>;
 }
-function RemotePlayers({ roster, ver, bub }: { roster: string[]; ver: number; bub: Record<string, string> }) {
+function RemotePlayers({ roster, ver, bub, onPick }: { roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   void ver;
-  return <>{roster.map(n => <Remote key={n} name={n} bub={bub[n]} />)}</>;
-}
-
-/* ───────────── multiplayer chat / roster UI ───────────── */
-function Online({ net }: { net: ReturnType<typeof useCityNet> }) {
-  const [open, setOpen] = useState(false), [txt, setTxt] = useState('');
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (open) { net.clearUnread(); box.current?.scrollTo(0, 1e9); } }, [open, net.log.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const go = () => { if (net.send(txt)) setTxt(''); };
-  const label = !net.enabled ? 'Solo' : net.status === 'online' ? `${net.roster.length + 1} online` : net.status === 'error' ? 'Offline' : 'Connecting…';
-  return <>
-    <button className="cwOnline" onClick={() => setOpen(o => !o)} aria-label="Players and chat"><span>🌍</span><b>{label}</b>{net.unread > 0 && !open && <i>{net.unread > 9 ? '9+' : net.unread}</i>}</button>
-    {open && <div className="cwChat">
-      <button className="cwChatX" onClick={() => setOpen(false)} aria-label="Close">×</button>
-      {!net.enabled ? <p className="cwChatNote">Multiplayer is off. Add <b>NEXT_PUBLIC_SUPABASE_URL</b> and <b>NEXT_PUBLIC_SUPABASE_ANON_KEY</b> in Vercel and redeploy.</p> : <>
-        <div className="cwChatHead">🏙️ Abuja · City {net.room} · {net.status === 'online' ? `${net.roster.length + 1} players` : net.status}</div>
-        <div className="cwPeople">{net.roster.length === 0 ? <span>You're the only one here right now. Invite friends!</span> : net.roster.map(n => <button key={n} onClick={() => net.toggleMute(n)} className={net.muted.includes(n) ? 'mu' : ''}>{net.muted.includes(n) ? '🔇' : '💬'} {n}</button>)}</div>
-        <div className="cwLog" ref={box}>{net.log.length === 0 ? <span className="cwEmpty">Say hi to the city 👋</span> : net.log.slice(-40).map(m => <div key={m.id}><b>{m.u}:</b> {m.t}</div>)}</div>
-        <div className="cwIn"><input value={txt} maxLength={120} placeholder="Say something…" enterKeyHint="send" onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') go(); }} /><button onClick={go}>Send</button></div>
-      </>}
-    </div>}
-  </>;
+  return <>{roster.map(n => <Remote key={n} name={n} bub={bub[n]} onPick={onPick} />)}</>;
 }
 
 /* ───────────── on-screen controls ───────────── */
@@ -802,17 +784,8 @@ function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; i
 }
 
 const CSS = `
+.cwTapTag{pointer-events:auto;cursor:pointer;padding:6px 10px;font-size:12px}
 .cwSay{background:#fff;color:#111;border-radius:12px;padding:5px 10px;font-size:12px;max-width:190px;text-align:center;box-shadow:0 2px 8px #0006;white-space:normal;line-height:1.25}
-.cwOnline{position:absolute;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:12;display:flex;align-items:center;gap:7px;min-height:40px;padding:6px 14px;border-radius:999px;border:1px solid #ffffff3a;background:#0b1511e0;color:#fff;font-size:12px;cursor:pointer}
-.cwOnline b{font-weight:700}.cwOnline i{font-style:normal;background:#e5484d;color:#fff;border-radius:999px;font-size:10px;font-weight:800;padding:2px 6px}
-.cwChat{position:absolute;left:50%;top:calc(58px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:30;width:min(360px,calc(100vw - 20px));max-height:calc(100% - 80px);display:flex;flex-direction:column;gap:7px;background:#09130ff7;border:1px solid #ffffff2a;border-radius:16px;padding:12px;color:#fff;box-shadow:0 18px 50px #000a}
-.cwChatX{position:absolute;right:8px;top:4px;border:0;background:none;color:#fff;font-size:24px;width:36px;height:36px}
-.cwChatHead{font-size:12px;font-weight:800;color:#f0b94a;padding-right:30px}.cwChatNote{font-size:12px;color:#cbd8d1;margin:0;padding-right:24px}
-.cwPeople{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.cwPeople span{font-size:11px;color:#9fb5aa}
-.cwPeople button{flex:0 0 auto;background:#14261f;border:1px solid #2a4337;color:#cfe;border-radius:999px;padding:6px 10px;font-size:11px;min-height:32px}.cwPeople button.mu{opacity:.55}
-.cwLog{min-height:70px;max-height:34vh;overflow-y:auto;background:#0a1511;border-radius:10px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;gap:4px;user-select:text;-webkit-user-select:text}.cwLog b{color:#f3c56f}.cwEmpty{color:#7f968b}
-.cwIn{display:flex;gap:6px}.cwIn input{flex:1;min-width:0;background:#0a1511;border:1px solid #2a4337;border-radius:10px;padding:10px;color:#fff;font-size:16px}.cwIn button{background:#d99a42;color:#1a1208;border:0;border-radius:10px;padding:0 16px;font-weight:800;min-height:42px}
-@media (pointer:coarse),(max-width:700px){.cwOnline{left:auto;right:calc(10px + env(safe-area-inset-right,0px));transform:none;top:calc(56px + env(safe-area-inset-top,0px))}.cwChat{left:auto;right:calc(10px + env(safe-area-inset-right,0px));transform:none;top:calc(104px + env(safe-area-inset-top,0px));max-height:calc(100% - 120px)}}
 .cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
 .cwKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:#ffffffcc;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0006;pointer-events:none}
 .cwBtns{position:absolute;right:18px;bottom:22px;z-index:10;display:flex;gap:12px;align-items:flex-end}
@@ -831,8 +804,10 @@ const CSS = `
 @media (pointer:coarse),(max-width:700px){.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:26px;flex-wrap:wrap;justify-content:flex-end;max-width:270px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}}
 `;
 
-export default function CityWorld({ look, onNear, getMinute, onSocial }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: () => void }) {
+export default function CityWorld({ look, onNear, getMinute, onSocial }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void }) {
   const net = useCityNet(look, onSocial);
+  const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: n => net.muted.includes(n), onSocial });
+  const [sel, setSel] = useState<string | null>(null);
   const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: 0, fz: -1, r: Math.PI, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
   const [mute, setMute] = useState(false);
@@ -855,10 +830,10 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
     <div className="cityWorld">
       <style>{CSS}</style>
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x, 4.2, START.z + 8], fov: 52, far: 600 }}>
-        <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} />
+        <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} />
-      <Online net={net} />
+      <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMute(m => { setMuted(!m); return !m; }); }}>{mute ? '🔇' : '🔊'}</button>

@@ -5,14 +5,14 @@ import { sanitizeLook, type Look } from './characterModels';
 
 /* Shared, mutable multiplayer state. The 3D scene writes NET.me every frame and reads NET.peers every frame
    (no React re-renders in the hot path). React state only changes when people join/leave or chat. */
-export type NetMe = { x: number; z: number; r: number; mv: 0 | 1 | 2; drv: boolean; cp: boolean; cx: number; cz: number; cr: number };
+export type NetMe = { x: number; z: number; r: number; mv: 0 | 1 | 2; drv: boolean; cp: boolean; cx: number; cz: number; cr: number; call: boolean; anim: string; animUntil: number };
 export type NetPeer = {
-  look: Look; init: boolean; mv: number; drv: boolean; cp: boolean;
+  look: Look; init: boolean; mv: number; drv: boolean; cp: boolean; call: boolean; anim: string; animUntil: number;
   x: number; z: number; r: number; tx: number; tz: number; tr: number;
   cx: number; cz: number; cr: number; tcx: number; tcz: number; tcr: number;
 };
 export const NET = {
-  me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0 } as NetMe,
+  me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0, call: false, anim: '', animUntil: 0 } as NetMe,
   peers: {} as Record<string, NetPeer>,
 };
 
@@ -24,12 +24,21 @@ const clampN = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? Ma
 const angle = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height].join('|');
-const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, cp: false, x: 0, z: 16, r: 0, tx: 0, tz: 16, tr: 0, cx: 0, cz: 0, cr: 0, tcx: 0, tcz: 0, tcr: 0 });
+const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, cp: false, call: false, anim: '', animUntil: 0, x: 0, z: 16, r: 0, tx: 0, tz: 16, tr: 0, cx: 0, cz: 0, cr: 0, tcx: 0, tcz: 0, tcr: 0 });
 
+export const INTERACT_RANGE = 10; // metres: how close you must be to wave / high-five / dance with someone
+export const ACT_LIST = [['wave', '👋', 'Wave'], ['cheer', '🙌', 'High-five'], ['dance', '💃', 'Dance']] as const;
+const ACTS: Record<string, { text: string; reply: string; ms: number }> = {
+  wave: { text: 'waved at you', reply: 'Wave back', ms: 3200 },
+  cheer: { text: 'wants a high-five', reply: 'High-five!', ms: 3200 },
+  dance: { text: 'invited you to dance', reply: 'Dance too', ms: 7000 },
+};
+export type Notice = { id: number; from: string; k: string; text: string; reply: string };
+export type RtcMsg = { u: string; to: string; t: string; d?: any };
 export type ChatMsg = { id: number; u: string; t: string };
 export type NetStatus = 'off' | 'connecting' | 'online' | 'error';
 
-export function useCityNet(look: Look, onSocial?: () => void) {
+export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
   const [roster, setRoster] = useState<string[]>([]);
   const [ver, setVer] = useState(0);
   const [status, setStatus] = useState<NetStatus>(supabase ? 'connecting' : 'off');
@@ -38,6 +47,8 @@ export function useCityNet(look: Look, onSocial?: () => void) {
   const [bub, setBub] = useState<Record<string, string>>({});
   const [unread, setUnread] = useState(0);
   const [mutedList, setMutedList] = useState<string[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const rtcSubs = useRef(new Set<(m: RtcMsg) => void>()), lastAct = useRef(0);
   const ch = useRef<RealtimeChannel | null>(null), muted = useRef(new Set<string>()), statusRef = useRef<NetStatus>(status);
   const lastSend = useRef(0), lastIn = useRef<Record<string, number>>({}), seq = useRef(0), lastKey = useRef(''), lastBeat = useRef(0);
   const lookRef = useRef(look), socialRef = useRef(onSocial);
@@ -83,9 +94,25 @@ export function useCityNet(look: Look, onSocial?: () => void) {
           if (cur !== c) return;
           const p = NET.peers[String(payload?.u)]; if (!p) return;
           p.tx = clampN(payload.x); p.tz = clampN(payload.z, 16); p.tr = angle(payload.r, p.tr);
-          p.mv = payload.m === 2 ? 2 : payload.m === 1 ? 1 : 0; p.drv = !!payload.d; p.cp = !!payload.p;
+          p.mv = payload.m === 2 ? 2 : payload.m === 1 ? 1 : 0; p.drv = !!payload.d; p.cp = !!payload.p; p.call = !!payload.c;
           p.tcx = clampN(payload.cx); p.tcz = clampN(payload.cz); p.tcr = angle(payload.cr, p.tcr);
           if (!p.init) { p.init = true; p.x = p.tx; p.z = p.tz; p.r = p.tr; p.cx = p.tcx; p.cz = p.tcz; p.cr = p.tcr; }
+        })
+        .on('broadcast', { event: 'act' }, ({ payload }) => {
+          if (cur !== c) return;
+          const u = String(payload?.u), k = String(payload?.k), a = ACTS[k], p = NET.peers[u];
+          if (!a || !p || muted.current.has(u)) return;
+          p.anim = k; p.animUntil = Date.now() + a.ms;
+          if (payload.to === name) {
+            const id = ++seq.current;
+            setNotices(l => [...l.slice(-2), { id, from: u, k, text: a.text, reply: a.reply }]);
+            setTimeout(() => setNotices(l => l.filter(n => n.id !== id)), 9000);
+            socialRef.current?.(3);
+          }
+        })
+        .on('broadcast', { event: 'rtc' }, ({ payload }) => {
+          if (cur !== c || payload?.to !== name || typeof payload?.u !== 'string') return;
+          rtcSubs.current.forEach(f => f(payload as RtcMsg));
         })
         .on('broadcast', { event: 'chat' }, ({ payload }) => {
           if (cur !== c) return;
@@ -112,8 +139,8 @@ export function useCityNet(look: Look, onSocial?: () => void) {
     const id = setInterval(() => {
       const c = ch.current; if (!c || statusRef.current !== 'online' || !Object.keys(NET.peers).length) return;
       const m = NET.me, now = Date.now();
-      const pl = { u: name, x: r2(m.x), z: r2(m.z), r: r2(m.r), m: m.mv, d: m.drv, p: m.cp, cx: r2(m.cx), cz: r2(m.cz), cr: r2(m.cr) };
-      const key = `${pl.x}|${pl.z}|${pl.r}|${pl.m}|${pl.d}|${pl.p}|${pl.cx}|${pl.cz}|${pl.cr}`;
+      const pl = { u: name, x: r2(m.x), z: r2(m.z), r: r2(m.r), m: m.mv, d: m.drv, p: m.cp, cx: r2(m.cx), cz: r2(m.cz), cr: r2(m.cr), c: m.call };
+      const key = `${pl.x}|${pl.z}|${pl.r}|${pl.m}|${pl.d}|${pl.p}|${pl.cx}|${pl.cz}|${pl.cr}|${pl.c}`;
       if (key === lastKey.current && now - lastBeat.current < 2500) return;
       lastKey.current = key; lastBeat.current = now;
       c.send({ type: 'broadcast', event: 'pos', payload: pl });
@@ -142,5 +169,14 @@ export function useCityNet(look: Look, onSocial?: () => void) {
     setMutedList([...muted.current]);
   }, []);
   const clearUnread = useCallback(() => setUnread(0), []);
-  return { status, room, roster, ver, log, bub, unread, clearUnread, send, muted: mutedList, toggleMute, enabled: !!supabase };
+  const signal = useCallback((to: string, t: string, d?: any) => { ch.current?.send({ type: 'broadcast', event: 'rtc', payload: { u: name, to, t, d } }); }, [name]);
+  const subscribeRtc = useCallback((f: (m: RtcMsg) => void) => { rtcSubs.current.add(f); return () => { rtcSubs.current.delete(f); }; }, []);
+  const act = useCallback((k: string, to?: string) => {
+    const a = ACTS[k], now = Date.now(); if (!a || now - lastAct.current < 1500) return false;
+    lastAct.current = now; NET.me.anim = k; NET.me.animUntil = now + a.ms;
+    ch.current?.send({ type: 'broadcast', event: 'act', payload: { u: name, to: to || '', k } });
+    socialRef.current?.(to ? 3 : 1); return true;
+  }, [name]);
+  const dismissNotice = useCallback((id: number) => setNotices(l => l.filter(n => n.id !== id)), []);
+  return { name, status, room, roster, ver, log, bub, unread, clearUnread, send, muted: mutedList, toggleMute, enabled: !!supabase, signal, subscribeRtc, act, notices, dismissNotice };
 }

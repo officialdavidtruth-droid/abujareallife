@@ -29,3 +29,49 @@ No database tables are needed; it uses Supabase Realtime (presence + broadcast) 
 - **Trust:** movement and chat are client-trusted, so a determined cheater could spoof another player's name in chat. Money is still server-owned (economy routes), so cheating can't give naira. For a public launch add server-side chat moderation/reporting and a profanity filter; mute is the only tool right now.
 - **Not shared yet:** AI traffic and pedestrians are simulated separately on each phone (everyone sees different cars), and remote players are not solid for traffic or collisions. Jobs, businesses and the flat are single-player.
 - **Untested here:** I could not run the game or connect to Supabase in my environment, so test with two real devices before inviting people.
+
+---
+
+# Update: voice, interactions, cleaner phone screen
+
+## Player interactions
+Tap a player (or their name above their head, or their name in the 🌍 list) to open the player card:
+- 🎙️ **Talk (voice)** – private voice call, see below
+- 👋 **Wave**, 🙌 **High-five**, 💃 **Dance** – they see the animation and get a notice with a one-tap "back" button. Both of you gain Social.
+- 🔇 **Mute chat** – hides that player's chat and auto-declines their call requests.
+Wave / high-five / dance work within 10 m.
+
+## Voice rules (as designed)
+1. You must be within **12 m** of a player to ask them to talk.
+2. They get a banner: **Accept / Decline**. Nothing is heard until they accept.
+3. After accepting, only the two of you hear each other (peer-to-peer WebRTC, encrypted). Everyone else hears nothing.
+4. The voice **fades with distance** (full volume within 8 m, silent at 30 m). If you stay out of range for 4 seconds the call ends.
+5. Either person can mute their mic or hang up. A person already on a call auto-replies "busy". Characters hold a phone to their ear while on a call.
+Text chat still works for everyone at all times.
+
+Files: `lib/cityVoice.ts` (calls), `components/CityPeople.tsx` (player card, call banners, chat), `lib/cityNet.ts` (signalling over the same Supabase channel).
+
+## IMPORTANT: calls on mobile data need a TURN server
+Free Google STUN servers connect most Wi-Fi users, but many phone networks (MTN/Airtel/Glo carrier-grade NAT) block direct peer-to-peer. For reliable voice add a TURN relay:
+- Easiest: a free/paid TURN from metered.ca, Twilio Network Traversal, or Cloudflare Calls TURN.
+- Add to `.env.local` and Vercel, then redeploy:
+```
+NEXT_PUBLIC_TURN_URL="turn:YOUR_HOST:3478,turns:YOUR_HOST:443?transport=tcp"
+NEXT_PUBLIC_TURN_USERNAME="..."
+NEXT_PUBLIC_TURN_CREDENTIAL="..."
+```
+(These are visible in the browser, so use a provider's short-lived/limited credentials where possible.)
+
+## Microphone permission
+- Browser/PWA: the site must be HTTPS (Vercel is) and the player taps **Allow** on the first call. On iPhone use Safari (or the installed Home Screen app on iOS 16.4+).
+- Capacitor app: Android `AndroidManifest.xml` add `<uses-permission android:name="android.permission.RECORD_AUDIO" />` and `MODIFY_AUDIO_SETTINGS`; iOS `Info.plist` add `NSMicrophoneUsageDescription` ("Used for voice chat with other players").
+
+## Phone screen cleanup
+- Top bar is now just **clock · cash · 🏙️/🏠 · ☰**. Speed, power, account, character and free-will moved into the ☰ menu.
+- In the city the needs panel became a small icon strip under the clock; Map / Jobs / Businesses / Players are round icon buttons down the right edge; the business card is a slim chip at top-centre; the keyboard hint text is hidden.
+
+## Limits to know
+- **Signalling is not authenticated.** Calls are encrypted, but because the channel is shared and names are trusted from the client, a determined attacker could try to impersonate a name during call setup. Before a big public launch, move signalling to Supabase *private* channels with Supabase Auth, or to your own server.
+- **Quota:** voice audio doesn't use Supabase (it is peer-to-peer; only the setup messages do), but TURN relay traffic is billed by your TURN provider.
+- **Only 1 call at a time** per player. No group/party voice yet.
+- Not tested on real devices from here, so please test with two phones on mobile data before launch.

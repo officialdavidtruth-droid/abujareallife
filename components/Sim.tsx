@@ -460,9 +460,9 @@ export default function Sim() {
   return <div className="sim">
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
-    {user && look && outside && <City look={look} getMinute={() => S.min} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); }} />}
+    {user && look && outside && <City look={look} getMinute={() => S.min} onSocial={() => { S.needs.social = cl(S.needs.social + 0.06); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); }} />}
     {user && look && <AssetLoader />}
-    {user && look && !outside && <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
+    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} onDone={l => { const n = { ...l, name: user.username }; setLook(n); saveNow(n); setEditing(false); }} />}
     <div className="top"><div className="pill">Day {Math.floor(ui.min / 1440) + 1} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
       <div className="pill">{[0, 1, 2, 3].map(s => <button key={s} className={ui.speed === s ? 'on' : ''} onClick={() => { S.speed = s; }}>{s === 0 ? '⏸' : '▶'.repeat(s)}</button>)}</div>
@@ -476,7 +476,7 @@ export default function Sim() {
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
-    {!outside && <div className="hint">Click the floor to walk · Click any object for actions · Use the emote buttons on the right · Drag to rotate · Scroll to zoom</div>}
+    {!outside && <div className="hint">Tap the floor to walk · Tap any object for actions · Drag to rotate · Scroll to zoom</div>}
     <style>{CSS}</style>
   </div>;
 }

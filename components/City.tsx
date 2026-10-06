@@ -47,7 +47,6 @@ export default function City({ look, onNear, getMinute, onSocial, tab: tabProp, 
   const controlled = onTab !== undefined, tab = controlled ? (tabProp ?? null) : own, setTab = (t: Tab) => (controlled ? onTab!(t) : setOwn(t));
   return <div className="cityShell">
     <CityWorld look={look} onNear={b => { setNear(b); onNear(b); }} getMinute={getMinute} onSocial={onSocial} />
-    <div className="cityTop"><b>🏙️ ABUJA REAL LIFE</b><span>{CITY.buildings.length} buildings · {CITY.businesses.length} businesses</span></div>
     {!controlled && <div className="cityActions"><button onClick={() => setTab(tab === 'map' ? null : 'map')}>🗺️<em> Map</em></button><button onClick={() => setTab(tab === 'jobs' ? null : 'jobs')}>💼<em> Jobs</em></button><button onClick={() => setTab(tab === 'businesses' ? null : 'businesses')}>🏪<em> Businesses</em></button></div>}
     {near && !tab && <div className="nearCard"><b>{near.name}</b><span>{near.type} · {near.district}</span><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs &amp; apply</button><button className="ncEnter" onClick={() => window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id }))}>🚪 Enter</button></div>}
     {tab && <div className="cityPanel sheet"><button className="close" onClick={() => setTab(null)}>×</button>

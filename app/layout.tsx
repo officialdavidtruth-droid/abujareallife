@@ -1,6 +1,7 @@
 import './globals.css';
 import './mobile.css';
 import './hud.css';
+import './clean.css';
 import type { Metadata, Viewport } from 'next';
 import PWARegister from '../components/PWARegister';
 export const metadata: Metadata = {

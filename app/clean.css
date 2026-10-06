@@ -1,0 +1,16 @@
+/* ===== Clean HUD (loaded last) ===== */
+.cityTop{display:none!important}
+/* controls cheat-sheet: shows for a few seconds, then gets out of the way (hover the corner to read it again) */
+.cwHint{opacity:0;animation:hintLife 9s ease both;transition:opacity .2s;pointer-events:auto}
+.cwHint:hover{opacity:1!important;animation:none}
+@keyframes hintLife{0%{opacity:0}8%{opacity:1}80%{opacity:1}100%{opacity:0}}
+/* on-screen touch buttons are for phones; keyboards already have the keys */
+@media (hover:hover) and (pointer:fine){.cwBtns,.cwStick{display:none!important}}
+/* small hint pill, small install button */
+.cwTip{font-size:11px!important;padding:4px 10px!important;opacity:.85}
+.installBtn{position:fixed!important;top:calc(8px + var(--sat,0px))!important;right:calc(8px + var(--sar,0px))!important;bottom:auto!important;left:auto!important;transform:none!important;padding:6px 12px!important;font-size:11px!important;font-weight:700!important;box-shadow:none!important;opacity:.9}
+/* near-building card: compact */
+.nearCard{gap:8px!important;padding:6px 10px!important}.nearCard span{display:none!important}.nearCard b{font-size:13px!important}
+.nearCard button{padding:6px 12px!important;font-size:12px!important;min-height:34px!important}
+/* the E-key prompt is useful on a keyboard, pointless on a phone */
+@media (hover:hover) and (pointer:fine){.cwTip{display:block!important}}

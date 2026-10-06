@@ -60,8 +60,8 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .fsBtn{position:fixed;z-index:150;left:50%;transform:translateX(-50%);opacity:.55;bottom:calc(6px + var(--sab));width:34px;height:34px;border-radius:50%;border:1px solid #ffffff44;background:#10201ae6;color:#fff;font-size:18px}
 .installBtn{position:fixed;z-index:150;left:50%;transform:translateX(-50%);bottom:calc(14px + var(--sab));background:#d99a42;color:#1a1208;border:0;border-radius:999px;padding:12px 20px;font-weight:800;box-shadow:0 6px 20px #0008}
 
-/* ===== Declutter on phones ===== */
-@media (pointer:coarse),(max-width:820px){
+/* ===== Declutter: one tidy HUD on every screen size ===== */
+@media all{
   /* top bar: clock + cash + home/city + ☰ ; everything else lives in the menu */
   .menuBtn{display:inline-flex!important;justify-content:center;min-width:40px}
   .topMore{display:none;position:absolute;top:46px;left:0;flex-wrap:wrap;gap:6px;width:min(330px,calc(100vw - 30px));background:#09130ff5;border:1px solid #ffffff2a;border-radius:16px;padding:10px;box-shadow:0 14px 40px #000a;pointer-events:auto}

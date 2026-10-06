@@ -1,4 +1,5 @@
 'use client';
+import { GAME_LABEL_CSS } from '../lib/gameLabels';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Html, OrbitControls, RoundedBox, Stars, Text } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -846,6 +847,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
   return (
     <div className="cityWorld">
       <style>{CSS}</style>
+      <style>{GAME_LABEL_CSS}</style>
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x, 4.2, START.z + 8], fov: 52, far: 600 }}>
         <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>

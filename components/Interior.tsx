@@ -7,6 +7,7 @@ import Human from './Human';
 import { CITY } from '../lib/cityData';
 import { MGR_TASK_PAY, fmtClock } from '../lib/work';
 import { makeNav } from '../lib/nav';
+import { GAME_LABEL_CSS } from '../lib/gameLabels';
 import { buildInterior, staffLook, type Interior as Room, type Item, type Office, type Opt, type Post, type Spot } from '../lib/interiors';
 import { ROOM, useRoomNet } from '../lib/roomNet';
 import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
@@ -74,7 +75,7 @@ function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: n
   return <group ref={g} position={[s.current.x, post.y ?? 0, s.current.z]} rotation-y={post.r} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTalk(post.idx); }}>
     <mesh position={[0, 1, 0]}><cylinderGeometry args={[.6, .6, 2, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
     <Human look={look} getState={() => (s.current.mv ? 'walk' : 'idle')} getAnim={post.patrol ? undefined : anim} />
-    <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div className="inTag"><button className="inStaff" onClick={() => onTalk(post.idx)}>💬 {look.name} · {post.title}</button></div></Html></group>;
+    <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div className="inTag"><button className="glPlate" onClick={() => onTalk(post.idx)}><b>{look.name}</b><em>{post.title}</em><i>💬</i></button></div></Html></group>;
 }
 type Mgr = { seat: boolean; title: string; needed: number; daily: number; tasks: { id: string; label: string; mins: number }[]; holder: { name: string; look: Look; until: number } | null;
   me: { isHolder: boolean; holdsSeat: boolean; progress: number; salaryInMs: number; otherSeat: boolean }; active: { label: string; secs: number; left: number } | null };
@@ -86,18 +87,18 @@ function ManagerSeat({ office, mgr, meName, onTap }: { office: Office; mgr: Mgr 
   return <group>
     <mesh position={[office.x, .6, office.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTap(); }}><boxGeometry args={[2.6, 1.2, 1.1]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
     {sitting && <group position={[office.sx, 0, office.sz]}><Human look={h!.look} getState={() => 'idle'} getAnim={() => 'work'} /></group>}
-    <Html position={[office.x, sitting ? 2.4 : 1.5, sitting ? office.sz : office.z]} center zIndexRange={[5, 0]}><div className="inTag"><button className="inStaff" onClick={onTap}>{h ? `👔 ${h.name} · ${office.title}` : `📋 ${office.title}: vacant`}</button></div></Html>
+    <Html position={[office.x, sitting ? 2.4 : 1.5, sitting ? office.sz : office.z]} center zIndexRange={[5, 0]}><div className="inTag"><button className={'glPlate ' + (h ? 'boss' : 'vacant')} onClick={onTap}>{h ? <><b>{h.name}</b><em>👔 {office.title}</em></> : <><b>{office.title}</b><em>Vacant · apply!</em><i>!</i></>}</button></div></Html>
   </group>;
 }
 function SpotMark({ s, active, onTap }: { s: Spot; active: boolean; onTap: (s: Spot) => void }) {
   return <group position={[s.x, 0, s.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTap(s); }}><mesh position={[0, .6, 0]}><cylinderGeometry args={[1.1, 1.1, 1.2, 16]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh><mesh rotation-x={-Math.PI / 2} position={[0, .03, 0]}><ringGeometry args={[.7, .95, 32]} /><meshBasicMaterial color={active ? '#ffd166' : '#3fb98a'} /></mesh>
-    <Html position={[0, 1.7, 0]} center zIndexRange={[5, 0]}><button className="inLbl" onClick={() => onTap(s)}>{s.e} {s.label}</button></Html></group>;
+    <Html position={[0, 1.7, 0]} center zIndexRange={[5, 0]}><button className={'inLbl gl-' + s.id + (active ? ' on' : '')} onClick={() => onTap(s)}><span className="glIco">{s.e}</span><span className="glTx">{s.label}</span></button></Html></group>;
 }
 function Remote({ name, bub }: { name: string; bub?: string }) {
   const g = useRef<THREE.Group>(null!), p = ROOM.peers[name]; if (!p) return null;
   useFrame((_, dt) => { const q = ROOM.peers[name]; if (!q) return; const k = 1 - Math.exp(-10 * dt); q.x += (q.tx - q.x) * k; q.z += (q.tz - q.z) * k; let dr = q.tr - q.r; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); q.r += dr * k; g.current.position.set(q.x, 0, q.z); g.current.rotation.y = q.r; });
   return <group ref={g}><Human look={p.look} getState={() => (ROOM.peers[name]?.mv ? 'walk' : 'idle')} getAnim={() => { const q = ROOM.peers[name]; return q && q.w > 0 && !q.mv ? 'work' : undefined; }} />
-    <Html position={[0, 2.5, 0]} center zIndexRange={[5, 0]}><div className="inTag">{bub && <div className="inSay">{bub}</div>}<span>{isCop(p.look) ? '👮 ' : ''}{name}</span></div></Html></group>;
+    <Html position={[0, 2.5, 0]} center zIndexRange={[5, 0]}><div className="inTag">{bub && <div className="inSay">{bub}</div>}<b className={'glName' + (isCop(p.look) ? ' cop' : '')}>{isCop(p.look) ? '👮 ' : ''}{name}</b></div></Html></group>;
 }
 function Player({ look, room, ctl, onSpot, onExit, frozen, snap, lock, onBlocked, cam, go, onArrive }: { look: Look; room: Room; ctl: React.MutableRefObject<Ctl>; onSpot: (s: Spot | null) => void; onExit: () => void; frozen: boolean; snap: React.MutableRefObject<{ x: number; z: number; r: number } | null>; lock: React.MutableRefObject<boolean>; onBlocked: () => void; cam: React.MutableRefObject<Cam>; go: React.MutableRefObject<Go | null>; onArrive: (o: NonNullable<Go['open']>) => void }) {
   const g = useRef<THREE.Group>(null!), p = useRef({ x: 0, z: room.d / 2 - 1.8, r: Math.PI }), mv = useRef(false), cur = useRef<string | null>(null), out = useRef(false), { camera } = useThree();
@@ -225,14 +226,14 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
       {room.posts.map(p => <Staff key={p.idx} post={p} look={staff[p.idx]} onTalk={talk} />)}
       {room.office && <ManagerSeat office={room.office} mgr={mgr} meName={look.name} onTap={() => { const sp = room.spots.find(x => x.id === 'mgmt'); if (sp) goSpot(sp); }} />}
       {room.spots.map(s => <SpotMark key={s.id} s={s} active={spot?.id === s.id} onTap={goSpot} />)}
-      <Text position={[0, 2.2, -room.d / 2 + .25]} fontSize={.55} color="#fff" anchorX="center">{biz.name}</Text>
+      <Text position={[0, 2.2, -room.d / 2 + .25]} fontSize={.55} color="#fff" outlineWidth={.05} outlineColor="#1a1410" anchorX="center">{biz.name}</Text>
       <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
       {net.roster.map(n => ROOM.peers[n] && <Remote key={n + net.ver} name={n} bub={net.bub[n]} />)}
     </Canvas></div>
     <div className="inTop"><b>{biz.name}</b><span>{biz.type} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span><button onClick={leave}>🚪 Leave</button></div>
     {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}</div>}{msg && <div className="inToast">{msg}</div>}
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
-    <div className="inDock"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={spot?.id === sp.id ? 'on' : ''} onClick={() => goSpot(sp)}>{sp.e} {sp.label}</button>)}</div>
+    <div className="inDock"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => goSpot(sp)}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>
     <div className="inCam"><button aria-label="Rotate left" onClick={() => { cam.current.yaw -= .6; }}>⟲</button><button aria-label="Reset camera" onClick={() => { cam.current.yaw = 0; cam.current.pitch = .85; cam.current.dist = 10.5; }}>🧭</button><button aria-label="Rotate right" onClick={() => { cam.current.yaw += .6; }}>⟳</button><button aria-label="Zoom in" onClick={() => { cam.current.dist = Math.max(5, cam.current.dist - 1.5); }}>＋</button><button aria-label="Zoom out" onClick={() => { cam.current.dist = Math.min(17, cam.current.dist + 1.5); }}>－</button></div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
     {menu && <div className="inMenu"><button className="x" onClick={() => setMenu(null)}>×</button><h3>{menu.e} {menu.label}</h3>
@@ -258,5 +259,6 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
 .inDock button{background:#10201af0;border:1px solid #ffffff2a;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700}.inDock button.on{background:#d99a42;color:#111;border-color:#d99a42}
 .inCam{position:absolute;left:12px;top:104px;display:flex;gap:6px;z-index:9}.inCam button{width:38px;height:38px;border-radius:50%;background:#10201af0;border:1px solid #ffffff2a;color:#fff;font-size:17px}
 @media (pointer:coarse),(max-width:900px){.inStick{display:block}}`}</style>
+    <style>{GAME_LABEL_CSS}</style>
   </div>;
 }

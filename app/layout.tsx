@@ -3,7 +3,9 @@ import './mobile.css';
 import './hud.css';
 import './clean.css';
 import type { Metadata, Viewport } from 'next';
+import { Lilita_One } from 'next/font/google';
 import PWARegister from '../components/PWARegister';
+const gameFont = Lilita_One({ weight: '400', subsets: ['latin'], display: 'swap', variable: '--font-game' });
 export const metadata: Metadata = {
   title: 'Abuja Real Life',
   description: 'A life simulation game set in Abuja, Nigeria.',
@@ -17,5 +19,5 @@ export const viewport: Viewport = {
   width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false, viewportFit: 'cover', themeColor: '#07100d',
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en"><body>{children}<PWARegister /></body></html>;
+  return <html lang="en" className={gameFont.variable}><body>{children}<PWARegister /></body></html>;
 }

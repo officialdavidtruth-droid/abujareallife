@@ -460,7 +460,7 @@ export default function Sim() {
   return <div className="sim">
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
-    {user && look && outside && <City look={look} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); }} />}
+    {user && look && outside && <City look={look} getMinute={() => S.min} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} onDone={l => { const n = { ...l, name: user.username }; setLook(n); saveNow(n); setEditing(false); }} />}

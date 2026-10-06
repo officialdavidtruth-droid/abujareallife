@@ -1,6 +1,6 @@
 'use client';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Html, OrbitControls, RoundedBox, Text } from '@react-three/drei';
+import { Html, OrbitControls, RoundedBox, Stars, Text } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -8,10 +8,11 @@ import Human from './Human';
 import { CITY } from '../lib/cityData';
 import type { Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
+import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
 
 /* ───────────── types & helpers ───────────── */
-type Ctl = { joy: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean };
-type Hud = { x: number; z: number; fx: number; fz: number; r: number };
+type Ctl = { joy: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
+type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
 type Kind = 'glass' | 'concrete' | 'brick' | 'plaster';
 type Prof = { kind: Kind; f: [number, number]; sign: string; wall?: string; balc?: boolean };
 type Box2 = { x: number; z: number; sx: number; sz: number };
@@ -62,6 +63,7 @@ const PROFILE: Record<string, Prof> = {
 
 /* ───────────── procedural facade textures (tile = 4 bays × 2 floors) ───────────── */
 const TEX = new Map<string, THREE.CanvasTexture>();
+const EMT = new Map<string, THREE.CanvasTexture>(); // night-time window glow maps
 const MATS = new Map<string, THREE.MeshStandardMaterial>();
 const BAY = 2.2, NX = 4, NY = 2;
 function facadeTex(kind: Kind, wall: string, balc: boolean) {
@@ -70,6 +72,8 @@ function facadeTex(kind: Kind, wall: string, balc: boolean) {
   const BW = 64, FHP = 96;
   const cv = document.createElement('canvas'); cv.width = BW * NX; cv.height = FHP * NY;
   const g = cv.getContext('2d')!;
+  const ec = document.createElement('canvas'); ec.width = cv.width; ec.height = cv.height;
+  const eg = ec.getContext('2d')!; eg.fillStyle = '#000'; eg.fillRect(0, 0, ec.width, ec.height);
   let seed = Math.floor(hs(key) * 1e9) || 1;
   const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const base = new THREE.Color(wall), dark = base.clone().multiplyScalar(.72), light = base.clone().lerp(new THREE.Color('#ffffff'), .25);
@@ -99,16 +103,18 @@ function facadeTex(kind: Kind, wall: string, balc: boolean) {
       g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(wx - 5, wy + wh + 8, ww + 10, 3);
       if (balc) { g.fillStyle = '#' + light.getHexString(); g.fillRect(x0 + BW * .06, y0 + FHP - 9, BW * .88, 7); g.strokeStyle = 'rgba(30,30,30,.7)'; g.lineWidth = 1.5; for (let k = 0; k < 9; k++) { const rx = x0 + BW * .1 + k * (BW * .8 / 8); g.beginPath(); g.moveTo(rx, y0 + FHP - 9); g.lineTo(rx, y0 + FHP - 28); g.stroke(); } g.beginPath(); g.moveTo(x0 + BW * .1, y0 + FHP - 28); g.lineTo(x0 + BW * .9, y0 + FHP - 28); g.stroke(); }
     }
+    if (lit || hs(key + i + '.' + j) < .3) { eg.fillStyle = kind === 'glass' ? '#ffd9a0' : '#ffcf7a'; if (kind === 'glass') eg.fillRect(x0 + 2, y0 + 2, BW - 4, FHP * .74); else eg.fillRect(x0 + BW * .2, y0 + FHP * .24, BW * .6, FHP * .5); }
     g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(x0, y0 + FHP - 3, BW, 3);
   }
   const t = new THREE.CanvasTexture(cv);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const et = new THREE.CanvasTexture(ec); et.wrapS = et.wrapT = THREE.RepeatWrapping; et.colorSpace = THREE.SRGBColorSpace; EMT.set(key, et);
   TEX.set(key, t); return t;
 }
 function sideMat(kind: Kind, wall: string, balc: boolean) {
   const key = kind + wall + balc;
   const hit = MATS.get(key); if (hit) return hit;
-  const m = new THREE.MeshStandardMaterial({ map: facadeTex(kind, wall, balc), roughness: kind === 'glass' ? .22 : .88, metalness: kind === 'glass' ? .35 : 0 });
+  const m = new THREE.MeshStandardMaterial({ map: facadeTex(kind, wall, balc), emissive: new THREE.Color('#ffffff'), emissiveMap: EMT.get(kind + wall + balc), emissiveIntensity: 0, roughness: kind === 'glass' ? .22 : .88, metalness: kind === 'glass' ? .35 : 0 });
   MATS.set(key, m); return m;
 }
 const ROOF = new THREE.MeshStandardMaterial({ color: '#4b5056', roughness: .95 });
@@ -227,9 +233,10 @@ function Trees() {
     <instancedMesh ref={crowns} args={[undefined, undefined, pts.length]} frustumCulled={false} castShadow><sphereGeometry args={[.95, 10, 8]} /><meshStandardMaterial color="#3f7a3a" roughness={.9} /></instancedMesh>
   </>;
 }
+const LAMP_PTS = (() => { const a: { x: number; z: number }[] = []; for (let i = -5; i <= 5; i++) for (let j = -5; j <= 4; j++) { const mid = (j + .5) * GRID, o = halfW(i) + 1.1, c = i * GRID; for (const s of [1, -1]) a.push({ x: mid, z: c + s * o }, { x: c + s * o, z: mid }); } return a; })();
 function StreetLamps() {
   const poles = useRef<THREE.InstancedMesh>(null!), heads = useRef<THREE.InstancedMesh>(null!);
-  const pts = useMemo(() => { const a: { x: number; z: number }[] = []; for (let i = -5; i <= 5; i++) for (let j = -5; j <= 4; j++) { const mid = (j + .5) * GRID, o = halfW(i) + 1.1, c = i * GRID; for (const s of [1, -1]) a.push({ x: mid, z: c + s * o }, { x: c + s * o, z: mid }); } return a; }, []);
+  const pts = LAMP_PTS;
   useLayoutEffect(() => {
     const o = new THREE.Object3D();
     pts.forEach((p, i) => { o.position.set(p.x, 2.6, p.z); o.updateMatrix(); poles.current.setMatrixAt(i, o.matrix); o.position.set(p.x, 5.3, p.z); o.updateMatrix(); heads.current.setMatrixAt(i, o.matrix); });
@@ -240,6 +247,14 @@ function StreetLamps() {
     <instancedMesh ref={heads} args={[undefined, undefined, pts.length]} frustumCulled={false}><boxGeometry args={[.7, .14, .32]} /><meshBasicMaterial color="#fff1c1" /></instancedMesh>
   </>;
 }
+
+/* ───────────── shared world state (cars, pedestrians and the player talk through these) ───────────── */
+const TPOS: { x: number; z: number; r: number }[] = []; // live position of every AI car
+const OBS = [{ x: 0, z: 0, on: false, sp: 4.5 }, { x: 0, z: 0, on: false, sp: 7 }]; // things AI cars must stop for: [0] player on foot, [1] player's car
+const VEH = { x: 0, z: 0, r: 0, v: 0, placed: false, drv: false, brake: false }; // the player's own car
+const NIGHT = { n: 0 }; // 0 = full day, 1 = full night
+let PKIT: Kit | null = null;
+const pkit = (): Kit => { if (!PKIT) PKIT = carKit(); return PKIT; };
 
 /* ───────────── traffic lights + cars that obey them ───────────── */
 const lightState = (t: number, axis: 'x' | 'z') => { const c = t % 24; return axis === 'x' ? (c < 10 ? 'g' : c < 12 ? 'y' : 'r') : (c >= 12 && c < 22 ? 'g' : c >= 22 ? 'y' : 'r'); };
@@ -321,9 +336,11 @@ function Traffic() {
       let adv = l.speed * dt, gap = Infinity;
       for (const o of l.cars) if (o !== c) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) gap = d; }
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
+      for (const o of OBS) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
       if (Math.abs(ci) <= 5 && lightState(t, l.axis) !== 'g' && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
       c.s += adv * l.dir; if (c.s > 118) c.s = -118; else if (c.s < -118) c.s = 118;
+      const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }); if (l.axis === 'x') { tp.x = c.s; tp.z = l.fixed; } else { tp.x = l.fixed; tp.z = c.s; } tp.r = l.rot;
       const g = refs.current[i]; if (g) { if (l.axis === 'x') g.position.set(c.s, 0, l.fixed); else g.position.set(l.fixed, 0, c.s); g.rotation.y = l.rot; }
     });
   });
@@ -356,38 +373,177 @@ function Airport() {
   </group>;
 }
 
+/* ───────────── night lighting: glow pools under street lamps ───────────── */
+function LampGlow() {
+  const ref = useRef<THREE.InstancedMesh>(null!), mat = useRef<THREE.MeshBasicMaterial>(null!);
+  const tex = useMemo(() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const g = cv.getContext('2d')!, gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,196,110,1)'); gr.addColorStop(.45, 'rgba(255,170,80,.35)'); gr.addColorStop(1, 'rgba(255,150,60,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  }, []);
+  useLayoutEffect(() => {
+    const o = new THREE.Object3D();
+    LAMP_PTS.forEach((p, i) => { o.position.set(p.x, .15, p.z); o.rotation.set(-Math.PI / 2, 0, 0); o.scale.set(9, 9, 1); o.updateMatrix(); ref.current.setMatrixAt(i, o.matrix); });
+    ref.current.instanceMatrix.needsUpdate = true;
+  }, []);
+  useFrame(() => { const n = NIGHT.n; ref.current.visible = n > .03; mat.current.opacity = n * .6; });
+  return <instancedMesh ref={ref} args={[undefined, undefined, LAMP_PTS.length]} frustumCulled={false} visible={false}>
+    <planeGeometry args={[1, 1]} />
+    <meshBasicMaterial ref={mat} map={tex} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+  </instancedMesh>;
+}
+
+/* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
+type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string };
+const SHIRTS = ['#c0392b', '#2c5aa0', '#e8e8ea', '#1e9e55', '#f1c40f', '#7c3aed', '#0f766e', '#d97706', '#111827', '#be185d'];
+const PANTS = ['#1f2937', '#374151', '#4b5563', '#111827', '#2b3a55', '#5b4636'];
+const SKINS = ['#3b2417', '#4a2e1c', '#5a3825', '#6b4429', '#7a4f32', '#8d5f3d'];
+const PED_N = 96;
+const pick = <T,>(a: T[], k: string) => a[Math.floor(hs(k) * a.length) % a.length];
+function makePeds(): Ped[] {
+  return Array.from({ length: PED_N }, (_, n) => {
+    const ri = Math.floor(hs('pi' + n) * 11) - 5, side = hs('ps' + n) < .5 ? 1 : -1, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
+    return { axis, line: ri * GRID + side * (halfW(ri) + 2), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n) };
+  });
+}
+const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 24; return axis === 'x' ? (c < 10 ? 0 : 24 - c) : (c >= 12 && c < 22 ? 0 : c < 12 ? 12 - c : 36 - c); };
+const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis) === 'r' && timeToGreen(t, carAxis) > 5.5;
+function Pedestrians() {
+  const peds = useMemo(makePeds, []);
+  const torso = useRef<THREE.InstancedMesh>(null!), head = useRef<THREE.InstancedMesh>(null!), legs = useRef<THREE.InstancedMesh>(null!), arms = useRef<THREE.InstancedMesh>(null!);
+  const T = useMemo(() => ({ base: new THREE.Matrix4(), m: new THREE.Matrix4(), t: new THREE.Matrix4(), r: new THREE.Matrix4(), pos: new THREE.Vector3(), one: new THREE.Vector3(1, 1, 1), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0), Z: new THREE.Vector3(0, 0, 1) }), []);
+  useLayoutEffect(() => {
+    const c = new THREE.Color();
+    peds.forEach((p, i) => {
+      torso.current.setColorAt(i, c.set(p.shirt)); head.current.setColorAt(i, c.set(p.skin));
+      for (let s = 0; s < 2; s++) { legs.current.setColorAt(i * 2 + s, c.set(p.pants)); arms.current.setColorAt(i * 2 + s, c.set(p.shirt)); }
+    });
+    for (const m of [torso, head, legs, arms]) if (m.current.instanceColor) m.current.instanceColor.needsUpdate = true;
+  }, [peds]);
+  useFrame((st, dtRaw) => {
+    const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
+    const part = (mesh: THREE.InstancedMesh, idx: number, tx: number, ty: number, tz: number, rz = 0, dy = 0) => {
+      T.t.makeTranslation(tx, ty, tz); T.m.copy(T.base).multiply(T.t);
+      if (rz) { T.r.makeRotationZ(rz); T.m.multiply(T.r); }
+      if (dy) { T.t.makeTranslation(0, dy, 0); T.m.multiply(T.t); }
+      mesh.setMatrixAt(idx, T.m);
+    };
+    peds.forEach((p, i) => {
+      let fall = 0; p.moving = false;
+      if (p.down > 0) { p.down -= dt; fall = Math.min(1, (3.2 - p.down) / .25) * Math.min(1, Math.max(0, p.down) / .35); }
+      else {
+        let go = true;
+        const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
+        if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && !canCross(t, p.axis === 'x' ? 'z' : 'x')) go = false; } // wait at the kerb for a red light
+        if (go) { p.u += p.dir * p.sp * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
+      }
+      if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }
+      if (p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 3.5) { const dx = p.x - VEH.x, dz = p.z - VEH.z; if (dx * dx + dz * dz < 3.6) { p.down = 3.2; VEH.v *= .9; thud(.5); } } // clipped by the player's car
+      const yaw = p.axis === 'x' ? (p.dir > 0 ? 0 : Math.PI) : -p.dir * Math.PI / 2, sw = p.moving ? Math.sin(p.ph) : 0;
+      T.qa.setFromAxisAngle(T.Y, yaw); T.qb.setFromAxisAngle(T.Z, -fall * Math.PI / 2); T.q.copy(T.qa).multiply(T.qb);
+      T.pos.set(p.x, .12 * fall + (p.moving ? Math.abs(sw) * .03 : 0), p.z); T.base.compose(T.pos, T.q, T.one);
+      part(torso.current, i, 0, 1.05, 0); part(head.current, i, 0, 1.52, 0);
+      part(legs.current, i * 2, 0, .78, .1, sw * .7, -.38); part(legs.current, i * 2 + 1, 0, .78, -.1, -sw * .7, -.38);
+      part(arms.current, i * 2, 0, 1.3, .27, -sw * .6, -.25); part(arms.current, i * 2 + 1, 0, 1.3, -.27, sw * .6, -.25);
+    });
+    for (const m of [torso, head, legs, arms]) m.current.instanceMatrix.needsUpdate = true;
+  });
+  return <>
+    <instancedMesh ref={torso} args={[undefined, undefined, PED_N]} frustumCulled={false} castShadow><boxGeometry args={[.26, .56, .46]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
+    <instancedMesh ref={head} args={[undefined, undefined, PED_N]} frustumCulled={false}><sphereGeometry args={[.14, 10, 8]} /><meshStandardMaterial roughness={.8} /></instancedMesh>
+    <instancedMesh ref={legs} args={[undefined, undefined, PED_N * 2]} frustumCulled={false}><boxGeometry args={[.15, .76, .17]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
+    <instancedMesh ref={arms} args={[undefined, undefined, PED_N * 2]} frustumCulled={false}><boxGeometry args={[.11, .52, .11]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
+  </>;
+}
+
+/* ───────────── the player's car ───────────── */
+const CAR_COLOR = '#ff6a00';
+function PlayerCar({ carRef, tagRef, spotRef }: { carRef: React.MutableRefObject<THREE.Group>; tagRef: React.MutableRefObject<HTMLDivElement | null>; spotRef: React.MutableRefObject<THREE.SpotLight> }) {
+  const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []);
+  useLayoutEffect(() => { spotRef.current.target = tgt; }, [tgt, spotRef]);
+  return <group ref={carRef} visible={false}>
+    <CarModel kit={kit} color={CAR_COLOR} kind={0} />
+    <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
+    <primitive object={tgt} position={[16, .2, 0]} />
+    <Html position={[0, 2.4, 0]} center><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
+  </group>;
+}
+// put the car in the nearest lane (right-hand traffic), a few metres ahead of the player, clear of other cars
+function placeCar(px: number, pz: number, pr: number) {
+  const ix = Math.round(px / GRID), iz = Math.round(pz / GRID), alongZ = Math.abs(px - ix * GRID) <= Math.abs(pz - iz * GRID);
+  const idx = alongZ ? ix : iz, off = halfW(idx) * .5, face = alongZ ? Math.cos(pr) : Math.sin(pr), sgn: 1 | -1 = face >= 0 ? 1 : -1;
+  let a = (alongZ ? pz : px) + sgn * 3;
+  const lane = idx * GRID + (alongZ ? (sgn === 1 ? -off : off) : (sgn === 1 ? off : -off));
+  for (let tries = 0; tries < 8; tries++) {
+    const cx = alongZ ? lane : a, cz = alongZ ? a : lane;
+    if (!TPOS.some(c => Math.hypot(c.x - cx, c.z - cz) < 3.6)) break;
+    a += sgn * 6;
+  }
+  a = THREE.MathUtils.clamp(a, -120, 120);
+  VEH.x = alongZ ? lane : a; VEH.z = alongZ ? a : lane;
+  VEH.r = alongZ ? -sgn * Math.PI / 2 : (sgn === 1 ? 0 : Math.PI);
+  VEH.v = 0; VEH.placed = true; VEH.drv = false;
+}
+
 /* ───────────── collision ───────────── */
 const BODY = .45;
 const SOLIDS = [
   ...BUILDS.map(b => ({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 })),
   { x0: AIR.x - 4.5 * AIR.s, x1: AIR.x + 4.5 * AIR.s, z0: AIR.z - 7 * AIR.s - 2.5 * AIR.s, z1: AIR.z - 7 * AIR.s + 2.5 * AIR.s },
 ];
-function pushOut(p: { x: number; z: number }) {
+function pushOut(p: { x: number; z: number }, rad = BODY) {
   for (const s of SOLIDS) {
-    if (p.x < s.x0 - BODY || p.x > s.x1 + BODY || p.z < s.z0 - BODY || p.z > s.z1 + BODY) continue;
+    if (p.x < s.x0 - rad || p.x > s.x1 + rad || p.z < s.z0 - rad || p.z > s.z1 + rad) continue;
     const cx = Math.min(Math.max(p.x, s.x0), s.x1), cz = Math.min(Math.max(p.z, s.z0), s.z1);
     const dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
-    if (d2 >= BODY * BODY) continue;
-    if (d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * BODY; p.z = cz + dz / d * BODY; }
-    else { const l = p.x - s.x0, r = s.x1 - p.x, t = p.z - s.z0, b = s.z1 - p.z, m = Math.min(l, r, t, b); if (m === l) p.x = s.x0 - BODY; else if (m === r) p.x = s.x1 + BODY; else if (m === t) p.z = s.z0 - BODY; else p.z = s.z1 + BODY; }
+    if (d2 >= rad * rad) continue;
+    if (d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * rad; p.z = cz + dz / d * rad; }
+    else { const l = p.x - s.x0, r = s.x1 - p.x, t = p.z - s.z0, b = s.z1 - p.z, m = Math.min(l, r, t, b); if (m === l) p.x = s.x0 - rad; else if (m === r) p.x = s.x1 + rad; else if (m === t) p.z = s.z0 - rad; else p.z = s.z1 + rad; }
   }
 }
 const distTo = (s: { x0: number; x1: number; z0: number; z1: number }, x: number, z: number) => Math.hypot(Math.max(s.x0 - x, 0, x - s.x1), Math.max(s.z0 - z, 0, z - s.z1));
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
-function Scene({ look, ctl, hud, setNear }: { look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void }) {
+const sm = THREE.MathUtils.smoothstep;
+const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
+const CAR_R = 1, CAR_OFFS = [-1.35, 0, 1.35];
+function Scene({ look, ctl, hud, setNear, getMinute }: { look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: Math.PI });
-  const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!);
+  const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!), hemi = useRef<THREE.HemisphereLight>(null!), stars = useRef<THREE.Group>(null!);
+  const carG = useRef<THREE.Group>(null!), carTag = useRef<HTMLDivElement | null>(null), spot = useRef<THREE.SpotLight>(null!), nameTag = useRef<HTMLDivElement | null>(null);
   const sunTarget = useMemo(() => new THREE.Object3D(), []);
   const moving = useRef(false), running = useRef(false), nearId = useRef<string | null>(null);
+  const drag = useRef({ on: false, end: 0 }), lastN = useRef(-1), fov = useRef(52), hitCool = useRef(0), shown = useRef({ drv: false, placed: false });
   const [near, setN] = useState<any>(null);
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
   useEffect(() => { sun.current.target = sunTarget; }, [sunTarget]);
+  useEffect(() => {
+    VEH.drv = false;
+    const oc = controls.current; if (!oc) return;
+    const s = () => { drag.current.on = true; }, e = () => { drag.current.on = false; drag.current.end = performance.now(); };
+    oc.addEventListener('start', s); oc.addEventListener('end', e);
+    return () => { oc.removeEventListener('start', s); oc.removeEventListener('end', e); engineStop(); VEH.drv = false; OBS[0].on = false; OBS[1].on = false; };
+  }, []);
 
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), c = ctl.current, k = c.keys, p = P.current, oc = controls.current;
     if (!oc) return;
+
+    /* ── time of day (follows the in-game clock) ── */
+    const hrs = ((((getMinute ? getMinute() : 12 * 60) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
+    const day = sm(el, -.08, .3), n = 1 - day, dusk = Math.min(1, Math.max(0, 1 - Math.abs(el) / .28)) * .75;
+    NIGHT.n = n;
+    const bg = st.scene.background as THREE.Color | null; if (bg) bg.copy(SKY.night).lerp(SKY.day, day).lerp(SKY.dusk, dusk);
+    const fg = st.scene.fog as THREE.Fog | null; if (fg) fg.color.copy(SKY.fogNight).lerp(SKY.fogDay, day).lerp(SKY.fogDusk, dusk);
+    hemi.current.intensity = .22 + 1.03 * day;
+    sun.current.intensity = .5 + 2.3 * day; sun.current.color.copy(SKY.moon).lerp(SKY.sun, day).lerp(SKY.sunLow, dusk * day);
+    const sy = Math.max(.32, Math.abs(Math.sin(ang))), sx = Math.cos(ang);
+    if (Math.abs(n - lastN.current) > .01) { lastN.current = n; MATS.forEach(m => { m.emissiveIntensity = n * 1.2; }); if (stars.current) stars.current.visible = n > .4; }
+
+    /* ── input ── */
     let ix = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0) + c.joy.x;
     let iy = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0) - c.joy.y;
     let wantJump = c.jump || k.has(' '), wantRun = c.run || k.has('shift');
@@ -403,37 +559,123 @@ function Scene({ look, ctl, hud, setNear }: { look: Look; ctl: React.MutableRefO
     const mag = Math.min(m, 1);
     const cam = st.camera, t = oc.target as THREE.Vector3;
     let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
-    const wx = ix * -fz + iy * fx, wz = ix * fx + iy * fz;
-    moving.current = mag > .08; running.current = wantRun;
-    if (moving.current) {
-      const sp = wantRun ? 9 : 4.6;
-      p.x += wx * sp * dt; p.z += wz * sp * dt;
-      p.r += wrap(Math.atan2(wx, wz) - p.r) * Math.min(1, dt * 12);
+    let snapCam = false;
+
+    /* ── E: get in / get out / call car, H: horn ── */
+    if (c.interact) {
+      c.interact = false;
+      if (VEH.drv) {
+        VEH.drv = false; VEH.v = 0; engineStop();
+        const lx = -Math.sin(VEH.r), lz = -Math.cos(VEH.r);
+        p.x = VEH.x + lx * 2.4; p.z = VEH.z + lz * 2.4; pushOut(p); p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;
+      } else if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) < 9) {
+        VEH.drv = true; VEH.v = 0; engineStart(); snapCam = true;
+        nearId.current = null; setN(null); setNear(null);
+      } else placeCar(p.x, p.z, p.r);
     }
-    pushOut(p);
-    p.x = THREE.MathUtils.clamp(p.x, -LIM, LIM); p.z = THREE.MathUtils.clamp(p.z, -LIM, LIM);
-    if (wantJump && p.y <= .001) p.vy = 6.2;
+    if (c.horn) { c.horn = false; if (VEH.drv) honk(); }
+
+    if (VEH.drv) {
+      /* ── driving: arcade physics ── */
+      const V = VEH, vmax = wantRun ? 34 : 25;
+      if (iy > .05) V.v += iy * (V.v < 0 ? 28 : wantRun ? 16 : 12) * dt;
+      else if (iy < -.05) V.v += iy * (V.v > 0 ? 26 : 9) * dt;
+      else V.v -= Math.sign(V.v) * Math.min(Math.abs(V.v), 3.5 * dt);
+      if (wantJump) V.v -= Math.sign(V.v) * Math.min(Math.abs(V.v), 34 * dt);
+      V.v = THREE.MathUtils.clamp(V.v, -8, vmax);
+      V.brake = (iy < -.05 && V.v > .5) || (wantJump && Math.abs(V.v) > .5);
+      const auth = THREE.MathUtils.clamp(V.v / 4, -1, 1) * (1 - Math.min(.55, Math.abs(V.v) / 55));
+      V.r -= ix * 2.1 * auth * (wantJump ? 1.5 : 1) * dt;
+      V.x += Math.cos(V.r) * V.v * dt; V.z -= Math.sin(V.r) * V.v * dt;
+      hitCool.current -= dt;
+      let hit = 0; const fxw = Math.cos(V.r), fzw = -Math.sin(V.r);
+      for (const o of CAR_OFFS) { // buildings
+        const cp = { x: V.x + fxw * o, z: V.z + fzw * o }, ox = cp.x, oz = cp.z; pushOut(cp, CAR_R);
+        const dx = cp.x - ox, dz = cp.z - oz; if (dx || dz) { V.x += dx; V.z += dz; hit = Math.max(hit, Math.hypot(dx, dz)); }
+      }
+      for (const tc of TPOS) { // other cars
+        const tx = Math.cos(tc.r), tz = -Math.sin(tc.r);
+        for (const to of [-1.1, 1.1]) for (const o of CAR_OFFS) {
+          const ax = tc.x + tx * to, az = tc.z + tz * to, bx = V.x + fxw * o, bz = V.z + fzw * o, dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz);
+          if (d < CAR_R * 2 && d > 1e-4) { const push = CAR_R * 2 - d; V.x += dx / d * push; V.z += dz / d * push; hit = Math.max(hit, push); }
+        }
+      }
+      if (hit > .01) { if (hitCool.current <= 0 && Math.abs(V.v) > 4) { thud(Math.abs(V.v) / 20); hitCool.current = .35; } V.v *= hit > .15 ? .55 : .93; }
+      const lim = LIM - 2; if (Math.abs(V.x) > lim || Math.abs(V.z) > lim) { V.x = THREE.MathUtils.clamp(V.x, -lim, lim); V.z = THREE.MathUtils.clamp(V.z, -lim, lim); V.v *= .6; }
+      p.x = V.x; p.z = V.z; p.y = 0; p.vy = 0;
+      engineSet(Math.abs(V.v) / 30, Math.max(0, iy));
+    } else {
+      /* ── on foot ── */
+      moving.current = mag > .08; running.current = wantRun;
+      const wx = ix * -fz + iy * fx, wz = ix * fx + iy * fz;
+      if (moving.current) {
+        const sp = wantRun ? 9 : 4.6;
+        p.x += wx * sp * dt; p.z += wz * sp * dt;
+        p.r += wrap(Math.atan2(wx, wz) - p.r) * Math.min(1, dt * 12);
+      }
+      pushOut(p);
+      for (const tc of TPOS) { // cars are solid
+        const tx = Math.cos(tc.r), tz = -Math.sin(tc.r);
+        for (const to of [-1.1, 1.1]) { const ax = tc.x + tx * to, az = tc.z + tz * to, dx = p.x - ax, dz = p.z - az, d = Math.hypot(dx, dz); if (d < 1.45 && d > 1e-4) { p.x = ax + dx / d * 1.45; p.z = az + dz / d * 1.45; } }
+      }
+      if (VEH.placed) { const fxw = Math.cos(VEH.r), fzw = -Math.sin(VEH.r); for (const o of CAR_OFFS) { const ax = VEH.x + fxw * o, az = VEH.z + fzw * o, ex = p.x - ax, ez = p.z - az, d = Math.hypot(ex, ez); if (d < 1.4 && d > 1e-4) { p.x = ax + ex / d * 1.4; p.z = az + ez / d * 1.4; } } } // your parked car is solid too
+      p.x = THREE.MathUtils.clamp(p.x, -LIM, LIM); p.z = THREE.MathUtils.clamp(p.z, -LIM, LIM);
+      if (wantJump && p.y <= .001) p.vy = 6.2;
+      c.jump = false;
+      p.vy -= 18 * dt; p.y += p.vy * dt; if (p.y < 0) { p.y = 0; p.vy = 0; }
+      if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) VEH.placed = false; // car you walked away from goes back to the garage
+    }
     c.jump = false;
-    p.vy -= 18 * dt; p.y += p.vy * dt; if (p.y < 0) { p.y = 0; p.vy = 0; }
     group.current.position.set(p.x, p.y, p.z); group.current.rotation.y = p.r;
-    const ox = t.x, oy = t.y, oz = t.z, ty = 1.5 + p.y * .5;
+    group.current.visible = !VEH.drv;
+    if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';
+
+    /* ── car mesh, brake lights, headlights, floating label ── */
+    if (carG.current) {
+      carG.current.visible = VEH.placed; carG.current.position.set(VEH.x, 0, VEH.z); carG.current.rotation.y = VEH.r;
+      (pkit().tailM as THREE.MeshStandardMaterial).emissiveIntensity = VEH.drv && VEH.brake ? 3.2 : 1.2;
+      spot.current.intensity = VEH.drv || VEH.placed ? NIGHT.n * 220 : 0;
+    }
+    if (carTag.current) { const want = VEH.placed && !VEH.drv ? 'block' : 'none'; if (carTag.current.style.display !== want) carTag.current.style.display = want; }
+    shown.current = { drv: VEH.drv, placed: VEH.placed };
+    OBS[0].x = p.x; OBS[0].z = p.z; OBS[0].on = !VEH.drv;
+    OBS[1].x = VEH.x; OBS[1].z = VEH.z; OBS[1].on = VEH.placed;
+
+    /* ── camera ── */
+    const ox = t.x, oy = t.y, oz = t.z, ty = VEH.drv ? 1.3 : 1.5 + p.y * .5;
     t.set(p.x, ty, p.z); cam.position.add(new THREE.Vector3(p.x - ox, ty - oy, p.z - oz));
-    if (c.recenter) { c.recenter = false; const d = Math.hypot(cam.position.x - p.x, cam.position.z - p.z); cam.position.set(p.x - Math.sin(p.r) * d, cam.position.y, p.z - Math.cos(p.r) * d); }
-    sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + 40, 60, p.z + 25);
-    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r };
-    let best: CityBuilding | null = null, bd = 2.6;
-    for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }
-    const id = best?.business?.id ?? null;
-    if (id !== nearId.current) { nearId.current = id; setN(best?.business ?? null); setNear(best?.business ?? null); }
+    if (VEH.drv) {
+      const bx = Math.cos(VEH.r), bz = -Math.sin(VEH.r);
+      if (snapCam) cam.position.set(VEH.x - bx * 10, 4.8, VEH.z - bz * 10);
+      else if (!drag.current.on && performance.now() - drag.current.end > 1800 && Math.abs(VEH.v) > 1.5) {
+        const d = THREE.MathUtils.clamp(Math.hypot(cam.position.x - VEH.x, cam.position.z - VEH.z), 6, 16), kk = 1 - Math.exp(-dt * 2.6);
+        cam.position.x += (VEH.x - bx * d - cam.position.x) * kk; cam.position.z += (VEH.z - bz * d - cam.position.z) * kk; cam.position.y += (4.8 - cam.position.y) * kk * .5;
+      }
+    }
+    const pc = cam as THREE.PerspectiveCamera, wantFov = VEH.drv ? 52 + Math.min(14, Math.abs(VEH.v) * .5) : 52;
+    if (Math.abs(fov.current - wantFov) > .05) { fov.current += (wantFov - fov.current) * Math.min(1, dt * 4); pc.fov = fov.current; pc.updateProjectionMatrix(); }
+    if (c.recenter) { c.recenter = false; const d = Math.hypot(cam.position.x - p.x, cam.position.z - p.z), r = VEH.drv ? VEH.r : p.r, bx = VEH.drv ? Math.cos(r) : Math.sin(r), bz = VEH.drv ? -Math.sin(r) : Math.cos(r); cam.position.set(p.x - bx * d, cam.position.y, p.z - bz * d); }
+    sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
+
+    /* ── HUD + nearest business ── */
+    const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
+    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : VEH.placed && dCar < 9 ? 'E — Get in your car' : 'E — Call your car' };
+    if (!VEH.drv) {
+      let best: CityBuilding | null = null, bd = 2.6;
+      for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }
+      const id = best?.business?.id ?? null;
+      if (id !== nearId.current) { nearId.current = id; setN(best?.business ?? null); setNear(best?.business ?? null); }
+    }
   });
 
   return (
     <>
       <color attach="background" args={['#8fc3ea']} />
       <fog attach="fog" args={['#c9dff0', 90, 270]} />
-      <hemisphereLight args={['#dff0ff', '#6b7a5a', 1.25]} />
+      <hemisphereLight ref={hemi} args={['#dff0ff', '#6b7a5a', 1.25]} />
       <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0004} />
       <primitive object={sunTarget} />
+      <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[700, 700]} /><meshStandardMaterial color="#5d7f55" /></mesh>
       <Roads />
       <Inst items={SLABS} color="#b4b6b2" h={.12} y={.06} receive />
@@ -442,14 +684,17 @@ function Scene({ look, ctl, hud, setNear }: { look: Look; ctl: React.MutableRefO
       <Inst items={MARKS.zebra} color="#f4f1e4" h={.02} y={.025} />
       <Trees />
       <StreetLamps />
+      <LampGlow />
       <Signals />
       {BUILDS.map(b => <Building key={b.id} b={b} />)}
       <Traffic />
+      <Pedestrians />
+      <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} />
       <TrainLine />
       <Airport />
       <group ref={group}>
         <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getSpeed={() => (running.current ? 2.4 : 1.1)} />
-        <Html position={[0, 2.8, 0]} center><div className="cityNameTag">{look.name}</div></Html>
+        <Html position={[0, 2.8, 0]} center><div ref={el => { nameTag.current = el; }} className="cityNameTag">{look.name}</div></Html>
       </group>
       {near && nearBuilding && <Html position={[nearBuilding.x, 3.9, nearBuilding.z + nearBuilding.d / 2 + .8]} center><div className="cityBizTag">{near.name}<br /><small>{near.type}</small></div></Html>}
       <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.12} rotateSpeed={.7} minDistance={3.5} maxDistance={24} minPolarAngle={.25} maxPolarAngle={Math.PI / 2.15} target={[START.x, 1.5, START.z]} />
@@ -479,12 +724,26 @@ function Minimap({ hud }: { hud: React.MutableRefObject<Hud> }) {
       g.translate(S / 2, S / 2); g.rotate(-Math.atan2(h.fx, -h.fz)); g.scale(sc, sc); g.translate(-h.x, -h.z);
       g.fillStyle = '#6a6f77'; for (let i = -5; i <= 5; i++) { g.fillRect(i * GRID - halfW(i), -125, halfW(i) * 2, 250); g.fillRect(-125, i * GRID - halfW(i), 250, halfW(i) * 2); }
       for (const b of BUILDS) { g.fillStyle = b.color; g.fillRect(b.x - b.w / 2, b.z - b.d / 2, b.w, b.d); }
+      if (h.vp) { g.fillStyle = '#ff6a00'; g.strokeStyle = '#000'; g.lineWidth = .3; g.fillRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); g.strokeRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); }
       g.save(); g.translate(h.x, h.z); g.rotate(Math.PI - h.r); g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = .3;
       g.beginPath(); g.moveTo(0, -3); g.lineTo(2.1, 2.1); g.lineTo(0, 1); g.lineTo(-2.1, 2.1); g.closePath(); g.fill(); g.stroke(); g.restore();
     };
     raf = requestAnimationFrame(draw); return () => cancelAnimationFrame(raf);
   }, [hud]);
   return <canvas ref={ref} className="cwMap" width={280} height={280} />;
+}
+function DriveHud({ hud }: { hud: React.MutableRefObject<Hud> }) {
+  const spd = useRef<HTMLDivElement>(null), num = useRef<HTMLElement>(null), tip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const h = hud.current;
+      if (spd.current) spd.current.style.display = h.drv ? 'flex' : 'none';
+      if (num.current) num.current.textContent = String(Math.round(h.spd));
+      if (tip.current && tip.current.textContent !== h.prompt) tip.current.textContent = h.prompt;
+    }, 100);
+    return () => clearInterval(id);
+  }, [hud]);
+  return <><div ref={spd} className="cwSpeed"><b ref={num}>0</b><small>km/h</small></div><div ref={tip} className="cwTip" /></>;
 }
 function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; icon: string; down: () => void; up?: () => void }) {
   return <button className={'cwBtn ' + cls} aria-label={label} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); down(); }} onPointerUp={() => up?.()} onPointerCancel={() => up?.()} onContextMenu={e => e.preventDefault()}><span>{icon}</span><small>{label}</small></button>;
@@ -500,18 +759,27 @@ const CSS = `
 .cwMap{position:absolute;left:12px;top:72px;width:140px;height:140px;border-radius:50%;border:3px solid #ffffffcc;box-shadow:0 4px 18px #0008;z-index:6;background:#35553f;pointer-events:none}
 .cwHint{position:absolute;right:18px;bottom:110px;z-index:6;color:#fff;font-size:11px;line-height:1.55;background:#0b1511b0;border:1px solid #ffffff22;border-radius:10px;padding:8px 11px;pointer-events:none}
 .cwHint b{color:#d99a42}
-@media (pointer:coarse),(max-width:700px){.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:26px}}
+.cwSpeed{position:absolute;right:270px;bottom:30px;z-index:7;display:none;align-items:baseline;gap:4px;color:#fff;background:#0b1511d0;border:1px solid #ffffff2a;border-radius:14px;padding:8px 14px;pointer-events:none}
+.cwSpeed b{font-size:28px;font-weight:800;color:#ffd23f;min-width:46px;text-align:right}.cwSpeed small{font-size:10px;font-weight:700;opacity:.8}
+.cwTip{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);z-index:7;color:#fff;font-size:12px;font-weight:700;background:#0b1511c0;border:1px solid #ffffff22;border-radius:999px;padding:6px 14px;pointer-events:none;white-space:nowrap}
+.cwTip:empty{display:none}
+.cwMute{position:absolute;left:12px;top:222px;z-index:7;width:38px;height:38px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;font-size:17px;cursor:pointer}
+.cwTouch{display:none}
+@media (pointer:coarse),(max-width:700px){.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:26px;flex-wrap:wrap;justify-content:flex-end;max-width:270px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}}
 `;
 
-export default function CityWorld({ look, onNear }: { look: Look; onNear: (b: any) => void }) {
-  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false });
-  const hud = useRef<Hud>({ x: START.x, z: START.z, fx: 0, fz: -1, r: Math.PI });
+export default function CityWorld({ look, onNear, getMinute }: { look: Look; onNear: (b: any) => void; getMinute?: () => number }) {
+  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false });
+  const hud = useRef<Hud>({ x: START.x, z: START.z, fx: 0, fz: -1, r: Math.PI, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
+  const [mute, setMute] = useState(false);
   useEffect(() => {
     const typing = (e: Event) => { const t = e.target as HTMLElement | null; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); };
     const dn = (e: KeyboardEvent) => {
       if (typing(e)) return; const k = e.key.toLowerCase();
       if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
       if (k === 'c') ctl.current.recenter = true;
+      if (k === 'e' && !e.repeat) { ctl.current.interact = true; unlockAudio(); }
+      if (k === 'h' && !e.repeat) { ctl.current.horn = true; unlockAudio(); }
       ctl.current.keys.add(k);
     };
     const up = (e: KeyboardEvent) => { ctl.current.keys.delete(e.key.toLowerCase()); };
@@ -523,16 +791,20 @@ export default function CityWorld({ look, onNear }: { look: Look; onNear: (b: an
     <div className="cityWorld">
       <style>{CSS}</style>
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x, 4.2, START.z + 8], fov: 52, far: 600 }}>
-        <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} />
+        <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} />
       </Canvas>
       <Minimap hud={hud} />
       <Stick ctl={ctl} />
+      <DriveHud hud={hud} />
+      <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMute(m => { setMuted(!m); return !m; }); }}>{mute ? '🔇' : '🔊'}</button>
       <div className="cwBtns">
+        <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />
+        <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera behind you<br />Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera behind you<br /><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · Gamepad works too</div>
     </div>
   );
 }

@@ -15,3 +15,9 @@
 - lib/interiors.ts, lib/roomNet.ts
 - app/api/shift/route.ts, app/api/status/route.ts, app/api/exit/route.ts
 - prisma/schema.prisma, prisma/fix-database.sql
+
+## HUD cleanup (latest)
+- app/mobile.css: the tidy phone HUD (clock, cash and menu on top; everything else inside the menu; needs as a small icon strip; round icon buttons) now applies on every screen size
+- app/clean.css (new, imported last in app/layout.tsx): controls cheat-sheet fades after 9 s, touch buttons hidden on desktop, small install button in the corner, compact near-building card
+- components/CityWorld.tsx: removed the floating building-name tag (the sign and the card already show it) and your own name tag
+- components/City.tsx: removed the "ABUJA REAL LIFE / 100 buildings" bar

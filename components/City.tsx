@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import CityWorld from './CityWorld';
 import { CITY } from '../lib/cityData';
 import { shiftPay } from '../lib/interiors';
+import { shiftJobs } from '../lib/work';
 import type { Look } from '../lib/characterModels';
 import type { Business, Job } from '../lib/cityTypes';
 
@@ -13,11 +14,12 @@ const short = (n: number) => n >= 1_000_000 ? '₦' + (n / 1_000_000).toFixed(n 
 
 function Jobs({ near, focus }: { near: Business | null; focus: Business | null }) {
   const here = focus || near;
-  const all = useMemo(() => CITY.businesses.flatMap(b => b.jobs), []);
+  const owner = useMemo(() => { const m = new Map<string, Business>(); CITY.businesses.forEach(b => b.jobs.forEach(j => m.set(j.id, b))); return m; }, []);
+  const all = useMemo(() => CITY.businesses.flatMap(b => shiftJobs(b)), []); // manager roles are seats you apply for inside the building, not shift jobs
   const types = useMemo(() => { const c: Record<string, number> = {}; all.forEach(j => { c[j.type] = (c[j.type] || 0) + 1; }); return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0]); }, [all]);
   const [f, setF] = useState<string>(here ? 'near' : 'all');
   const list = useMemo(() => {
-    const l: Job[] = f === 'near' ? (here?.jobs || []) : f === 'all' ? all : all.filter(j => j.type === f);
+    const l: Job[] = f === 'near' ? (here ? shiftJobs(here) : []) : f === 'all' ? all : all.filter(j => j.type === f);
     return [...l].sort((a, b) => b.pay - a.pay).slice(0, 40);
   }, [f, all, here]);
   return <>
@@ -33,10 +35,10 @@ function Jobs({ near, focus }: { near: Business | null; focus: Business | null }
         <div className="jbIc">{ICON[j.type] || '💼'}</div>
         <div className="jbBody"><b>{j.title}</b><span>{j.business}</span>
           <div className="jbTags"><i className="pay">{short(j.pay)}<small>/month</small></i><i>⏱ {j.shift}</i><i>{j.district}</i></div></div>
-        <div className="jbShift"><small>per shift</small><b>{naira(shiftPay(j.pay))}</b></div>
+        <div className="jbShift"><small>per shift · 45–60 min</small><b>{naira(shiftPay(j.pay))}</b>{near && owner.get(j.id)?.id === near.id ? <button className="jbApply" onClick={() => window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id }))}>🚪 Enter &amp; apply</button> : <small className="jbFar">📍 {j.district} · go there to apply</small>}</div>
       </div>)}
     </div>
-    <p className="jbTip">Walk to the building and tap 🚪 Enter to work a shift.</p>
+    <p className="jbTip">Walk to the building, tap 🚪 Enter, then tap the 💼 Jobs spot (or the staff member) inside to apply.</p>
   </>;
 }
 
@@ -47,7 +49,7 @@ export default function City({ look, onNear, getMinute, onSocial, tab: tabProp, 
     <CityWorld look={look} onNear={b => { setNear(b); onNear(b); }} getMinute={getMinute} onSocial={onSocial} />
     <div className="cityTop"><b>🏙️ ABUJA REAL LIFE</b><span>{CITY.buildings.length} buildings · {CITY.businesses.length} businesses</span></div>
     {!controlled && <div className="cityActions"><button onClick={() => setTab(tab === 'map' ? null : 'map')}>🗺️<em> Map</em></button><button onClick={() => setTab(tab === 'jobs' ? null : 'jobs')}>💼<em> Jobs</em></button><button onClick={() => setTab(tab === 'businesses' ? null : 'businesses')}>🏪<em> Businesses</em></button></div>}
-    {near && !tab && <div className="nearCard"><b>{near.name}</b><span>{near.type} · {near.district}</span><button onClick={() => { setFocus(null); setTab('jobs'); }}>View jobs</button></div>}
+    {near && !tab && <div className="nearCard"><b>{near.name}</b><span>{near.type} · {near.district}</span><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs &amp; apply</button><button className="ncEnter" onClick={() => window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id }))}>🚪 Enter</button></div>}
     {tab && <div className="cityPanel sheet"><button className="close" onClick={() => setTab(null)}>×</button>
       {tab === 'map' && <><h3>🗺️ Abuja map</h3><div className="mapGrid">{CITY.districts.map(d => <div key={d.name} style={{ left: `${50 + d.x * .75}%`, top: `${50 + d.z * .75}%` }}>{d.name}</div>)}</div><p className="jbTip">Major roads connect every district.</p></>}
       {tab === 'businesses' && <><div className="jbHead"><h3>🏪 Businesses</h3><span>{CITY.businesses.length}</span></div><div className="jbList">{CITY.businesses.slice(0, 45).map(b => <button key={b.id} className="jbCard btn" onClick={() => { setFocus(b); setTab('jobs'); }}><div className="jbIc">{ICON[b.type] || '🏢'}</div><div className="jbBody"><b>{b.name}</b><span>{b.type} · {b.district}</span></div></button>)}</div></>}

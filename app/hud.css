@@ -65,3 +65,8 @@
 }
 
 @media (pointer:coarse),(max-width:820px){.cityPanel.sheet{top:calc(80px + var(--sat,0px))!important;max-height:calc(100vh - 92px)!important}.jbList{max-height:calc(100vh - 210px)}}
+
+/* Apply / enter buttons on the city job board and the near-building card */
+.jbApply{margin-top:6px;background:#d99a42;color:#111;border:0;border-radius:999px;padding:8px 12px;font-weight:900;font-size:12px;white-space:nowrap}
+.jbFar{margin-top:6px;text-transform:none!important;letter-spacing:0!important;font-size:10px!important;color:#9fb5aa}
+.nearCard .ncEnter{background:#d99a42;color:#111;font-weight:900}

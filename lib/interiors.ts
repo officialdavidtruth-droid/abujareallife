@@ -1,14 +1,16 @@
 import type { Business } from './cityTypes';
 import { CAR_PRICE, CRIMES, QUESTS, type CrimeId, type ProfessionId, type SkillId } from './profile';
+import { hasSeat, isSenior, seatTitle, shiftJobs } from './work';
 import { OUTFITS, PANTS, HAIR_COLORS, SKIN_TONES, HAIRS, applyOutfitModel, sanitizeLook, type Look } from './characterModels';
 
 /* Every building type gets a real room. Shared by the room scene (client) and the server (shop prices). */
 export type Item = { x: number; z: number; w: number; d: number; h: number; c: string; y?: number; solid?: boolean; round?: boolean; glow?: boolean; sphere?: boolean; lay?: boolean };
 /* A staff post: where an NPC employee works. Players who start a shift are placed at the matching post (stand overrides the spot). */
+export type Office = { x: number; z: number; sx: number; sz: number; title: string };
 export type Post = { idx: number; title: string; x: number; z: number; r: number; anim?: string; y?: number; stand?: [number, number]; patrol?: [number, number][] };
-export type Opt = { t: 'shift'; idx: number; label: string; pay: number } | { t: 'shop'; id: string; label: string; cost: number } | { t: 'quest'; id: string } | { t: 'crime'; id: CrimeId } | { t: 'info'; text: string };
+export type Opt = { t: 'mgmt' } | { t: 'shift'; idx: number; label: string; pay: number; senior: boolean } | { t: 'shop'; id: string; label: string; cost: number } | { t: 'quest'; id: string } | { t: 'crime'; id: CrimeId } | { t: 'info'; text: string };
 export type Spot = { id: string; x: number; z: number; e: string; label: string; opts: Opt[] };
-export type Interior = { w: number; d: number; floor: string; wall: string; items: Item[]; decor: Item[]; posts: Post[]; spots: Spot[] };
+export type Interior = { w: number; d: number; floor: string; wall: string; items: Item[]; decor: Item[]; posts: Post[]; spots: Spot[]; office: Office | null };
 
 export type ShopItem = { id: string; label: string; cost: number; grant?: 'car'; fx?: Partial<Record<'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social', number>>; xp?: { skill: SkillId; amt: number } };
 const food: ShopItem[] = [{ id: 'meal', label: 'Jollof & chicken', cost: 3500, fx: { hunger: 55, fun: 4 } }, { id: 'drink', label: 'Cold drink', cost: 800, fx: { hunger: 6, fun: 4 } }];
@@ -24,7 +26,8 @@ export const SHOP: Record<string, ShopItem[]> = {
   Airport: [{ id: 'cafe', label: 'Airport café', cost: 4500, fx: { hunger: 40 } }], 'Rail Station': [{ id: 'cafe', label: 'Station snack', cost: 1500, fx: { hunger: 25 } }],
 };
 export const SKILL_FOR: Record<string, SkillId> = { Bank: 'business', Office: 'business', 'Tech Company': 'tech', Hospital: 'medicine', Pharmacy: 'medicine', Gym: 'fitness', Logistics: 'driving', Mechanic: 'driving', 'Car Dealer': 'charisma', 'Police Station': 'law', Jail: 'law', Government: 'law', Nightclub: 'charisma', Salon: 'charisma', Barber: 'charisma', Hotel: 'charisma', 'Estate Agency': 'business' };
-export const shiftPay = (pay: number) => Math.round(pay / 10); // one 25-second shift = a tenth of the monthly salary
+export const shiftPay = (pay: number) => Math.round(pay / 10); // a ~50-minute shift = a tenth of the monthly salary
+export const shiftPayFor = (pay: number, mins: number) => Math.round(shiftPay(pay) * mins / 50); // longer tasks pay a little more
 
 const ARCH: Record<string, string> = { Bank: 'hall', Government: 'hall', Office: 'hall', 'Tech Company': 'hall', 'Estate Agency': 'hall', Logistics: 'hall', Restaurant: 'dining', Hotel: 'dining', Nightclub: 'club', Supermarket: 'store', Pharmacy: 'store', Market: 'store', 'Petrol Station': 'store', 'Car Dealer': 'store', Mechanic: 'store', Hospital: 'service', Salon: 'service', Barber: 'service', Gym: 'service', School: 'service', Cinema: 'service', 'Police Station': 'station', Jail: 'station', Airport: 'terminal', 'Rail Station': 'terminal' };
 const PAL: Record<string, [string, string]> = { Bank: ['#cfc9bd', '#2f4a63'], Government: ['#d8d2c4', '#3f5a40'], Hospital: ['#eef3f5', '#4aa3b5'], Restaurant: ['#caa77a', '#7a3b2e'], Hotel: ['#d9c7a3', '#5a3a2e'], Nightclub: ['#1a1330', '#2a1650'], Gym: ['#3a3f45', '#222831'], Cinema: ['#2b1d22', '#4a1d2a'], 'Police Station': ['#b9bfc8', '#1e3a8a'], Jail: ['#8a8d92', '#4b4f55'], Airport: ['#e3e5e8', '#3d5a80'], 'Rail Station': ['#d4cdbf', '#6b4a8a'], Supermarket: ['#e8e4da', '#2f7d4f'], School: ['#e8dcc0', '#3d5a80'] };
@@ -136,8 +139,8 @@ export function buildInterior(b: Business): Interior {
   const COUNTER: Record<string, { cx: number; half: number; z: number }> = { hall: { cx: 0, half: 3.4, z: -hz + 1 }, dining: { cx: 0, half: 3, z: -hz + .85 }, service: { cx: 0, half: 1.6, z: -hz + 1 }, terminal: { cx: 0, half: 4, z: -hz + 1 }, station: { cx: 0, half: 2.4, z: .9 }, store: { cx: hx - 3, half: 1, z: hz - 3.6 } };
   const WALK = /^(Dispatch Rider|Driver|Ground Crew|Housekeeper|Security|Store Attendant|Pump Attendant|Sales Attendant|Station Attendant|Police Officer|Prison Officer|Fitness Coach|Cinema Attendant|Waiter|Trader|Doctor)$/;
   const walkPath = (i: number) => { const w = PATROL[type] || PATROL[arch] || PATROL.hall, k = i % w.length; return [...w.slice(k), ...w.slice(0, k)] as [number, number][]; };
-  const posts: Post[] = [], counterIdx: number[] = [];
-  b.jobs.forEach((j, i) => {
+  const posts: Post[] = [], counterIdx: number[] = [], jobsList = shiftJobs(b);
+  jobsList.forEach((j, i) => {
     const t = j.title, base = { idx: i, title: t };
     if (/^Chef$/.test(t) && dining) posts.push({ ...base, x: hx - 3, z: -hz + 1.7, r: Math.PI, anim: 'cook', stand: [hx - 3, -hz + 3.2] });
     else if (t === 'DJ') posts.push({ ...base, x: 0, z: -hz + 1.9, y: .6, r: 0, anim: 'work', stand: [0, -hz + 4.6] });
@@ -155,13 +158,27 @@ export function buildInterior(b: Business): Interior {
   counterIdx.forEach((pi, k) => { const m = counterIdx.length; posts[pi].x = m === 1 ? ctr.cx : ctr.cx - ctr.half + k * 2 * ctr.half / (m - 1); posts[pi].z = ctr.z; });
 
   const spots: Spot[] = [], at = (k: keyof typeof slot) => slot[k];
-  const jobs = b.jobs.map((j, idx) => ({ t: 'shift' as const, idx, label: j.title, pay: shiftPay(j.pay) }));
-  if (jobs.length) spots.push({ id: 'work', x: at('work')[0], z: at('work')[1], e: '💼', label: 'Work a shift', opts: jobs });
+  const jobs = jobsList.map((j, idx) => ({ t: 'shift' as const, idx, label: j.title, pay: shiftPay(j.pay), senior: isSenior(j) }));
+  if (jobs.length) spots.push({ id: 'work', x: at('work')[0], z: at('work')[1], e: '💼', label: 'Jobs', opts: jobs });
   const shop = SHOP[type] || []; if (shop.length) spots.push({ id: 'shop', x: at('shop')[0], z: at('shop')[1], e: '🛒', label: type === 'Restaurant' || type === 'Nightclub' ? 'Order' : 'Buy', opts: shop.map(i => ({ t: 'shop' as const, id: i.id, label: i.label, cost: i.cost })) });
   const qs = QUESTS.filter(q => q.at?.includes(type)); if (qs.length) spots.push({ id: 'quest', x: at('quest')[0], z: at('quest')[1], e: '📜', label: 'Quests', opts: qs.map(q => ({ t: 'quest' as const, id: q.id })) });
-  const cr = (Object.keys(CRIMES) as CrimeId[]).filter(k => CRIMES[k].at?.includes(type)); if (cr.length) spots.push({ id: 'crime', x: at('crime')[0], z: at('crime')[1], e: '🕶️', label: type === 'Bank' ? 'Vault' : 'Till', opts: cr.map(k => ({ t: 'crime' as const, id: k })) });
+  const cr = (Object.keys(CRIMES) as CrimeId[]).filter(k => CRIMES[k].at?.includes(type)); if (cr.length) spots.push({ id: 'crime', x: at('crime')[0], z: at('crime')[1], e: '🕶️', label: type === 'Bank' ? 'Vault (rob)' : 'Till (rob)', opts: cr.map(k => ({ t: 'crime' as const, id: k })) });
   if (type === 'Police Station') spots.push({ id: 'board', x: hx - 3, z: 6, e: '📋', label: 'Wanted board', opts: [{ t: 'info', text: 'Officers: arrest wanted players who are inside with you (within range). Others: keep your heat low.' }] });
-  return { w: W, d: D, floor, wall, items, decor, posts, spots };
+  // ---- the manager's office: a desk + a 'Management' ring, placed where nothing else is ----
+  let office: Interior['office'] = null;
+  if (hasSeat(b)) {
+    const solids = items.filter(i => i.solid), hit = (x0: number, x1: number, z0: number, z1: number, m: number) => solids.some(o => o.x - o.w / 2 < x1 + m && o.x + o.w / 2 > x0 - m && o.z - o.d / 2 < z1 + m && o.z + o.d / 2 > z0 - m);
+    const marks: [number, number][] = [...spots.map(sp => [sp.x, sp.z] as [number, number]), ...posts.filter(p => !p.patrol).map(p => [p.stand?.[0] ?? p.x, p.stand?.[1] ?? p.z] as [number, number])];
+    const ok = (x: number, z: number) => { const sz = z - 1.05, rz = z + 1.8; if (Math.abs(x) > hx - 1.8 || sz < -hz + .5 || rz > hz - 2.2) return false;
+      if (hit(x - 1.2, x + 1.2, z - .45, z + .45, .15) || hit(x - .4, x + .4, sz - .4, sz + .4, 0) || hit(x - .9, x + .9, rz - .9, rz + .9, .1)) return false;
+      return marks.every(([mx, mz]) => Math.hypot(mx - x, mz - (rz)) >= 2.5 && Math.hypot(mx - x, mz - sz) >= 1.3 && Math.hypot(mx - x, mz - z) >= 1.2); };
+    const cand: [number, number][] = []; for (let x = -hx + 1.8; x <= hx - 1.8 + 1e-6; x += .5) cand.push([x, -hz + 1.9]);
+    for (let z = -hz + 2.4; z <= hz - 4.2; z += .6) for (let x = -hx + 1.8; x <= hx - 1.8 + 1e-6; x += .6) cand.push([x, z]);
+    cand.sort((a, c) => (a[1] - c[1]) * 100 + (Math.abs(a[0] - hx / 2) - Math.abs(c[0] - hx / 2))); const hitC = cand.find(([x, z]) => ok(x, z));
+    if (hitC) { const [x, z] = hitC; items.push(F(x, z, 2.4, .9, .8, '#6b4a2a')); monitor(x - .5, z, .8); dc(x + .5, z + .1, .4, .3, .03, '#ffffff', { y: .8 }); dc(x, z + .5, .7, .04, .12, '#c9a227', { y: .7 });
+      office = { x, z, sx: x, sz: z - 1.05, title: seatTitle(b) }; spots.push({ id: 'mgmt', x, z: z + 1.8, e: '🏢', label: 'Management', opts: [{ t: 'mgmt' }] }); }
+  }
+  return { w: W, d: D, floor, wall, items, decor, posts, spots, office };
 }
 export type { ProfessionId };
 

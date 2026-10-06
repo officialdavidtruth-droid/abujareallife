@@ -58,6 +58,7 @@ model User {
   missions     PlayerMission[]
   codes        EmailCode[]
   save         Save?
+  management   Management?
 }
 
 model Character {
@@ -219,6 +220,7 @@ model Save {
   fameAt    DateTime?
   fameDay   String?
   fameToday Int      @default(0)
+  mgrTasks  Int      @default(0) // management tasks completed toward the next manager appointment
   updatedAt DateTime @updatedAt
 
   @@index([fame])
@@ -251,4 +253,17 @@ model Crime {
   loot      Int      @default(0)
   createdAt DateTime @default(now())
   @@index([userId, createdAt])
+}
+
+// One manager seat per business. Unique businessId = the first applicant wins; unique userId = one seat per player. Expired rows count as vacant.
+model Management {
+  id         String    @id @default(cuid())
+  businessId String    @unique
+  userId     String    @unique
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  since      DateTime  @default(now())
+  expiresAt  DateTime
+  lastPaidAt DateTime?
+
+  @@index([expiresAt])
 }

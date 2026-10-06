@@ -5,8 +5,9 @@ import { sanitizeLook, type Look } from './characterModels';
 
 /* Shared building rooms: one realtime channel per building (room:<id>). Everyone inside the same building sees each other,
    can chat, and police can arrest wanted players who are in the room. Mutable state is read every frame by the 3D scene. */
-export type RoomPeer = { look: Look; mv: number; init: boolean; x: number; z: number; r: number; tx: number; tz: number; tr: number };
-export const ROOM = { me: { x: 0, z: 0, r: 0, mv: 0 }, peers: {} as Record<string, RoomPeer> };
+export type RoomPeer = { look: Look; mv: number; w: number; init: boolean; x: number; z: number; r: number; tx: number; tz: number; tr: number };
+/* w = 0 when idle, else ±(post index + 1): positive plays the work animation, negative just occupies the post. */
+export const ROOM = { me: { x: 0, z: 0, r: 0, mv: 0, w: 0 }, peers: {} as Record<string, RoomPeer> };
 export const ROOM_MAX = 30;
 const num = (v: unknown, lim: number, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : d);
 const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height, l.outfitModel].join('|');
@@ -28,12 +29,12 @@ export function useRoomNet(roomId: string, look: Look) {
       if (dead) return; const st = c.presenceState() as Record<string, { look?: Partial<Look> }[]>, names = Object.keys(st); let changed = false;
       if (names.length > ROOM_MAX && names.indexOf(name) >= ROOM_MAX) return; // room full: you still see the room but are not announced
       names.forEach(k => { if (k === name) return; const l = sanitizeLook(st[k]?.[0]?.look, k.slice(0, 24)), p = ROOM.peers[k];
-        if (!p) { ROOM.peers[k] = { look: l, mv: 0, init: false, x: 0, z: 0, r: 0, tx: 0, tz: 0, tr: 0 }; changed = true; } else if (lookKey(p.look) !== lookKey(l)) { p.look = l; changed = true; } });
+        if (!p) { ROOM.peers[k] = { look: l, mv: 0, w: 0, init: false, x: 0, z: 0, r: 0, tx: 0, tz: 0, tr: 0 }; changed = true; } else if (lookKey(p.look) !== lookKey(l)) { p.look = l; changed = true; } });
       Object.keys(ROOM.peers).forEach(k => { if (!names.includes(k)) { delete ROOM.peers[k]; changed = true; } });
       setRoster(names.filter(k => k !== name)); if (changed) setVer(v => v + 1);
     }).on('broadcast', { event: 'pos' }, ({ payload }) => {
       const p = ROOM.peers[String(payload?.u)]; if (!p) return;
-      p.tx = num(payload.x, 40); p.tz = num(payload.z, 40); p.tr = num(payload.r, 7); p.mv = payload.m ? 1 : 0;
+      p.tx = num(payload.x, 40); p.tz = num(payload.z, 40); p.tr = num(payload.r, 7); p.mv = payload.m ? 1 : 0; p.w = Math.round(num(payload.w, 99));
       if (!p.init) { p.init = true; p.x = p.tx; p.z = p.tz; p.r = p.tr; }
     }).on('broadcast', { event: 'chat' }, ({ payload }) => {
       const u = String(payload?.u), t = String(payload?.t || '').trim().slice(0, 120), now = Date.now();
@@ -41,7 +42,7 @@ export function useRoomNet(roomId: string, look: Look) {
     }).subscribe(async s => { if (s === 'SUBSCRIBED' && !dead) await c.track({ look: lookRef.current }); });
     const beat = setInterval(() => { // 5 position updates/second, only when someone else is here
       const now = Date.now(); if (!Object.keys(ROOM.peers).length || now - lastPos.current < 190) return; lastPos.current = now;
-      c.send({ type: 'broadcast', event: 'pos', payload: { u: name, x: Math.round(ROOM.me.x * 100) / 100, z: Math.round(ROOM.me.z * 100) / 100, r: Math.round(ROOM.me.r * 100) / 100, m: ROOM.me.mv } });
+      c.send({ type: 'broadcast', event: 'pos', payload: { u: name, x: Math.round(ROOM.me.x * 100) / 100, z: Math.round(ROOM.me.z * 100) / 100, r: Math.round(ROOM.me.r * 100) / 100, m: ROOM.me.mv, w: ROOM.me.w } });
     }, 200);
     return () => { dead = true; clearInterval(beat); sb.removeChannel(c); ch.current = null; ROOM.peers = {}; setRoster([]); };
   }, [roomId, name, say]);

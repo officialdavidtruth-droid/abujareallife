@@ -1,11 +1,11 @@
 'use client';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, Text } from '@react-three/drei';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import Human from './Human';
 import { CITY } from '../lib/cityData';
-import { buildInterior, type Interior as Room, type Opt, type Spot } from '../lib/interiors';
+import { buildInterior, staffLook, type Interior as Room, type Item, type Opt, type Post, type Spot } from '../lib/interiors';
 import { ROOM, useRoomNet } from '../lib/roomNet';
 import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
 import type { Look } from '../lib/characterModels';
@@ -30,6 +30,46 @@ function Furniture({ room }: { room: Room }) {
     {i.round ? <cylinderGeometry args={[i.w / 2, i.w / 2, i.h, 20]} /> : <boxGeometry args={[i.w, i.h, i.d]} />}
     <meshStandardMaterial color={i.c} emissive={i.glow ? i.c : '#000'} emissiveIntensity={i.glow ? .7 : 0} roughness={.8} /></mesh>)}</group>;
 }
+function DecorSet({ kind, items }: { kind: 'box' | 'cyl' | 'sph'; items: Item[] }) {
+  const ref = useRef<THREE.InstancedMesh>(null!);
+  useLayoutEffect(() => {
+    const m = ref.current, o = new THREE.Object3D(), c = new THREE.Color();
+    items.forEach((i, k) => { o.position.set(i.x, (i.y ?? 0) + (i.lay ? i.w / 2 : i.h / 2), i.z); o.rotation.set(i.lay ? Math.PI / 2 : 0, 0, 0); o.scale.set(i.w, i.h, i.d); o.updateMatrix(); m.setMatrixAt(k, o.matrix); m.setColorAt(k, c.set(i.c)); });
+    m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  }, [items]);
+  return <instancedMesh ref={ref} args={[undefined, undefined, items.length]} castShadow>
+    {kind === 'box' ? <boxGeometry args={[1, 1, 1]} /> : kind === 'cyl' ? <cylinderGeometry args={[.5, .5, 1, 14]} /> : <sphereGeometry args={[.5, 12, 10]} />}
+    <meshStandardMaterial roughness={.7} /></instancedMesh>;
+}
+// Everything on display (products, plates, monitors, plants, signs...) is drawn with 3 instanced meshes, so it stays cheap on phones.
+function Decor({ room }: { room: Room }) {
+  const g = useMemo(() => ({ box: room.decor.filter(i => !i.round && !i.sphere), cyl: room.decor.filter(i => i.round), sph: room.decor.filter(i => i.sphere) }), [room]);
+  return <group>{(['box', 'cyl', 'sph'] as const).map(k => g[k].length ? <DecorSet key={k + g[k].length} kind={k} items={g[k]} /> : null)}</group>;
+}
+// An NPC employee at their post: desk staff work in place, others walk their rounds. If a player on a shift is standing at the post, the NPC steps aside.
+function Staff({ post, look }: { post: Post; look: Look }) {
+  const g = useRef<THREE.Group>(null!), [occ, setOcc] = useState(false), hx = post.stand?.[0] ?? post.x, hz = post.stand?.[1] ?? post.z;
+  const s = useRef({ x: post.patrol ? post.patrol[0][0] : post.x, z: post.patrol ? post.patrol[0][1] : post.z, r: post.r, seg: 1, wait: 1 + (post.idx % 3), mv: false });
+  useEffect(() => {
+    const here = (x: number, z: number, w: number) => Math.abs(w) === post.idx + 1 && Math.hypot(x - hx, z - hz) < 1.8;
+    const i = setInterval(() => setOcc(here(ROOM.me.x, ROOM.me.z, ROOM.me.w) || Object.values(ROOM.peers).some(p => here(p.x, p.z, p.w))), 300); return () => clearInterval(i);
+  }, [post, hx, hz]);
+  useFrame((_, dtRaw) => {
+    const q = s.current, dt = Math.min(dtRaw, .05); if (!g.current) return;
+    if (post.patrol) {
+      if (q.wait > 0) { q.wait -= dt; q.mv = false; }
+      else { const t = post.patrol[q.seg % post.patrol.length], dx = t[0] - q.x, dz = t[1] - q.z, d = Math.hypot(dx, dz);
+        if (d < .08) { q.seg = (q.seg + 1) % post.patrol.length; q.wait = 2.5 + ((post.idx + q.seg) % 3); q.mv = false; }
+        else { const st = Math.min(d, 1.15 * dt); q.x += dx / d * st; q.z += dz / d * st; q.mv = true; let dr = Math.atan2(dx, dz) - q.r; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); q.r += dr * Math.min(1, dt * 8); } }
+    }
+    g.current.position.set(q.x, post.y ?? 0, q.z); g.current.rotation.y = q.r;
+  });
+  if (occ) return null;
+  const anim = () => { const near = Math.hypot(ROOM.me.x - s.current.x, ROOM.me.z - s.current.z) < 2.4; return post.anim === 'work' && near && (performance.now() / 1000) % 8 < 3 ? 'wave' : post.anim; };
+  return <group ref={g} position={[s.current.x, post.y ?? 0, s.current.z]} rotation-y={post.r}>
+    <Human look={look} getState={() => (s.current.mv ? 'walk' : 'idle')} getAnim={post.patrol ? undefined : anim} />
+    <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div className="inTag"><span className="inStaff">{look.name} · {post.title}</span></div></Html></group>;
+}
 function SpotMark({ s, active }: { s: Spot; active: boolean }) {
   return <group position={[s.x, 0, s.z]}><mesh rotation-x={-Math.PI / 2} position={[0, .03, 0]}><ringGeometry args={[.7, .95, 32]} /><meshBasicMaterial color={active ? '#ffd166' : '#3fb98a'} /></mesh>
     <Html position={[0, 1.7, 0]} center zIndexRange={[5, 0]}><div className="inLbl">{s.e} {s.label}</div></Html></group>;
@@ -37,14 +77,15 @@ function SpotMark({ s, active }: { s: Spot; active: boolean }) {
 function Remote({ name, bub }: { name: string; bub?: string }) {
   const g = useRef<THREE.Group>(null!), p = ROOM.peers[name]; if (!p) return null;
   useFrame((_, dt) => { const q = ROOM.peers[name]; if (!q) return; const k = 1 - Math.exp(-10 * dt); q.x += (q.tx - q.x) * k; q.z += (q.tz - q.z) * k; let dr = q.tr - q.r; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); q.r += dr * k; g.current.position.set(q.x, 0, q.z); g.current.rotation.y = q.r; });
-  return <group ref={g}><Human look={p.look} getState={() => (ROOM.peers[name]?.mv ? 'walk' : 'idle')} />
+  return <group ref={g}><Human look={p.look} getState={() => (ROOM.peers[name]?.mv ? 'walk' : 'idle')} getAnim={() => { const q = ROOM.peers[name]; return q && q.w > 0 && !q.mv ? 'work' : undefined; }} />
     <Html position={[0, 2.5, 0]} center zIndexRange={[5, 0]}><div className="inTag">{bub && <div className="inSay">{bub}</div>}<span>{isCop(p.look) ? '👮 ' : ''}{name}</span></div></Html></group>;
 }
-function Player({ look, room, ctl, onSpot, onExit, frozen }: { look: Look; room: Room; ctl: React.MutableRefObject<Ctl>; onSpot: (s: Spot | null) => void; onExit: () => void; frozen: boolean }) {
+function Player({ look, room, ctl, onSpot, onExit, frozen, snap }: { look: Look; room: Room; ctl: React.MutableRefObject<Ctl>; onSpot: (s: Spot | null) => void; onExit: () => void; frozen: boolean; snap: React.MutableRefObject<{ x: number; z: number; r: number } | null> }) {
   const g = useRef<THREE.Group>(null!), p = useRef({ x: 0, z: room.d / 2 - 1.8, r: Math.PI }), mv = useRef(false), cur = useRef<string | null>(null), out = useRef(false), { camera } = useThree();
   const solids = useMemo(() => room.items.filter(i => i.solid).map(i => ({ x0: i.x - i.w / 2, x1: i.x + i.w / 2, z0: i.z - i.d / 2, z1: i.z + i.d / 2 })), [room]);
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, .05), c = ctl.current, k = c.keys, q = p.current;
+    if (snap.current) { q.x = snap.current.x; q.z = snap.current.z; q.r = snap.current.r; snap.current = null; } // starting a shift puts you at your post; you can still walk away
     const ix = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0) + c.joy.x, iz = (k.has('s') || k.has('arrowdown') ? 1 : 0) - (k.has('w') || k.has('arrowup') ? 1 : 0) + c.joy.y, len = Math.hypot(ix, iz);
     mv.current = len > .15 && !frozen;
     if (mv.current) { const sp = c.run || k.has('shift') ? 5.6 : 3.4; q.x += ix / len * sp * dt; q.z += iz / len * sp * dt; q.r = Math.atan2(ix, iz); }
@@ -58,12 +99,12 @@ function Player({ look, room, ctl, onSpot, onExit, frozen }: { look: Look; room:
     let best: Spot | null = null, bd = 1.9; for (const s of room.spots) { const d = Math.hypot(s.x - q.x, s.z - q.z); if (d < bd) { bd = d; best = s; } }
     if ((best?.id ?? null) !== cur.current) { cur.current = best?.id ?? null; onSpot(best); }
   });
-  return <group ref={g}><Human look={look} getState={() => (mv.current ? 'walk' : 'idle')} /></group>;
+  return <group ref={g}><Human look={look} getState={() => (mv.current ? 'walk' : 'idle')} getAnim={() => (ROOM.me.w > 0 && !mv.current ? 'work' : undefined)} /></group>;
 }
 
 export default function Interior({ bizId, look, profile, onExit, onFx, onCash }: { bizId: string; look: Look; profile: Profile; onExit: (jailed?: boolean) => void; onFx: (fx: Record<string, number>) => void; onCash: (n: number) => void }) {
   const biz = CITY.businesses.find(b => b.id === bizId)!, room = useMemo(() => buildInterior(biz), [biz]), net = useRoomNet(bizId, look);
-  const ctl = useRef<Ctl>({ keys: new Set(), joy: { x: 0, y: 0 }, run: false, act: false });
+  const ctl = useRef<Ctl>({ keys: new Set(), joy: { x: 0, y: 0 }, run: false, act: false }), snap = useRef<{ x: number; z: number; r: number } | null>(null), staff = useMemo(() => room.posts.map(p => staffLook(biz, p)), [room, biz]);
   const [spot, setSpot] = useState<Spot | null>(null), [menu, setMenu] = useState<Spot | null>(null), [msg, setMsg] = useState(''), [txt, setTxt] = useState('');
   const [job, setJob] = useState<{ kind: 'shift' | 'quest'; id: string | number; end: number; label: string } | null>(null), [, tick] = useState(0), [near, setNear] = useState<string | null>(null);
   const toast = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
@@ -80,6 +121,9 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
   useEffect(() => { if (ctl.current.act) { ctl.current.act = false; } }, []);
   useEffect(() => { const i = setInterval(() => { if (ctl.current.act) { ctl.current.act = false; if (spot) setMenu(spot); } }, 100); return () => clearInterval(i); }, [spot]);
   useEffect(() => { if (!spot) setMenu(null); }, [spot]);
+  useEffect(() => { // tell everyone in the room that I'm working a post (they see me at the desk, animated, and the NPC there steps aside)
+    const p = job?.kind === 'shift' ? room.posts.find(x => x.idx === job.id) : undefined; ROOM.me.w = p ? (p.anim ? 1 : -1) * (p.idx + 1) : 0; return () => { ROOM.me.w = 0; };
+  }, [job, room]);
 
   const cops = () => Object.values(ROOM.peers).filter(q => isCop(q.look) && Math.hypot(q.x - ROOM.me.x, q.z - ROOM.me.z) < 25).length;
   useEffect(() => { if (job && left === 0) (async () => {
@@ -88,7 +132,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
   })(); }, [left, job]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (o: Opt) => {
     if (job) return toast('Finish what you are doing first.');
-    if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: o.label }); setMenu(null); }
+    if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: o.label }); setMenu(null); const po = room.posts.find(x => x.idx === o.idx); if (po) { snap.current = { x: po.stand?.[0] ?? po.x, z: po.stand?.[1] ?? po.z, r: po.r }; toast(`📍 You are at your post: ${o.label}. Stay, or walk around - the shift keeps running.`); } }
     else if (o.t === 'quest') { const q = QUESTS.find(x => x.id === o.id)!, r = await post('/api/quest', { action: 'start', id: o.id }); if (!r.ok) return toast(r.d.error); setJob({ kind: 'quest', id: o.id, end: Date.now() + r.d.secs * 1000, label: q.title }); setMenu(null); }
     else if (o.t === 'shop') { const r = await post('/api/shop', { item: o.id }); if (!r.ok) return toast(r.d.error); onCash(r.d.cash); onFx(r.d.fx); toast(`Bought: ${o.label}`); }
     else if (o.t === 'crime') { const r = await post('/api/crime', { kind: o.id, policeNearby: cops() }); if (!r.ok) return toast(r.d.error); onCash(r.d.cash);
@@ -104,10 +148,11 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
       <color attach="background" args={['#0b1210']} /><hemisphereLight args={['#ffffff', '#555566', 1.1]} /><directionalLight position={[4, 9, 5]} intensity={1.6} castShadow />
       <pointLight position={[0, 2.6, 0]} intensity={14} distance={20} color={biz.type === 'Nightclub' ? '#a855f7' : '#fff1d6'} />
       <mesh rotation-x={-Math.PI / 2} receiveShadow><planeGeometry args={[room.w, room.d]} /><meshStandardMaterial color={room.floor} roughness={.9} /></mesh>
-      <Walls room={room} /><Furniture room={room} />
+      <Walls room={room} /><Furniture room={room} /><Decor room={room} />
+      {room.posts.map(p => <Staff key={p.idx} post={p} look={staff[p.idx]} />)}
       {room.spots.map(s => <SpotMark key={s.id} s={s} active={spot?.id === s.id} />)}
       <Text position={[0, 2.2, -room.d / 2 + .25]} fontSize={.55} color="#fff" anchorX="center">{biz.name}</Text>
-      <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu} />
+      <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu} snap={snap} />
       {net.roster.map(n => ROOM.peers[n] && <Remote key={n + net.ver} name={n} bub={net.bub[n]} />)}
     </Canvas>
     <div className="inTop"><b>{biz.name}</b><span>{biz.type} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span><button onClick={() => onExit()}>🚪 Leave</button></div>
@@ -121,14 +166,14 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
         {o.t === 'quest' && <><b>{qName(o.id).title}</b><small>{qName(o.id).blurb} · +{naira(qName(o.id).reward)} · {qName(o.id).secs}s{qName(o.id).legal ? '' : ' · 🔥 illegal'}</small></>}
         {o.t === 'crime' && <><b>{CRIMES[o.id].label}</b><small>{naira(CRIMES[o.id].loot[0])}–{naira(CRIMES[o.id].loot[1])} · +{CRIMES[o.id].heat} heat · officers inside make it riskier</small></>}</button>)}</div>}
     {net.enabled && <div className="inChat">{net.log.slice(-3).map(m => <div key={m.id}><b>{m.u}</b> {m.t}</div>)}<input placeholder="Say something…" maxLength={120} value={txt} onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && net.send(txt)) setTxt(''); }} /></div>}
-    <div className="inStick" ref={stick} onPointerDown={e => { (e.target as Element).setPointerCapture(e.pointerId); joy(e, true); }} onPointerMove={e => e.buttons && joy(e, true)} onPointerUp={e => joy(e, false)} onPointerCancel={e => joy(e, false)}><i ref={knob as React.RefObject<HTMLElement>} /></div>
+    <div className="inStick" ref={stick} onPointerDown={e => { (e.target as Element).setPointerCapture(e.pointerId); joy(e, true); }} onPointerMove={e => (e.buttons || e.pointerType === 'touch') && joy(e, true)} onPointerUp={e => joy(e, false)} onPointerCancel={e => joy(e, false)}><i ref={knob as React.RefObject<HTMLElement>} /></div>
     <style>{`.inWrap{position:absolute;inset:0;z-index:8;background:#0b1210}.inWrap canvas{display:block}.inTop{position:absolute;left:12px;top:56px;display:flex;gap:10px;align-items:center;background:#10201ae6;border:1px solid #ffffff20;border-radius:12px;padding:8px 12px;color:#fff;font-size:12px}.inTop span{color:#a8bbb2}.inTop button{background:#d99a42;border:0;border-radius:8px;padding:6px 10px;font-weight:800}
 .inToast{position:absolute;left:50%;transform:translateX(-50%);top:110px;background:#000c;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;max-width:90vw;text-align:center}
 .inAct{position:absolute;left:50%;transform:translateX(-50%);bottom:150px;background:#d99a42;color:#111;border:0;border-radius:14px;padding:12px 18px;font-weight:900;font-size:14px}.inAct.cop{bottom:100px;background:#2563eb;color:#fff}
 .inMenu{position:absolute;left:50%;transform:translateX(-50%);bottom:90px;width:min(380px,calc(100vw - 24px));max-height:55vh;overflow:auto;background:#09130ff7;border:1px solid #ffffff22;border-radius:16px;padding:14px;color:#fff;display:flex;flex-direction:column;gap:7px}.inMenu h3{margin:0}.inMenu .x{position:absolute;right:8px;top:2px;background:none;border:0;color:#fff;font-size:24px}.inMenu button:not(.x){text-align:left;background:#13231d;color:#fff;border:1px solid #ffffff18;border-radius:10px;padding:9px}.inMenu small{display:block;color:#9fb5aa;margin-top:2px}.inMenu p{margin:0;color:#9fb5aa;font-size:12px}
 .inChat{position:absolute;left:12px;bottom:14px;width:min(260px,50vw);font-size:11px;color:#fff;display:flex;flex-direction:column;gap:3px}.inChat div{background:#000a;border-radius:8px;padding:3px 7px}.inChat input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:12px}
-.inStick{position:absolute;right:18px;bottom:18px;width:110px;height:110px;border-radius:50%;background:#0005;border:2px solid #ffffff33;touch-action:none}.inStick i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:#ffffffaa;transform:translate(-50%,-50%)}
-.inLbl{background:#09130fe8;color:#fff;border:1px solid #ffffff22;border-radius:8px;padding:3px 7px;font-size:10px;white-space:nowrap}.inTag{display:flex;flex-direction:column;align-items:center;gap:3px}.inTag span{background:#09130fe8;color:#fff;border-radius:8px;padding:2px 6px;font-size:10px}.inSay{background:#fff;color:#111;border-radius:10px;padding:4px 8px;font-size:11px;max-width:160px;text-align:center}
-@media(min-width:900px){.inStick{display:none}}`}</style>
+.inStick{position:absolute;right:calc(18px + env(safe-area-inset-right,0px));bottom:18px;width:110px;height:110px;border-radius:50%;background:#0005;border:2px solid #ffffff33;touch-action:none;z-index:9;display:none}.inStick i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:#ffffffaa;transform:translate(-50%,-50%)}
+.inLbl{background:#09130fe8;color:#fff;border:1px solid #ffffff22;border-radius:8px;padding:3px 7px;font-size:10px;white-space:nowrap}.inTag{display:flex;flex-direction:column;align-items:center;gap:3px}.inTag span{background:#09130fe8;color:#fff;border-radius:8px;padding:2px 6px;font-size:10px}.inStaff{border:1px solid #d99a4288}.inSay{background:#fff;color:#111;border-radius:10px;padding:4px 8px;font-size:11px;max-width:160px;text-align:center}
+@media (pointer:coarse),(max-width:900px){.inStick{display:block}}`}</style>
   </div>;
 }

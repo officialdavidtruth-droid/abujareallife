@@ -2,7 +2,7 @@
 export type Hair = 'short' | 'afro' | 'braids' | 'bun' | 'bald';
 export type Look = {
   name: string; model: string; gender: 'm' | 'f'; hair: Hair; hairColor: string;
-  skin: string; outfit: string; pants: string; height: number;
+  skin: string; outfit: string; pants: string; height: number; outfitModel?: string;
 };
 export const HAIRS: { id: Hair; label: string }[] = [
   { id: 'short', label: 'Short' }, { id: 'afro', label: 'Afro' }, { id: 'braids', label: 'Braids' }, { id: 'bun', label: 'Bun' }, { id: 'bald', label: 'Bald' },
@@ -20,7 +20,7 @@ const hex = (v: unknown, d: string) => (typeof v === 'string' && HEX.test(v) ? v
 export function sanitizeLook(l: Partial<Look> | undefined | null, name: string): Look {
   const x = l || {};
   return {
-    name, model: 'citizen',
+    name, model: 'citizen', outfitModel: typeof x.outfitModel === 'string' && /^[a-z]{2,12}$/.test(x.outfitModel) ? x.outfitModel : 'tee',
     gender: x.gender === 'f' ? 'f' : 'm',
     hair: HAIRS.some(h => h.id === x.hair) ? (x.hair as Hair) : x.gender === 'f' ? 'braids' : 'short',
     hairColor: hex(x.hairColor, DEFAULT_LOOK.hairColor), skin: hex(x.skin, DEFAULT_LOOK.skin),
@@ -28,3 +28,11 @@ export function sanitizeLook(l: Partial<Look> | undefined | null, name: string):
     height: typeof x.height === 'number' && isFinite(x.height) ? Math.max(0.9, Math.min(1.1, x.height)) : 1,
   };
 }
+
+// Each outfit model sets the look colours (and is sent to other players). Distinct 3D garment shapes can be added later in humanRig.
+export const MODEL_COLORS: Record<string, { outfit: string; pants: string }> = {
+  tee: { outfit: '#3d5a80', pants: '#2b3a55' }, hoodie: { outfit: '#222831', pants: '#222831' }, suit: { outfit: '#1a1f2b', pants: '#1a1f2b' },
+  agbada: { outfit: '#f2f2f2', pants: '#cfc9bd' }, jersey: { outfit: '#126c4b', pants: '#f2f2f2' }, designer: { outfit: '#6b4a8a', pants: '#222831' },
+  uniform: { outfit: '#1e3a8a', pants: '#111827' },
+};
+export const applyOutfitModel = (l: Look, model: string): Look => ({ ...l, outfitModel: model, ...(MODEL_COLORS[model] || {}) });

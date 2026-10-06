@@ -23,7 +23,7 @@ const SEND_MS = 200;          // 5 position updates / second, only while someone
 const clampN = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(-LIM, Math.min(LIM, v)) : d);
 const angle = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height].join('|');
+const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height, l.outfitModel].join('|');
 const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, cp: false, call: false, anim: '', animUntil: 0, x: 0, z: 16, r: 0, tx: 0, tz: 16, tr: 0, cx: 0, cz: 0, cr: 0, tcx: 0, tcz: 0, tcr: 0 });
 
 export const INTERACT_RANGE = 10; // metres: how close you must be to wave / high-five / dance with someone

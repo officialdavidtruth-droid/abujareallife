@@ -8,7 +8,7 @@ export async function GET() {
   const u = await currentUser();
   if (!u) return err('Not signed in.', 401);
   const s = await prisma.save.findUnique({ where: { userId: u.id } });
-  return NextResponse.json({ save: s ? { look: s.look, state: s.state, cash: s.cash } : null });
+  return NextResponse.json({ save: s ? { look: s.look, state: s.state, cash: s.cash, profile: s.profile, heat: s.heat } : null });
 }
 const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
 export async function PUT(req: Request) {
@@ -18,6 +18,7 @@ export async function PUT(req: Request) {
   const l = b.look || {}, st = b.state || {}, n = st.needs || {};
   const look = sanitizeLook(l, u.username);
   const state = { needs: Object.fromEntries(['hunger', 'energy', 'hygiene', 'bladder', 'fun', 'social'].map(k => [k, num(n[k], 0, 100, 60)])), min: num(st.min, 0, 1e7, 480) }; // cash is server-owned: see /api/economy
-  await prisma.save.upsert({ where: { userId: u.id }, create: { userId: u.id, look, state }, update: { look, state } });
+  if (!(await prisma.save.findUnique({ where: { userId: u.id } }))) return err('Create your character through /api/profile first.', 409);
+  await prisma.save.update({ where: { userId: u.id }, data: { look, state } });
   return NextResponse.json({ ok: true });
 }

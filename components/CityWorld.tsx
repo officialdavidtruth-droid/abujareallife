@@ -9,6 +9,7 @@ import { CITY } from '../lib/cityData';
 import type { Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
 import { NET, useCityNet } from '../lib/cityNet';
+import { JAIL_CELL_POS } from '../lib/profile';
 import { useCityVoice } from '../lib/cityVoice';
 import CityPeople from './CityPeople';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
@@ -510,8 +511,20 @@ const distTo = (s: { x0: number; x1: number; z0: number; z1: number }, x: number
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
+export const GAME = { jailed: false, tp: null as { x: number; z: number } | null }; // set by the game layer; while true the player is locked inside the cell
+const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
+function JailCell() {
+  const bars = Array.from({ length: 13 }, (_, i) => -3 + i * .5);
+  return <group position={[CELL.x, 0, CELL.z]}>
+    <mesh rotation-x={-Math.PI / 2} position={[0, .02, 0]}><planeGeometry args={[6, 6]} /><meshStandardMaterial color="#4a4a4a" /></mesh>
+    {[-3, 3].map(o => bars.map(b => <group key={o + '_' + b}><mesh position={[b, CELL.h / 2, o]}><cylinderGeometry args={[.04, .04, CELL.h, 6]} /><meshStandardMaterial color="#222" /></mesh><mesh position={[o, CELL.h / 2, b]}><cylinderGeometry args={[.04, .04, CELL.h, 6]} /><meshStandardMaterial color="#222" /></mesh></group>))}
+    <mesh position={[0, CELL.h, 0]}><boxGeometry args={[6.2, .12, 6.2]} /><meshStandardMaterial color="#333" /></mesh>
+    <mesh position={[-2, .35, -2]}><boxGeometry args={[1.8, .5, .8]} /><meshStandardMaterial color="#6b5a48" /></mesh>
+    <Text position={[0, CELL.h + .6, 3]} fontSize={.4} color="#fff" anchorX="center">JAIL CELL</Text>
+  </group>;
+}
 const CAR_R = 1, CAR_OFFS = [-1.35, 0, 1.35];
 function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }: { look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: Math.PI });
@@ -623,6 +636,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       }
       if (VEH.placed) { const fxw = Math.cos(VEH.r), fzw = -Math.sin(VEH.r); for (const o of CAR_OFFS) { const ax = VEH.x + fxw * o, az = VEH.z + fzw * o, ex = p.x - ax, ez = p.z - az, d = Math.hypot(ex, ez); if (d < 1.4 && d > 1e-4) { p.x = ax + ex / d * 1.4; p.z = az + ez / d * 1.4; } } } // your parked car is solid too
       p.x = THREE.MathUtils.clamp(p.x, -LIM, LIM); p.z = THREE.MathUtils.clamp(p.z, -LIM, LIM);
+      if (GAME.tp) { p.x = GAME.tp.x; p.z = GAME.tp.z; GAME.tp = null; }
+      if (GAME.jailed) { VEH.drv = false; p.x = THREE.MathUtils.clamp(Math.abs(p.x - CELL.x) > 3 ? CELL.x : p.x, CELL.x - 2.6, CELL.x + 2.6); p.z = THREE.MathUtils.clamp(Math.abs(p.z - CELL.z) > 3 ? CELL.z : p.z, CELL.z - 2.6, CELL.z + 2.6); }
       if (wantJump && p.y <= .001) p.vy = 6.2;
       c.jump = false;
       p.vy -= 18 * dt; p.y += p.vy * dt; if (p.y < 0) { p.y = 0; p.vy = 0; }
@@ -696,6 +711,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} />
       <TrainLine />
       <Airport />
+      <JailCell />
       <group ref={group}>
         <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : m.call ? 'phone' : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />
         <Html position={[0, 2.8, 0]} center><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag">{look.name}</div></div></Html>

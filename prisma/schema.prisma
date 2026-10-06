@@ -200,8 +200,45 @@ model Save {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   look      Json
   state     Json
-  cash      Int      @default(20000)
+  cash      Int      @default(1000000)
+  profile   Json?
+  heat      Int      @default(0)
+  heatAt    DateTime?
+  jailUntil DateTime?
+  questId   String?
+  questAt   DateTime?
+  inside    String?
+  insideAt  DateTime?
   jobAct    String?
   jobAt     DateTime?
   updatedAt DateTime @updatedAt
+}
+
+model Invite {
+  id        String   @id @default(cuid())
+  fromId    String
+  toName    String
+  building  String
+  createdAt DateTime @default(now())
+  @@unique([toName, building])
+}
+
+model Relationship {
+  id        String   @id @default(cuid())
+  aName     String
+  bName     String
+  status    String
+  accepted  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@unique([aName, bName])
+}
+
+model Crime {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  caught    Boolean  @default(false)
+  loot      Int      @default(0)
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
 }

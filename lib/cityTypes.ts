@@ -1,5 +1,5 @@
 export type District = 'Central Area'|'Wuse'|'Garki'|'Maitama'|'Jabi'|'Gwarinpa'|'Asokoro'|'Utako'|'Kubwa'|'Lugbe'|'Airport Corridor';
-export type BusinessType = 'Bank'|'Restaurant'|'Hotel'|'Hospital'|'Supermarket'|'Salon'|'Barber'|'Gym'|'Mechanic'|'Car Dealer'|'School'|'Office'|'Nightclub'|'Market'|'Petrol Station'|'Pharmacy'|'Cinema'|'Tech Company'|'Estate Agency'|'Logistics'|'Government'|'Airport'|'Rail Station';
+export type BusinessType = 'Bank'|'Restaurant'|'Hotel'|'Hospital'|'Supermarket'|'Salon'|'Barber'|'Gym'|'Mechanic'|'Car Dealer'|'School'|'Office'|'Nightclub'|'Market'|'Petrol Station'|'Pharmacy'|'Cinema'|'Tech Company'|'Estate Agency'|'Logistics'|'Government'|'Airport'|'Rail Station'|'Police Station'|'Jail';
 export type Job = { id:string; title:string; business:string; district:District; pay:number; shift:string; type:string };
 export type Business = { id:string; name:string; type:BusinessType; district:District; x:number; z:number; jobs:Job[] };
 export type Road = { id:string; name:string; x:number; z:number; w:number; d:number; major:boolean };

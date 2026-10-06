@@ -14,7 +14,7 @@ import GameLayer from './GameLayer';
 import Interior from './Interior';
 import { CITY } from '../lib/cityData';
 import { GAME } from './CityWorld';
-import { DEFAULT_PROFILE, START_CASH, type Profile } from '../lib/profile';
+import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, OUTFITS, type Look } from '../lib/characterModels';
 import { findPath, blocked, inside, HARD, type Blk, type Box, type P } from '../lib/collision';
 
@@ -103,7 +103,7 @@ const H: { door?: () => void; outfit?: () => void } = {};
 const find = (id: string) => OBJ.find(o => o.id === id)!;
 
 const NEW = () => ({ pos: [0, .5] as [number, number], rot: 0, pose: 'stand' as Pose, needs: { hunger: 78, energy: 72, hygiene: 70, bladder: 70, fun: 55, social: 50 } as Record<N, number>,
-  min: 8 * 60, cash: START_CASH, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
+  min: 8 * 60, cash: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
 const S = NEW();
 const say = (m: string) => { S.toast = m; S.toastT = Date.now(); };
 const walk = (x: number, z: number) => { S.cur = null; S.q = route(S.pos as P, [x, z]); };
@@ -441,7 +441,7 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
 }
 
 export default function Sim() {
-  const [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null);
+  const [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
@@ -465,8 +465,8 @@ export default function Sim() {
   return <div className={'sim' + (outside ? ' outside' : '')}>
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
-    {user && look && outside && !inside && <City look={look} getMinute={() => S.min} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
-    {user && look && profile && outside && !inside && <GameLayer onEnter={setInside} username={user.username} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
+    {user && look && outside && !inside && <City tab={cityTab} onTab={setCityTab} look={look} getMinute={() => S.min} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
+    {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} username={user.username} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = { x: b.x, z: b.z + b.d / 2 + 2.5 }; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}

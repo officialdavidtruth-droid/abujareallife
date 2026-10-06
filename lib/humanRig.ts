@@ -17,6 +17,8 @@ const shade = (c: string, f: number) => '#' + new THREE.Color(c).multiplyScalar(
 function add<T extends THREE.Object3D>(p: THREE.Object3D, o: T, x = 0, y = 0, z = 0): T { o.position.set(x, y, z); p.add(o); return o; }
 function mesh(g: THREE.BufferGeometry, m: THREE.Material) { const o = new THREE.Mesh(g, m); o.castShadow = true; return o; }
 const cap = (r: number, l: number) => new THREE.CapsuleGeometry(r, l, 6, 14);
+// Tapered torso: wide top (shoulders) to narrow bottom (waist), elliptical cross-section. Scaled in the geometry so the breathing animation (mesh scale) still works.
+const torso = (rTop: number, rBot: number, h: number, zs: number) => { const g = new THREE.CylinderGeometry(rTop, rBot, h, 32, 1); g.scale(1, 1, zs); return g; };
 
 export function buildHuman(look: Look): Rig {
   const f = look.gender === 'f';
@@ -26,20 +28,21 @@ export function buildHuman(look: Look): Rig {
   const root = new THREE.Group();
   root.scale.setScalar(look.height * (f ? .955 : 1));
   const hips = add(root, new THREE.Group(), 0, .88, 0);
-  // pelvis (trousers)
-  const hw = f ? .105 : .095;
-  add(hips, mesh(new RoundedBoxGeometry(f ? .34 : .31, .2, .21, 4, .07), pants), 0, .03, 0);
-  // spine + chest (shirt)
+  // pelvis (trousers): women get wider, rounder hips; men a narrower, straighter pelvis
+  const hw = f ? .1 : .092;
+  add(hips, mesh(new RoundedBoxGeometry(f ? .37 : .31, .2, f ? .235 : .21, 4, .08), pants), 0, .03, 0);
+  if (f) for (const s of [-1, 1]) add(hips, mesh(new THREE.SphereGeometry(.105, 20, 16), pants), s * .1, .0, -.006).scale.set(1.08, 1, 1.1); // hip / glute curve
+  // spine + chest (shirt): men = broad V-shaped chest, women = narrower shoulders, small waist, bust
   const spine = add(hips, new THREE.Group(), 0, .08, 0);
-  const tw = f ? .33 : .4;
-  const chest = add(spine, mesh(new RoundedBoxGeometry(tw, .5, f ? .19 : .22, 5, .08), shirt), 0, .23, 0);
-  add(spine, mesh(new THREE.CylinderGeometry(f ? .155 : .17, f ? .165 : .17, .12, 20), shirt), 0, .06, 0).scale.set(1, 1, .72);
+  const chest = add(spine, mesh(f ? torso(.165, .118, .5, .66) : torso(.225, .17, .5, .52), shirt), 0, .23, 0);
+  add(spine, mesh(new THREE.CylinderGeometry(f ? .118 : .17, f ? .13 : .17, .12, 24), shirt), 0, .06, 0).scale.set(1, 1, f ? .78 : .72);
+  if (f) for (const s of [-1, 1]) add(spine, mesh(new THREE.SphereGeometry(.058, 20, 16), shirt), s * .072, .31, .086).scale.set(1, 1, .86); // bust
   // neck + head
-  const neck = add(spine, mesh(new THREE.CylinderGeometry(.056, .064, .1, 14), skin), 0, .5, 0);
+  const neck = add(spine, mesh(new THREE.CylinderGeometry(f ? .047 : .062, f ? .054 : .07, .1, 14), skin), 0, .5, 0);
   void neck;
-  const head = add(spine, new THREE.Group(), 0, .55, 0); head.scale.setScalar(1.14);
+  const head = add(spine, new THREE.Group(), 0, .55, 0); head.scale.setScalar(f ? 1.08 : 1.14);
   const skull = add(head, mesh(new THREE.SphereGeometry(.108, 36, 28), skin), 0, .1, 0); skull.scale.set(.96, 1.1, 1.03);
-  add(head, mesh(new THREE.SphereGeometry(.07, 24, 18), skin), 0, .045, .035).scale.set(1.15, .85, 1.05); // jaw
+  add(head, mesh(new THREE.SphereGeometry(.07, 24, 18), skin), 0, .045, .035).scale.set(f ? 1.0 : 1.2, .85, 1.05); // jaw (softer on women, squarer on men)
   for (const s of [-1, 1]) add(head, mesh(new THREE.SphereGeometry(.02, 12, 10), skin), s * .104, .095, 0).scale.set(.6, 1, .8); // ears
   // face
   const eyes = add(head, new THREE.Group(), 0, .115, .092);
@@ -47,7 +50,8 @@ export function buildHuman(look: Look): Rig {
     const e = add(eyes, new THREE.Group(), s * .038, 0, 0);
     add(e, mesh(new THREE.SphereGeometry(.0185, 16, 12), white), 0, 0, 0).scale.set(1, .9, .55);
     add(e, mesh(new THREE.SphereGeometry(.0105, 12, 10), dark), 0, 0, .006).scale.set(1, 1, .6);
-    const b = add(head, mesh(new THREE.BoxGeometry(.04, .007, .01), brow), s * .038, .15, .1); b.rotation.z = -s * .12;
+    if (f) { const lash = add(e, mesh(new THREE.BoxGeometry(.036, .005, .008), dark), 0, .017, .008); lash.rotation.z = -s * .1; } // lashes
+    const b = add(head, mesh(new THREE.BoxGeometry(f ? .036 : .045, f ? .005 : .009, .01), brow), s * .038, .15, .1); b.rotation.z = -s * .12;
   }
   add(head, mesh(new THREE.SphereGeometry(.017, 12, 10), skin), 0, .082, .108).scale.set(1, .9, 1.1); // nose
   const smile = add(head, mesh(new THREE.TorusGeometry(.02, .0042, 8, 18, Math.PI), f ? lip : lip), 0, .066, .103); smile.rotation.z = Math.PI; smile.scale.set(1.2, .9, 1);
@@ -64,26 +68,26 @@ export function buildHuman(look: Look): Rig {
   // legs (thigh pivot at hip joint)
   const mkLeg = (s: number) => {
     const up = add(hips, new THREE.Group(), s * hw, -.02, 0);
-    add(up, mesh(cap(.076, .33), pants), 0, -.215, 0);
+    add(up, mesh(cap(f ? .077 : .083, .33), pants), 0, -.215, 0);
     const kn = add(up, new THREE.Group(), 0, -.43, 0);
-    add(kn, mesh(new THREE.SphereGeometry(.066, 14, 10), pants)); add(kn, mesh(cap(.06, .31), pants), 0, -.2, 0);
+    add(kn, mesh(new THREE.SphereGeometry(f ? .06 : .068, 14, 10), pants)); add(kn, mesh(cap(f ? .052 : .062, .31), pants), 0, -.2, 0);
     const ft = add(kn, new THREE.Group(), 0, -.41, 0);
-    add(ft, mesh(new RoundedBoxGeometry(.1, .075, .27, 3, .03), shoe), 0, -.005, .05);
-    add(ft, mesh(new RoundedBoxGeometry(.104, .022, .275, 2, .01), sole), 0, -.04, .05);
+    add(ft, mesh(new RoundedBoxGeometry(f ? .088 : .105, .075, f ? .25 : .275, 3, .03), shoe), 0, -.005, .05);
+    add(ft, mesh(new RoundedBoxGeometry(f ? .092 : .109, .022, f ? .255 : .28, 2, .01), sole), 0, -.04, .05);
     return { up, kn, ft };
   };
   const L = mkLeg(1), R = mkLeg(-1);
   // arms (shoulder pivot at top of chest)
-  const sx = f ? .205 : .25;
+  const sx = f ? .19 : .285;
   const mkArm = (s: number) => {
     const sh = add(spine, new THREE.Group(), s * sx, .44, 0);
-    add(sh, mesh(new THREE.SphereGeometry(f ? .052 : .06, 16, 12), shirt), 0, 0, 0);
-    add(sh, mesh(cap(.05, .18), skin), 0, -.15, 0);
-    add(sh, mesh(new THREE.CylinderGeometry(.058, .063, .14, 18), shirt), 0, -.1, 0); // short sleeve
+    add(sh, mesh(new THREE.SphereGeometry(f ? .048 : .07, 16, 12), shirt), 0, 0, 0);
+    add(sh, mesh(cap(f ? .038 : .056, .18), skin), 0, -.15, 0);
+    add(sh, mesh(new THREE.CylinderGeometry(f ? .045 : .066, f ? .05 : .072, .14, 18), shirt), 0, -.1, 0); // short sleeve
     const el = add(sh, new THREE.Group(), 0, -.29, 0);
-    add(el, mesh(new THREE.SphereGeometry(.046, 12, 10), skin));
-    add(el, mesh(cap(.043, .21), skin), 0, -.155, 0);
-    const hand = add(el, mesh(new THREE.SphereGeometry(.05, 14, 12), skin), 0, -.32, .005); hand.scale.set(.85, 1.15, .6);
+    add(el, mesh(new THREE.SphereGeometry(f ? .037 : .05, 12, 10), skin));
+    add(el, mesh(cap(f ? .034 : .048, .21), skin), 0, -.155, 0);
+    const hand = add(el, mesh(new THREE.SphereGeometry(.05, 14, 12), skin), 0, -.32, .005); hand.scale.set(f ? .72 : .92, f ? 1.05 : 1.2, f ? .55 : .65);
     const th = add(el, mesh(new THREE.SphereGeometry(.016, 8, 8), skin), s * -.035, -.3, .03); void th;
     return { sh, el };
   };

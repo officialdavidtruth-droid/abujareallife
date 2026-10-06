@@ -14,7 +14,7 @@ export default function PWARegister() {
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('/sw.js').catch(() => {});
     const chk = () => setPortrait(window.innerHeight > window.innerWidth * 1.05);
     chk(); window.addEventListener('resize', chk); window.addEventListener('orientationchange', chk);
-    const bip = (e: Event) => { e.preventDefault(); setInstall(e); };
+    const bip = (e: Event) => { e.preventDefault(); setInstall(e); setTimeout(() => setInstall(null), 10000); };
     window.addEventListener('beforeinstallprompt', bip);
     // block pinch-zoom / double-tap zoom / pull-to-refresh on iOS Safari
     const stop = (e: Event) => e.preventDefault();

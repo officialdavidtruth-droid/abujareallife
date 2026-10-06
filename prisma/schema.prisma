@@ -46,6 +46,7 @@ model User {
   passwordHash String
   email        String?    @unique
   emailVerifiedAt DateTime?
+  origin       String?   // 'LAPO' | 'NEPO': spun once at sign-up, never changes
   name         String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -211,7 +212,16 @@ model Save {
   insideAt  DateTime?
   jobAct    String?
   jobAt     DateTime?
+  origin    String?              // 'LAPO' | 'NEPO' (decided by the server-side wheel spin)
+  hasCar    Boolean  @default(false)
+  fame      Int      @default(0)
+  fameCarry Int      @default(0) // active seconds not yet converted to fame
+  fameAt    DateTime?
+  fameDay   String?
+  fameToday Int      @default(0)
   updatedAt DateTime @updatedAt
+
+  @@index([fame])
 }
 
 model Invite {

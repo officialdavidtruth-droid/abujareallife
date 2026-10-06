@@ -1,5 +1,36 @@
 // Shared (client + server) catalog and rules. The server is the authority for money, crime, jail and access.
-export const START_CASH = 1_000_000; // everyone starts a new game with ₦1,000,000
+/* ───────── Origin wheel: LAPO (poor) or NEPO (rich) ───────── */
+export type Origin = 'LAPO' | 'NEPO';
+export const NEPO_CASH = 5_000_000;   // nepo babies start rich
+export const LAPO_CASH = 50_000;      // lapo babies start with almost nothing
+export const NEPO_CHANCE = 0.3;       // 3 in 10 spins land on NEPO (the wheel shows 10 slices: 3 NEPO, 7 LAPO)
+export const WHEEL_SLICES: Origin[] = ['LAPO', 'LAPO', 'NEPO', 'LAPO', 'LAPO', 'NEPO', 'LAPO', 'LAPO', 'NEPO', 'LAPO'];
+export const startCash = (o: Origin) => (o === 'NEPO' ? NEPO_CASH : LAPO_CASH);
+export const CAR_PRICE = 2_500_000;   // nobody starts with a car: buy one at a Car Dealer
+
+/* ───────── Fame / popularity ───────── */
+export const FAME_TIERS = [
+  { id: 'nobody', label: 'Nobody', e: '👤', at: 0 },
+  { id: 'local', label: 'Local', e: '🙂', at: 50 },
+  { id: 'known', label: 'Known', e: '⭐', at: 200 },
+  { id: 'influencer', label: 'Influencer', e: '📱', at: 600 },
+  { id: 'elite', label: 'Elite', e: '👑', at: 1500 },
+] as const;
+export type FameTierId = (typeof FAME_TIERS)[number]['id'];
+export function fameTier(fame: number) {
+  let i = 0; for (let k = 0; k < FAME_TIERS.length; k++) if (fame >= FAME_TIERS[k].at) i = k;
+  const cur = FAME_TIERS[i], next = FAME_TIERS[i + 1] || null;
+  return { ...cur, next, pct: next ? Math.min(100, Math.round(((fame - cur.at) / (next.at - cur.at)) * 100)) : 100 };
+}
+export const FAME_DAILY_CAP = 120;       // most fame you can earn per day (stops farming)
+export const FAME_QUEST = 3;             // finishing a legal quest
+export const FAME_SHIFT = 2;             // finishing a work shift
+export const FAME_ACTIVE_SECS = 600;     // +1 fame for every 10 minutes you are active
+export const HELP_TIP = 5_000;           // you give this to a player you help
+export const HELP_FAME = 4;              // fame for the helper
+export const HELP_THANKS_FAME = 1;       // fame for the person helped
+export const HELP_PER_DAY = 5;           // max helps per day
+export const HELP_PER_TARGET_MS = 60 * 60_000; // same person at most once per hour
 
 export const SKILLS = [
   { id: 'hustling', label: 'Hustling', e: '💼' }, { id: 'driving', label: 'Driving', e: '🚗' },

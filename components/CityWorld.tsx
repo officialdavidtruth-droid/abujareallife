@@ -511,7 +511,7 @@ const distTo = (s: { x0: number; x1: number; z0: number; z1: number }, x: number
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
-export const GAME = { jailed: false, tp: null as { x: number; z: number } | null }; // set by the game layer; while true the player is locked inside the cell
+export const GAME = { jailed: false, hasCar: false, notice: '', tp: null as { x: number; z: number } | null }; // set by the game layer; while true the player is locked inside the cell
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
@@ -587,7 +587,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       } else if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) < 9) {
         VEH.drv = true; VEH.v = 0; engineStart(); snapCam = true;
         nearId.current = null; setN(null); setNear(null);
-      } else placeCar(p.x, p.z, p.r);
+      } else if (GAME.hasCar) placeCar(p.x, p.z, p.r);
+      else GAME.notice = '🚗 You do not own a car yet. Buy one at a Car Dealer.';
     }
     if (c.horn) { c.horn = false; if (VEH.drv) honk(); }
 
@@ -678,7 +679,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
-    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : VEH.placed && dCar < 9 ? 'E — Get in your car' : 'E — Call your car' };
+    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : VEH.placed && dCar < 9 ? 'E — Get in your car' : GAME.hasCar ? 'E — Call your car' : '' };
     if (!VEH.drv) {
       let best: CityBuilding | null = null, bd = 2.6;
       for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }
@@ -826,7 +827,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
   const [sel, setSel] = useState<string | null>(null);
   const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: 0, fz: -1, r: Math.PI, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
-  const [mute, setMute] = useState(false);
+  const [mute, setMute] = useState(false), [hasCar, setHasCar] = useState(GAME.hasCar);
+  useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
     const typing = (e: Event) => { const t = e.target as HTMLElement | null; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); };
     const dn = (e: KeyboardEvent) => {
@@ -854,13 +856,13 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
       <DriveHud hud={hud} />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMute(m => { setMuted(!m); return !m; }); }}>{mute ? '🔇' : '🔊'}</button>
       <div className="cwBtns">
-        <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />
-        <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />
+        {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
+        {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera behind you<br /><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera behind you<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
     </div>
   );
 }

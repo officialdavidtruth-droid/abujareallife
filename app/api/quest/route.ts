@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err } from '../../../lib/auth';
-import { addSkillXp, insideBiz, loadState, lvl } from '../../../lib/game';
-import { QUESTS } from '../../../lib/profile';
+import { addSkillXp, awardFame, insideBiz, loadState, lvl } from '../../../lib/game';
+import { FAME_QUEST, QUESTS } from '../../../lib/profile';
 export async function POST(req: Request) {
   const u = await currentUser(); if (!u) return err('Not signed in.', 401);
   const b = await req.json().catch(() => ({})), st = await loadState(u.id);
@@ -24,6 +24,7 @@ export async function POST(req: Request) {
   let heat = 0;
   if (!q.legal) { heat = 25; await prisma.save.update({ where: { userId: u.id }, data: { heat: { increment: heat }, heatAt: new Date() } }); }
   await prisma.transaction.create({ data: { userId: u.id, type: 'EARN', amount: q.reward, description: 'quest:' + q.id } });
+  const fame = q.legal ? await awardFame(u.id, FAME_QUEST) : 0;
   const n = await loadState(u.id);
-  return NextResponse.json({ ok: true, reward: q.reward, heatAdded: heat, cash: n!.save.cash, profile: n!.profile });
+  return NextResponse.json({ ok: true, fame, reward: q.reward, heatAdded: heat, cash: n!.save.cash, profile: n!.profile });
 }

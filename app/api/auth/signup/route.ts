@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { randomInt } from 'crypto';
+import { NEPO_CHANCE, type Origin } from '../../../../lib/profile';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../../../lib/prisma';
 import { authConfigured, err, publicUser, serverError, startSession, throttled } from '../../../../lib/auth';
@@ -13,12 +15,13 @@ export async function POST(req: Request) {
   if (!/^[A-Za-z0-9_]{3,18}$/.test(username)) return err('Username must be 3–18 letters, numbers or underscores.');
   if (password.length < 8 || password.length > 72) return err('Password must be 8–72 characters.');
   if (email && !/^\S+@\S+\.\S+$/.test(email)) return err('That email looks invalid.');
+  const origin: Origin = randomInt(0, 1000) < NEPO_CHANCE * 1000 ? 'NEPO' : 'LAPO'; // the wheel result: decided here, once, by the server
   try {
-    const user = await prisma.user.create({ data: { username, usernameKey: username.toLowerCase(), passwordHash: await bcrypt.hash(password, 11), email: email || null } });
+    const user = await prisma.user.create({ data: { username, usernameKey: username.toLowerCase(), passwordHash: await bcrypt.hash(password, 11), email: email || null, origin } });
     await startSession(user.id);
     let mailError: string | null = null;
     if (email) { try { mailError = await issueCode(user); } catch (e) { console.error('[signup] email code failed:', e); mailError = 'Could not send the email. Try again later.'; } }
-    return NextResponse.json({ user: publicUser(user), verifyEmail: !!email, mailError });
+    return NextResponse.json({ user: publicUser(user), verifyEmail: !!email, mailError, origin });
   } catch (e) {
     const x = e as { code?: string; meta?: { target?: string[] | string } };
     if (x.code === 'P2002') return err(String(x.meta?.target).includes('email') ? 'That email is already in use.' : 'That username is already taken.', 409);

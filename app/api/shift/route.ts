@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err } from '../../../lib/auth';
-import { addSkillXp, insideBiz, loadState } from '../../../lib/game';
+import { addSkillXp, awardFame, insideBiz, loadState } from '../../../lib/game';
+import { FAME_SHIFT } from '../../../lib/profile';
 import { SKILL_FOR, shiftPay } from '../../../lib/interiors';
 const SECS = 25;
 // Work a shift for the building you are inside. Pay = a tenth of that job's monthly salary. Senior roles need rank 2.
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
   const r = await prisma.save.updateMany({ where: { userId: u.id, questId: s.questId, questAt: s.questAt }, data: { questId: null, questAt: null, cash: { increment: pay }, profile: addSkillXp(st.profile, skill, 8) } });
   if (!r.count) return err('Already paid.', 409);
   await prisma.transaction.create({ data: { userId: u.id, type: 'EARN', amount: pay, description: `shift:${biz.name}:${job.title}` } });
+  const fame = await awardFame(u.id, FAME_SHIFT);
   const n = await loadState(u.id);
-  return NextResponse.json({ ok: true, pay, cash: n!.save.cash, profile: n!.profile });
+  return NextResponse.json({ ok: true, fame, pay, cash: n!.save.cash, profile: n!.profile });
 }

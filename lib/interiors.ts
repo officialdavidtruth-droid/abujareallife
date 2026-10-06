@@ -1,5 +1,5 @@
 import type { Business } from './cityTypes';
-import { CRIMES, QUESTS, type CrimeId, type ProfessionId, type SkillId } from './profile';
+import { CAR_PRICE, CRIMES, QUESTS, type CrimeId, type ProfessionId, type SkillId } from './profile';
 
 /* Every building type gets a real room. Shared by the room scene (client) and the server (shop prices). */
 export type Item = { x: number; z: number; w: number; d: number; h: number; c: string; y?: number; solid?: boolean; round?: boolean; glow?: boolean };
@@ -7,7 +7,7 @@ export type Opt = { t: 'shift'; idx: number; label: string; pay: number } | { t:
 export type Spot = { id: string; x: number; z: number; e: string; label: string; opts: Opt[] };
 export type Interior = { w: number; d: number; floor: string; wall: string; items: Item[]; spots: Spot[] };
 
-export type ShopItem = { id: string; label: string; cost: number; fx?: Partial<Record<'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social', number>>; xp?: { skill: SkillId; amt: number } };
+export type ShopItem = { id: string; label: string; cost: number; grant?: 'car'; fx?: Partial<Record<'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social', number>>; xp?: { skill: SkillId; amt: number } };
 const food: ShopItem[] = [{ id: 'meal', label: 'Jollof & chicken', cost: 3500, fx: { hunger: 55, fun: 4 } }, { id: 'drink', label: 'Cold drink', cost: 800, fx: { hunger: 6, fun: 4 } }];
 export const SHOP: Record<string, ShopItem[]> = {
   Restaurant: food, Hotel: [{ id: 'room', label: 'Room for the night', cost: 40_000, fx: { energy: 100, hygiene: 60 } }, ...food],
@@ -17,7 +17,7 @@ export const SHOP: Record<string, ShopItem[]> = {
   School: [{ id: 'tech', label: 'Coding course', cost: 60_000, xp: { skill: 'tech', amt: 30 } }, { id: 'biz', label: 'Business course', cost: 60_000, xp: { skill: 'business', amt: 30 } }, { id: 'law', label: 'Law course', cost: 60_000, xp: { skill: 'law', amt: 30 } }],
   Cinema: [{ id: 'ticket', label: 'Movie ticket + popcorn', cost: 5000, fx: { fun: 40, hunger: 8 } }], Nightclub: [{ id: 'drink', label: 'Drinks', cost: 3000, fx: { fun: 30, bladder: -10, social: 8 } }],
   Market: [{ id: 'snack', label: 'Suya', cost: 1500, fx: { hunger: 30 } }], 'Petrol Station': [{ id: 'snack', label: 'Snack & drink', cost: 1200, fx: { hunger: 18 } }],
-  Mechanic: [{ id: 'tune', label: 'Driving lessons', cost: 40_000, xp: { skill: 'driving', amt: 25 } }], 'Car Dealer': [], 'Police Station': [{ id: 'range', label: 'Combat training', cost: 30_000, xp: { skill: 'combat', amt: 20 } }],
+  Mechanic: [{ id: 'tune', label: 'Driving lessons', cost: 40_000, xp: { skill: 'driving', amt: 25 } }], 'Car Dealer': [{ id: 'car', label: 'Buy your first car', cost: CAR_PRICE, grant: 'car' }], 'Police Station': [{ id: 'range', label: 'Combat training', cost: 30_000, xp: { skill: 'combat', amt: 20 } }],
   Airport: [{ id: 'cafe', label: 'Airport café', cost: 4500, fx: { hunger: 40 } }], 'Rail Station': [{ id: 'cafe', label: 'Station snack', cost: 1500, fx: { hunger: 25 } }],
 };
 export const SKILL_FOR: Record<string, SkillId> = { Bank: 'business', Office: 'business', 'Tech Company': 'tech', Hospital: 'medicine', Pharmacy: 'medicine', Gym: 'fitness', Logistics: 'driving', Mechanic: 'driving', 'Car Dealer': 'charisma', 'Police Station': 'law', Jail: 'law', Government: 'law', Nightclub: 'charisma', Salon: 'charisma', Barber: 'charisma', Hotel: 'charisma', 'Estate Agency': 'business' };

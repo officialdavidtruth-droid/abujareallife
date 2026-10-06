@@ -1,0 +1,67 @@
+/* ===== HUD v2: calmer layout, dock, popularity, jobs sheet, origin wheel. Loaded after mobile.css ===== */
+
+/* Top-right status chip: profession + wanted + popularity bar */
+.glBar{position:absolute!important;top:calc(8px + var(--sat,0px))!important;right:calc(10px + var(--sar,0px))!important;left:auto!important;z-index:6;display:flex;flex-direction:column;gap:5px;min-width:176px;max-width:210px;background:#10201ae6;border:1px solid #ffffff20;border-radius:14px;padding:7px 10px;color:#fff;font-size:11px;backdrop-filter:blur(8px)}
+.glRow{display:flex;justify-content:space-between;gap:8px;white-space:nowrap}.glBar .hot{color:#ff5a4d;font-weight:900;animation:hp 1s infinite}@keyframes hp{50%{opacity:.4}}
+.glFame{all:unset;display:grid;grid-template-columns:auto 1fr;gap:3px 8px;align-items:center;cursor:pointer;font-size:11px}
+.glFame small{grid-column:1/-1;color:#9fb5aa;font-size:10px;text-align:right}
+.fbar{height:6px;background:#ffffff22;border-radius:9px;overflow:hidden}.fbar i{display:block;height:100%;background:linear-gradient(90deg,#d99a42,#f3c56f);border-radius:9px;transition:width .4s}.fbar.big{height:10px;margin:6px 0 4px}
+
+/* Right dock: one ☰ button; everything else opens on demand */
+.dock{position:absolute;right:calc(10px + var(--sar,0px));top:calc(76px + var(--sat,0px));z-index:7;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.dock>button{background:#10201aee;color:#fff;border:1px solid #ffffff2a;border-radius:999px;font-weight:700;backdrop-filter:blur(8px)}
+.dockToggle{width:46px;height:46px;font-size:20px}
+.dock .enter{background:#d99a42!important;color:#1a1208!important;padding:11px 16px;font-size:13px;font-weight:900;box-shadow:0 4px 14px #0007;animation:pop .25s both}
+.dock .help{padding:10px 14px;font-size:12px;border-color:#3fb98a!important;animation:pop .25s both}
+@keyframes pop{from{transform:scale(.8);opacity:0}}
+.dockGrid{display:grid;grid-template-columns:repeat(3,64px);gap:7px;background:#09130ff5;border:1px solid #ffffff2a;border-radius:18px;padding:9px;box-shadow:0 14px 40px #000a}
+.dockGrid button{display:flex;flex-direction:column;align-items:center;gap:2px;background:#13231d;border:1px solid #ffffff18;border-radius:12px;padding:8px 2px;color:#fff;min-height:54px}
+.dockGrid button span{font-size:20px;line-height:1}.dockGrid small{font-size:10px;color:#cfe}
+
+/* Panels sit left, away from the dock */
+.glPanel{right:auto!important;width:min(380px,calc(100vw - 100px))}
+.glPanel h4{margin:6px 0 2px;font-size:12px;color:#f3c56f}
+.fameMe{background:#13231d;border:1px solid #ffffff18;border-radius:12px;padding:10px}.fameMe b{font-size:15px}.fameMe span{float:right;color:#f3c56f;font-weight:800}
+.tiers{display:flex;justify-content:space-between;font-size:10px;color:#6c8479}.tiers .on{color:#f3c56f;font-weight:800}
+.lbRow{display:grid;grid-template-columns:34px 1fr auto;gap:6px;align-items:center;padding:6px 8px;border-radius:9px;font-size:12px;background:#0f1c17}.lbRow+.lbRow{margin-top:3px}.lbRow em{font-style:normal;color:#9fb5aa}.lbRow span{color:#f3c56f;font-weight:800}.lbRow.you{outline:1px solid #3fb98a;background:#14332a}
+
+/* Toasts: clear of the HUD */
+.glToast{max-width:min(420px,calc(100vw - 260px))!important}
+
+/* Jobs / businesses sheet */
+.cityPanel.sheet{background:#09130ffa!important;border:1px solid #ffffff22!important;border-radius:18px!important;padding:12px!important;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.cityPanel.sheet h3{margin:0;font-size:16px}.jbHead{display:flex;justify-content:space-between;align-items:baseline;padding-right:26px}.jbHead span{color:#9fb5aa;font-size:11px}
+.jbChips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}.jbChips::-webkit-scrollbar{display:none}
+.jbChips button{flex:none;background:#13231d;color:#cfe;border:1px solid #ffffff18;border-radius:999px;padding:6px 11px;font-size:12px;white-space:nowrap}.jbChips button.on{background:#1d7654;border-color:#3fb98a;color:#fff}
+.jbList{display:flex;flex-direction:column;gap:7px;overflow-y:auto;min-height:0;max-height:calc(100vh - 190px);padding-right:2px}
+.jbCard{display:grid;grid-template-columns:40px 1fr auto;gap:10px;align-items:center;background:#12221b;border:1px solid #ffffff14;border-radius:14px;padding:10px;text-align:left;color:#fff}
+.jbCard.btn{width:100%;font:inherit}
+.jbIc{width:40px;height:40px;border-radius:12px;background:#1b3329;display:grid;place-items:center;font-size:20px}
+.jbBody{min-width:0;display:flex;flex-direction:column;gap:2px}.jbBody b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.jbBody>span{font-size:11px;color:#9fb5aa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jbTags{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}.jbTags i{font-style:normal;font-size:10px;background:#ffffff12;color:#cfe;border-radius:6px;padding:2px 6px}.jbTags i.pay{background:#1d7654;color:#fff;font-weight:800}.jbTags small{opacity:.8;margin-left:2px}
+.jbShift{text-align:right;display:flex;flex-direction:column}.jbShift small{font-size:9px;color:#9fb5aa;text-transform:uppercase;letter-spacing:.05em}.jbShift b{font-size:13px;color:#f3c56f}
+.jbTip,.jbEmpty{margin:0;font-size:11px;color:#9fb5aa;text-align:center}
+
+/* Origin wheel */
+.owWrap{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:radial-gradient(circle at 50% 30%,#1c4a39,#07100d 80%);color:#fff;font-family:Inter,system-ui,sans-serif;overflow:auto}
+.owCard{width:min(380px,94vw);text-align:center;padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px}.owCard h2{margin:0;font-size:22px}.owSub{margin:0 0 4px;color:#9fb5aa;font-size:13px}
+.owBox{position:relative;width:220px;height:220px;margin:6px 0}
+.owWheel{position:absolute;inset:0;border-radius:50%;border:6px solid #f3c56f;box-shadow:0 0 0 4px #0008,0 10px 40px #000a;transition:transform 4.8s cubic-bezier(.12,.7,.1,1)}
+.owWheel span{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;font-size:20px;line-height:28px;text-align:center}
+.owHub{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px;border-radius:50%;background:#0c1713;border:3px solid #f3c56f}
+.owPtr{position:absolute;left:50%;top:-16px;transform:translateX(-50%);z-index:2;color:#ff5a4d;font-size:26px;text-shadow:0 2px 4px #000}
+.owKey{display:flex;gap:14px;font-size:12px;color:#cfe}.owKey i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+.owSpin{color:#9fb5aa;margin:10px 0}
+.owRes{animation:pop .4s both}.owRes h3{margin:8px 0 2px;font-size:20px}.owRes p{margin:4px 0}.owSmall{font-size:12px;color:#9fb5aa}
+.owRes button{margin-top:10px;background:#d99a42;color:#1a1208;border:0;border-radius:12px;padding:13px 22px;font-weight:900;font-size:15px}
+
+/* Install prompt: small, top-centre, never over the controls */
+.installBtn{bottom:auto!important;top:calc(8px + var(--sat,0px))!important;padding:7px 14px!important;font-size:12px!important;opacity:.95}
+
+@media (max-height:480px){
+  .glBar{min-width:150px;padding:5px 8px}.dock{top:calc(70px + var(--sat,0px))}
+  .dockGrid{grid-template-columns:repeat(3,58px)}
+  .jbList{max-height:calc(100vh - 150px)}
+}
+
+@media (pointer:coarse),(max-width:820px){.cityPanel.sheet{top:calc(80px + var(--sat,0px))!important;max-height:calc(100vh - 92px)!important}.jbList{max-height:calc(100vh - 210px)}}

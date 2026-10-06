@@ -1,0 +1,11 @@
+import type { BusinessType, CityBuilding, CityData, District } from './cityTypes';
+import { jobsFor } from './cityEconomy';
+const districtRows: [District,number,number][]=[['Central Area',0,0],['Wuse',-26,-4],['Garki',-20,24],['Maitama',25,-20],['Jabi',27,12],['Gwarinpa',-34,-28],['Asokoro',30,32],['Utako',-3,-30],['Kubwa',-48,22],['Lugbe',44,-34],['Airport Corridor',54,-5]];
+const districts = districtRows.map(([name,x,z])=>({name,x,z}));
+const colors=['#5b6875','#75614f','#526b5a','#6c5369','#5e687b','#7a6650','#536d73','#67596f'];
+const types:BusinessType[]=['Bank','Restaurant','Hotel','Hospital','Supermarket','Salon','Barber','Gym','Mechanic','Car Dealer','School','Office','Nightclub','Market','Petrol Station','Pharmacy','Cinema','Tech Company','Estate Agency','Logistics'];
+export function generateCity(seed=42):CityData{ const roads=[] as CityData['roads']; const buildings=[] as CityBuilding[]; const businesses=[] as CityData['businesses']; let id=0;
+  for(let i=-5;i<=5;i++){ const x=i*11; roads.push({id:`v${i}`,name:['Ahmadu Bello Way','Airport Road','Maitama Avenue','Garki Way','Wuse Road'][Math.abs(i)%5],x,z:0,w: i%2===0?1.7:1.15,d:120,major:i%2===0}); const z=i*11; roads.push({id:`h${i}`,name:['Independence Avenue','Gwarinpa Road','Jabi Link','Utako Crescent'][Math.abs(i)%4],x:0,z,w:120,d:i%2===0?1.7:1.15,major:i%2===0}); }
+  for(let bx=-5;bx<5;bx++) for(let bz=-5;bz<5;bz++){ const x=bx*11+5.5,z=bz*11+5.5; const dist=districts.reduce((a,b)=>Math.hypot(b.x-x,b.z-z)<Math.hypot(a.x-x,a.z-z)?b:a); const isLandmark=(bx===0&&bz===0)||(bx===4&&bz===0)||(bx===-4&&bz===2); const type=isLandmark?(bx===0?'Government':bx===4?'Airport':'Rail Station'):types[(Math.abs(bx*31+bz*17)+seed)%types.length]; const name=isLandmark?(type==='Airport'?'Nnamdi Azikiwe Airport':type==='Rail Station'?'Abuja Central Rail Station':'National Civic Centre'):`${dist.name} ${type}`; const business={id:`biz-${id}`,name,type:type as BusinessType,district:dist.name,x,z,jobs:jobsFor(type as BusinessType,name,dist.name)}; businesses.push(business); buildings.push({id:`b-${id++}`,x,z,w:7+(Math.abs(bx+bz)%2)*2,d:7,h:3+(Math.abs(bx*7+bz*3)%5)*1.4,color:colors[id%colors.length],business}); }
+  const rail=Array.from({length:15},(_,i)=>({x:-55+i*8,z:13})); return {roads,buildings,businesses,districts,rail,airport:{x:54,z:-5}}; }
+export const CITY=generateCity();

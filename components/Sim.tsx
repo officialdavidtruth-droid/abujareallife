@@ -9,7 +9,7 @@ import Account, { type AccountUser } from './Account';
 import AuthScreen from './AuthScreen';
 import Loader from './Loader';
 import AssetLoader from './AssetLoader';
-import Neighborhood from './Neighborhood';
+import City from './City';
 import { DEFAULT_LOOK, OUTFITS, type Look } from '../lib/characterModels';
 import { findPath, blocked, inside, HARD, type Blk, type Box, type P } from '../lib/collision';
 
@@ -460,7 +460,7 @@ export default function Sim() {
   return <div className="sim">
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
-    {user && look && outside && <Neighborhood look={look} onNear={dt => { S.needs.social = cl(S.needs.social + dt * 2); }} />}
+    {user && look && outside && <City look={look} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.75]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} onDone={l => { const n = { ...l, name: user.username }; setLook(n); saveNow(n); setEditing(false); }} />}

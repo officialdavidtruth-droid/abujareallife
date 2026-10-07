@@ -15,6 +15,7 @@ import { buildInterior, staffLook, type Interior as Room, type Item, type Office
 import { ROOM, useRoomNet } from '../lib/roomNet';
 import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
 import type { Look } from '../lib/characterModels';
+import { businessStatus } from '../lib/businessHours';
 
 type Go = { path: [number, number][]; i: number; stuck: number; open?: { kind: 'spot'; id: string } | { kind: 'npc'; idx: number } };
 type Cam = { yaw: number; pitch: number; dist: number };
@@ -138,7 +139,7 @@ function Player({ look, room, ctl, onSpot, onExit, frozen, snap, lock, onBlocked
   return <group ref={g}><Human look={look} getState={() => (mv.current ? 'walk' : 'idle')} getAnim={() => (ROOM.me.w > 0 && !mv.current ? 'work' : undefined)} /></group>;
 }
 
-export default function Interior({ bizId, look, profile, onExit, onFx, onCash }: { bizId: string; look: Look; profile: Profile; onExit: (jailed?: boolean) => void; onFx: (fx: Record<string, number>) => void; onCash: (n: number) => void }) {
+export default function Interior({ bizId, look, profile, onExit, onFx, onCash, getMinute }: { bizId: string; look: Look; profile: Profile; onExit: (jailed?: boolean) => void; onFx: (fx: Record<string, number>) => void; onCash: (n: number) => void; getMinute?: () => number }) {
   const biz = CITY.businesses.find(b => b.id === bizId)!, room = useMemo(() => buildInterior(biz), [biz]), net = useRoomNet(bizId, look);
   const ctl = useRef<Ctl>({ keys: new Set(), joy: { x: 0, y: 0 }, run: false, act: false }), snap = useRef<{ x: number; z: number; r: number } | null>(null), staff = useMemo(() => room.posts.map(p => staffLook(biz, p)), [room, biz]);
   const [store, setStore] = useState(false), [spot, setSpot] = useState<Spot | null>(null), [menu, setMenu] = useState<Spot | null>(null), [actionOpen, setActionOpen] = useState(false), [msg, setMsg] = useState(''), [txt, setTxt] = useState('');
@@ -238,7 +239,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
       <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu || store} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
       {net.roster.map(n => ROOM.peers[n] && <Remote key={n + net.ver} name={n} bub={net.bub[n]} />)}
     </Canvas></div>
-    <div className="inTop"><div className="inIdentity"><span className="inEyebrow">INSIDE</span><b>{biz.name}</b><span className="inMeta">{biz.type} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span></div></div>
+    <div className="inTop"><div className="inIdentity"><span className="inEyebrow">INSIDE</span><b>{biz.name}</b><span className="inMeta">{biz.type} · {businessStatus(biz.type, getMinute ? getMinute() : 0).label} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span></div></div>
     <button className="inLeaveSide" onClick={leave} aria-label="Leave building">🚪 <span>Leave</span></button>
     {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}</div>}{msg && <div className="inToast">{msg}</div>}
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}

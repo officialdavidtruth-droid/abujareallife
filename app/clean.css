@@ -465,3 +465,4 @@
   .inTop{width:calc(100vw - 78px)!important;max-width:390px!important}
   .inTop .inIdentity b{max-width:38vw!important}
 }
+.openNow,.closedNow{display:block!important;font-style:normal!important;font-size:10px!important;font-weight:900!important;margin-top:3px!important;letter-spacing:.04em!important}.openNow{color:#63d59a!important}.closedNow{color:#ff7777!important}.nearCard .ncEnter:disabled{opacity:.55!important;cursor:not-allowed!important}.nearCopy{min-width:0}.nearCopy b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px}

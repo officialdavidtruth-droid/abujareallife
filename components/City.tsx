@@ -6,6 +6,7 @@ import { shiftPay } from '../lib/interiors';
 import { shiftJobs } from '../lib/work';
 import type { Look } from '../lib/characterModels';
 import type { Business, Job } from '../lib/cityTypes';
+import { businessStatus } from '../lib/businessHours';
 
 type Tab = 'map' | 'jobs' | 'businesses' | null;
 const MAP_W = 120;
@@ -77,22 +78,22 @@ function GameMap({ onClose, onSelect }: { onClose: () => void; onSelect: (b: Bus
       </svg>
       <div className="mapLegend"><span><i className="youDot"/>You</span><span><i className="bizDot"/>Business</span><span><i className="roadDot"/>Major road</span></div>
     </div>
-    {selected && <div className="mapPlace"><div><b>{ICON[selected.type] || '🏢'} {selected.name}</b><small>{selected.type} · {selected.district}</small></div><button onClick={() => navigate(selected)}>📍 Navigate</button></div>}
+    {selected && <div className="mapPlace"><div><b>{ICON[selected.type] || '🏢'} {selected.name}</b><small>{selected.type} · {selected.district} · {businessStatus(selected.type, getMinute ? getMinute() : 0).label}</small></div><button onClick={() => navigate(selected)}>📍 Navigate</button></div>}
     {GAME.nav && <div className="mapRoute">📍 Navigating to <b>{GAME.nav.name}</b><button onClick={() => { GAME.nav = null; }}>Cancel</button></div>}
     <p className="jbTip">The map uses the same coordinates as the 3D city: your blue marker moves live, businesses are clickable, and Navigate sends your character there.</p>
   </div>;
 }
 
 export default function City({ look, onNear, getMinute, onSocial, tab: tabProp, onTab }: { look: Look; onNear: (b: Business | null) => void; getMinute?: () => number; onSocial?: (a?: number) => void; tab?: Tab; onTab?: (t: Tab) => void }) {
-  const [own, setOwn] = useState<Tab>(null), [near, setNear] = useState<Business | null>(null), [focus, setFocus] = useState<Business | null>(null);
+  const [own, setOwn] = useState<Tab>(null), [near, setNear] = useState<Business | null>(null), [focus, setFocus] = useState<Business | null>(null), [entering, setEntering] = useState(false);
   const controlled = onTab !== undefined, tab = controlled ? (tabProp ?? null) : own, setTab = (t: Tab) => (controlled ? onTab!(t) : setOwn(t));
   return <div className="cityShell">
     <CityWorld look={look} onNear={b => { setNear(b); onNear(b); }} getMinute={getMinute} onSocial={onSocial} onOpenMap={() => setTab('map')} />
     {!controlled && <div className="cityActions"><button onClick={() => setTab(tab === 'map' ? null : 'map')}>🗺️<em> Map</em></button><button onClick={() => setTab(tab === 'jobs' ? null : 'jobs')}>💼<em> Jobs</em></button><button onClick={() => setTab(tab === 'businesses' ? null : 'businesses')}>🏪<em> Businesses</em></button></div>}
-    {near && !tab && <div className="nearCard" role="dialog" aria-label={`Nearby building: ${near.name}`}>
-      <div className="nearIdentity"><div className="nearIcon">🏢</div><div className="nearCopy"><b>{near.name}</b><span>{near.type} · {near.district}</span></div></div>
-      <div className="nearActions"><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs</button><button className="ncEnter" onClick={() => window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id }))}>🚪 Enter</button></div>
-    </div>}
+    {near && !tab && (() => { const bs = businessStatus(near.type, getMinute ? getMinute() : 0); return <div className="nearCard" role="dialog" aria-label={`Nearby building: ${near.name}`}>
+      <div className="nearIdentity"><div className="nearIcon">🏢</div><div className="nearCopy"><b>{near.name}</b><span>{near.type} · {near.district}</span><em className={bs.open ? 'openNow' : 'closedNow'}>{bs.open ? '● OPEN' : '● CLOSED'} · {bs.hours}</em></div></div>
+      <div className="nearActions"><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs</button><button className="ncEnter" disabled={!bs.open || entering} onClick={() => { setEntering(true); window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id })); setTimeout(() => setEntering(false), 1200); }}>{entering ? '⏳ Entering…' : bs.open ? '🚪 Enter' : '🔒 Closed'}</button></div>
+    </div>; })()}
     {tab && <div className="cityPanel sheet"><button className="close" onClick={() => setTab(null)}>×</button>
       {tab === 'map' && <GameMap onClose={() => setTab(null)} onSelect={b => { setFocus(b); }} />}
       {tab === 'businesses' && <><div className="jbHead"><h3>🏪 Businesses</h3><span>{CITY.businesses.length}</span></div><div className="jbList">{CITY.businesses.slice(0, 45).map(b => <button key={b.id} className="jbCard btn" onClick={() => { setFocus(b); setTab('jobs'); }}><div className="jbIc">{ICON[b.type] || '🏢'}</div><div className="jbBody"><b>{b.name}</b><span>{b.type} · {b.district}</span></div></button>)}</div></>}

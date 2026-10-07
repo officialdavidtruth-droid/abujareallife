@@ -17,7 +17,7 @@ export async function PUT(req: Request) {
   const b = await req.json().catch(() => ({}));
   const l = b.look || {}, st = b.state || {}, n = st.needs || {};
   const look = sanitizeLook(l, u.username);
-  const state = { needs: Object.fromEntries(['hunger', 'energy', 'hygiene', 'bladder', 'fun', 'social'].map(k => [k, num(n[k], 0, 100, 60)])), min: num(st.min, 0, 1e7, 480), bonds: Object.fromEntries(['spouse', 'chidi', 'amara'].map(k => [k, num((st.bonds || {})[k], 0, 100, 30)])), family: st.family === true }; // cash is server-owned: see /api/economy
+  const state = { needs: Object.fromEntries(['hunger', 'energy', 'hygiene', 'bladder', 'fun', 'social'].map(k => [k, num(n[k], 0, 100, 60)])), min: num(st.min, 0, 1e7, 480), bonds: Object.fromEntries(['spouse', 'chidi', 'amara'].map(k => [k, num((st.bonds || {})[k], 0, 100, 30)])), family: false }; // cash is server-owned: see /api/economy
   if (!(await prisma.save.findUnique({ where: { userId: u.id } }))) return err('Create your character through /api/profile first.', 409);
   await prisma.save.update({ where: { userId: u.id }, data: { look, state } });
   return NextResponse.json({ ok: true });

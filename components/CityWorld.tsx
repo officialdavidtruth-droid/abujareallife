@@ -361,6 +361,50 @@ function Traffic() {
   return <>{flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}><CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} /></group>)}</>;
 }
 
+
+/* ───────────── player transport stands: taxis + hire bikes ───────────── */
+const TRANSPORT_STOPS = [
+  { kind: 'taxi' as const, x: 0, z: 4.5, r: Math.PI, label: 'Taxi Stand' },
+  { kind: 'taxi' as const, x: 22, z: 4.5, r: Math.PI, label: 'Taxi Stand' },
+  { kind: 'taxi' as const, x: -22, z: -4.5, r: 0, label: 'Taxi Stand' },
+  { kind: 'bike' as const, x: 4.5, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
+  { kind: 'bike' as const, x: -4.5, z: -22, r: Math.PI / 2, label: 'Bike Hire' },
+  { kind: 'bike' as const, x: 26.5, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
+];
+const DESTS = CITY.districts.slice(0, 8).map(d => ({ name: d.name, x: d.x, z: d.z }));
+function TransportVehicles() {
+  const kit = useMemo(carKit, []), [open, setOpen] = useState<{ kind: 'taxi' | 'bike'; label: string } | null>(null), [near, setNear] = useState<{ kind: 'taxi' | 'bike'; label: string; x: number; z: number } | null>(null);
+  useEffect(() => { const id = setInterval(() => { const p = GAME.player; let best: typeof near = null, bd = 4.5; for (const t of TRANSPORT_STOPS) { const d = Math.hypot(p.x - t.x, p.z - t.z); if (d < bd) { bd = d; best = t; } } setNear(best); }, 180); return () => clearInterval(id); }, []);
+  const ride = async (kind: 'taxi' | 'bike', d: { name: string; x: number; z: number }) => {
+    const r = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { GAME.notice = data.error || 'Transport unavailable.'; return; }
+    GAME.notice = `${kind === 'taxi' ? '🚕 Taxi' : '🚲 Bike'} taking you to ${d.name}`;
+    setOpen(null);
+    setTimeout(() => { GAME.tp = { x: d.x, z: d.z }; GAME.notice = `📍 Arrived in ${d.name}`; }, 850);
+  };
+  return <>
+    {TRANSPORT_STOPS.map((t, i) => <group key={i} position={[t.x, 0, t.z]} rotation-y={t.r} onClick={e => { e.stopPropagation(); setOpen({ kind: t.kind, label: t.label }); }}>
+      {t.kind === 'taxi' ? <group><CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" /><mesh position={[-.05, 1.38, 0]}><boxGeometry args={[.9, .18, .8]} /><meshStandardMaterial color="#111" /></mesh></group> : <group scale={[.65,.65,.65]}><mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh><mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh></group>}
+      <Html position={[0, 2.2, 0]} center><div className="transportTag">{t.kind === 'taxi' ? '🚕' : '🚲'} {t.label}</div></Html>
+    </group>)}
+    {open && near && <Html position={[near.x, 2.8, near.z]} center><div className="transportMenu"><b>{open.kind === 'taxi' ? '🚕 Choose destination' : '🚲 Hire bike'}</b>{open.kind === 'bike' && <small>Fast travel · low cost</small>}{DESTS.map(d => <button key={d.name} onClick={() => ride(open.kind, d)}>{d.name}</button>)}<button className="transportClose" onClick={() => setOpen(null)}>Cancel</button></div></Html>}
+    {near && !open && <Html position={[near.x, 2.1, near.z]} center><div className="transportPrompt">{near.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire'}</div></Html>}
+    <style>{`.transportTag,.transportPrompt{background:#09130fe8;color:#fff;border:1px solid #ffffff2a;border-radius:999px;padding:5px 9px;font:800 10px Inter,system-ui;white-space:nowrap;box-shadow:0 5px 14px #0006}.transportPrompt{background:#d99a42;color:#111}.transportMenu{width:170px;display:flex;flex-direction:column;gap:5px;padding:9px;background:#09130ff5;border:2px solid #111;border-radius:14px;box-shadow:0 12px 30px #0008}.transportMenu b{font-size:12px}.transportMenu small{color:#9fb5aa;font-size:9px}.transportMenu button{border:0;border-radius:8px;background:#18352a;color:#fff;padding:6px 7px;font-weight:800;font-size:10px;cursor:pointer}.transportMenu button:hover{background:#d99a42;color:#111}.transportMenu .transportClose{background:#4a2525}`}</style>
+  </>;
+}
+
+/* ───────────── roadside advertising billboards ───────────── */
+const BILLBOARDS = [
+  { x: -11, z: 8, r: 0, title: 'ABUJA REAL LIFE', sub: 'Your city. Your story.' },
+  { x: 11, z: -8, r: Math.PI, title: 'BIZNEST', sub: 'Build your business.' },
+  { x: -33, z: 8, r: 0, title: 'YOUR AD HERE', sub: 'Reach Abuja players' },
+  { x: 33, z: -8, r: Math.PI, title: 'ABUJA NIGHTS', sub: 'Work • Meet • Connect' },
+  { x: 8, z: 33, r: -Math.PI / 2, title: 'NOW HIRING', sub: 'Find a job near you' },
+];
+function Billboards() { return <>{BILLBOARDS.map((b, i) => <group key={i} position={[b.x, 0, b.z]} rotation-y={b.r}><mesh position={[0, 2.8, 0]} castShadow><boxGeometry args={[5.2, 2.2, .16]} /><meshStandardMaterial color="#18251f" roughness={.65} /></mesh><mesh position={[0, 2.8, -.1]}><boxGeometry args={[4.85, 1.85, .05]} /><meshStandardMaterial color={i % 2 ? '#d99a42' : '#1d7654'} /></mesh><Text position={[0, 3.15, -.16]} fontSize={.34} color="#fff" anchorX="center" anchorY="middle" maxWidth={4.5}>{b.title}</Text><Text position={[0, 2.62, -.16]} fontSize={.17} color="#fff" anchorX="center" anchorY="middle" maxWidth={4.5}>{b.sub}</Text><mesh position={[-1.7, 1.05, 0]}><boxGeometry args={[.12, 2.3, .12]} /><meshStandardMaterial color="#333" /></mesh><mesh position={[1.7, 1.05, 0]}><boxGeometry args={[.12, 2.3, .12]} /><meshStandardMaterial color="#333" /></mesh></group>)}</>;
+}
+
 /* ───────────── railway + airport on the city edge ───────────── */
 const RAIL_Z = 126;
 function TrainLine() {
@@ -844,6 +888,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[700, 700]} /><meshStandardMaterial color="#5d7f55" /></mesh>
       <Roads />
+      <Billboards />
+      <TransportVehicles />
       <Inst items={SLABS} color="#b4b6b2" h={.12} y={.06} receive />
       <Inst items={MARKS.yellow} color="#f2b705" h={.02} y={.025} />
       <Inst items={MARKS.white} color="#f4f1e4" h={.02} y={.025} />

@@ -22,7 +22,12 @@ export async function POST(req: Request) {
     if (!['dating', 'engaged', 'married'].includes(status)) return err('Invalid status.');
     const other = await prisma.user.findUnique({ where: { usernameKey: String(b.to || '').toLowerCase() } });
     if (!other || other.username === me) return err('No such player.');
-    await prisma.relationship.upsert({ where: { aName_bName: { aName: me, bName: other.username } }, create: { aName: me, bName: other.username, status }, update: { status, accepted: false } });
+    const existing = await prisma.relationship.findFirst({ where: { OR: [{ aName: me, bName: other.username }, { aName: other.username, bName: me }] } });
+    if (status === 'engaged' && (!existing || !existing.accepted || existing.status !== 'dating')) return err('You must both accept the dating relationship before getting engaged.');
+    if (status === 'married' && (!existing || !existing.accepted || existing.status !== 'engaged')) return err('You must both accept the engagement before getting married.');
+    if (existing && existing.aName === other.username && !existing.accepted) return err('This player has already sent you the current relationship request. Respond to it first.');
+    if (existing && existing.aName === other.username) await prisma.relationship.delete({ where: { id: existing.id } });
+    await prisma.relationship.upsert({ where: { aName_bName: { aName: me, bName: other.username } }, create: { aName: me, bName: other.username, status, accepted: false }, update: { status, accepted: false } });
     return NextResponse.json({ ok: true });
   }
   if (b.action === 'accept') {

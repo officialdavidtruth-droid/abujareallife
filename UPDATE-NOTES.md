@@ -23,3 +23,13 @@
 ## Not done yet
 - Timed city "events" that give fame (no event system exists yet).
 - Existing players keep their cash but lose the car and start at 0 fame.
+
+## Player-first city update — 2026-10-07
+- Removed the in-game NPC marriage/family start option; existing saves are loaded with family disabled.
+- Real-player relationships now follow a sequence: dating → engagement → marriage, with acceptance at every stage.
+- Building entry now gives immediate Entering feedback and respects business opening hours.
+- Businesses display OPEN/CLOSED status and hours in the nearby building card and interior header.
+- Building exits now calculate a sidewalk-side exit near the closest road instead of dropping players into the road/building footprint.
+- Added taxi stands and bike-hire stands with paid fast travel to Abuja districts.
+- Added roadside advertising billboards with a player-facing “YOUR AD HERE” placeholder.
+- Added `/api/transport` for server-side transport fares and transaction records.

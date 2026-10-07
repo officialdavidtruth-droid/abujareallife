@@ -679,12 +679,26 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
   </>;
 }
 
+function cityExitPoint(b: (typeof CITY.buildings)[number]) {
+  const road = CITY.roads.reduce((best, r) => {
+    const d = r.d > r.w ? Math.abs(b.x - r.x) : Math.abs(b.z - r.z);
+    const bd = best.d;
+    return d < bd ? { r, d } : best;
+  }, { r: CITY.roads[0], d: Infinity } as { r: (typeof CITY.roads)[number]; d: number }).r;
+  if (road.d > road.w) {
+    const side = road.x >= b.x ? 1 : -1;
+    return { x: b.x + side * (b.w / 2 + 1.8), z: b.z };
+  }
+  const side = road.z >= b.z ? 1 : -1;
+  return { x: b.x, z: b.z + side * (b.d / 2 + 1.8) };
+}
+
 export default function Sim() {
   const [famModal, setFamModal] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); F.load(r.save.state.bonds, r.save.state.family); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); F.load(r.save.state.bonds, false); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {
@@ -707,8 +721,8 @@ export default function Sim() {
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
     {user && look && outside && !inside && <City tab={cityTab} onTab={setCityTab} look={look} getMinute={() => S.min} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
-    {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} username={user.username} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
-    {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = { x: b.x, z: b.z + b.d / 2 + 2.5 }; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
+    {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} username={user.username} getMinute={() => S.min} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
+    {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={() => S.min} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = cityExitPoint(b); fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
@@ -722,21 +736,14 @@ export default function Sim() {
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
-        {user && look && !outside && <button className="pill" onClick={() => { setFamModal(true); setMenu(false); }}>💍 Family</button>}</div></div>
+      </div></div>
     <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
       {NEEDS.map(([k, l, e]) => <div key={k} className={'nrow' + (ui.needs[k] < 25 ? ' low' : '')}><span>{e}<em> {l}</em></span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
-    {user && look && !outside && ui.famOn && !menu && <button className="famBtn" onClick={() => setFamOpen(v => !v)}>{famOpen ? '✕' : '👨‍👩‍👧‍👦 Family'}</button>}
-    {user && look && !outside && ui.famOn && famOpen && !menu && <div className="fam">{ui.fam.map(f => <div key={f.id} className="frow"><span>{f.e}</span><em>{f.name}</em><small>{f.label}</small><div className="bar"><i style={{ width: f.bond + '%', background: '#e8638a' }} /></div></div>)}</div>}
+    
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
     {!outside && <div className="hint">Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom</div>}
-    {famModal && <div className="modal" onPointerDown={e => { if (e.target === e.currentTarget) setFamModal(false); }}><div className="box">
-      {ui.famOn ? <><h3>👨‍👩‍👧‍👦 Your family</h3><p className="muted">Ada/Emeka and the kids live with you. Spend time with them to grow your bond.</p>
-        <div className="row"><button onClick={() => setFamModal(false)}>Keep my family</button><button onClick={() => { if (window.confirm('End the family? Your spouse and kids will move out of the house.')) { F.setOn(false); setFamOpen(false); setFamModal(false); if (lookRef.current) saveNow(lookRef.current); } }}>💔 End family</button></div></>
-      : <><h3>💍 Start a family?</h3><p className="muted">Right now you live on your own. If you want, you can get married and share the home with a spouse and two kids. They follow their own daily routine, and you grow your bond with dinners, chats and play.</p><p className="muted">It is completely your choice, and you can change your mind later. (Marriage between real players is under Love in the city menu.)</p>
-        <div className="row"><button onClick={() => setFamModal(false)}>Not now</button><button className="pri" onClick={() => { F.setOn(true); setFamOpen(true); setFamModal(false); say('💍 Your new family moves in!'); if (lookRef.current) saveNow(lookRef.current); }}>💍 Get married &amp; start a family</button></div></>}
-    </div></div>}
     <style>{CSS}</style>
   </div>;
 }

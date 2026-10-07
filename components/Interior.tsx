@@ -239,7 +239,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
       <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu || store} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
       {net.roster.map(n => ROOM.peers[n] && <Remote key={n + net.ver} name={n} bub={net.bub[n]} />)}
     </Canvas></div>
-    <div className="inTop"><b>{biz.name}</b><span>{biz.type} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span><button onClick={leave}>🚪 Leave</button><button className="inGear" aria-label="Settings" onClick={openSettings}>⚙️</button></div>
+    <div className="inTop"><div className="inIdentity"><span className="inEyebrow">INSIDE</span><b>{biz.name}</b><span className="inMeta">{biz.type} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span></div><div className="inTopActions"><button onClick={leave}>🚪 Leave</button><button className="inGear" aria-label="Settings" onClick={openSettings}>⚙️</button></div></div>
     {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}</div>}{msg && <div className="inToast">{msg}</div>}
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
     <div className="inDock"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => goSpot(sp)}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>

@@ -48,7 +48,10 @@ export default function City({ look, onNear, getMinute, onSocial, tab: tabProp, 
   return <div className="cityShell">
     <CityWorld look={look} onNear={b => { setNear(b); onNear(b); }} getMinute={getMinute} onSocial={onSocial} />
     {!controlled && <div className="cityActions"><button onClick={() => setTab(tab === 'map' ? null : 'map')}>🗺️<em> Map</em></button><button onClick={() => setTab(tab === 'jobs' ? null : 'jobs')}>💼<em> Jobs</em></button><button onClick={() => setTab(tab === 'businesses' ? null : 'businesses')}>🏪<em> Businesses</em></button></div>}
-    {near && !tab && <div className="nearCard"><b>{near.name}</b><span>{near.type} · {near.district}</span><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs &amp; apply</button><button className="ncEnter" onClick={() => window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id }))}>🚪 Enter</button></div>}
+    {near && !tab && <div className="nearCard" role="dialog" aria-label={`Nearby building: ${near.name}`}>
+      <div className="nearIdentity"><div className="nearIcon">🏢</div><div className="nearCopy"><b>{near.name}</b><span>{near.type} · {near.district}</span></div></div>
+      <div className="nearActions"><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs</button><button className="ncEnter" onClick={() => window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id }))}>🚪 Enter</button></div>
+    </div>}
     {tab && <div className="cityPanel sheet"><button className="close" onClick={() => setTab(null)}>×</button>
       {tab === 'map' && <><h3>🗺️ Abuja map</h3><div className="mapGrid">{CITY.districts.map(d => <div key={d.name} style={{ left: `${50 + d.x * .75}%`, top: `${50 + d.z * .75}%` }}>{d.name}</div>)}</div><p className="jbTip">Major roads connect every district.</p></>}
       {tab === 'businesses' && <><div className="jbHead"><h3>🏪 Businesses</h3><span>{CITY.businesses.length}</span></div><div className="jbList">{CITY.businesses.slice(0, 45).map(b => <button key={b.id} className="jbCard btn" onClick={() => { setFocus(b); setTab('jobs'); }}><div className="jbIc">{ICON[b.type] || '🏢'}</div><div className="jbBody"><b>{b.name}</b><span>{b.type} · {b.district}</span></div></button>)}</div></>}

@@ -784,7 +784,7 @@ function LookPad({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
     onPointerMove={e => { if (active.current !== e.pointerId) return; ctl.current.look = { x: e.clientX - last.current.x, y: e.clientY - last.current.y }; last.current = { x: e.clientX, y: e.clientY }; }}
     onPointerUp={() => { active.current = null; ctl.current.look = { x: 0, y: 0 }; }}
     onPointerCancel={() => { active.current = null; ctl.current.look = { x: 0, y: 0 }; }}
-  ><span>DRAG TO LOOK</span></div>;
+  ><span>↔ LOOK</span></div>;
 }
 function Minimap({ hud }: { hud: React.MutableRefObject<Hud> }) {
   const ref = useRef<HTMLCanvasElement>(null);

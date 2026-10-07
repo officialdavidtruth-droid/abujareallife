@@ -74,3 +74,54 @@
   .inStick{left:calc(16px + var(--sal))!important;bottom:calc(18px + var(--sab))!important;width:112px!important;height:112px!important}
   .inMenu{left:12px!important;right:12px!important;top:50%!important;transform:translateY(-50%)!important;max-height:70vh!important;border-radius:18px!important;z-index:60!important}
 }
+
+/* ===== HUD v3: location cards + collision-safe typography ===== */
+.nearCard{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:14px!important;background:rgba(8,20,15,.92)!important;border:1px solid rgba(255,255,255,.14)!important;border-radius:18px!important;padding:10px 12px!important;backdrop-filter:blur(14px)!important;box-shadow:0 12px 34px rgba(0,0,0,.38)!important}
+.nearIdentity{display:flex;align-items:center;gap:10px;min-width:0}
+.nearIcon{width:38px;height:38px;display:grid;place-items:center;flex:none;border-radius:11px;background:#17352a;border:1px solid rgba(255,255,255,.12);font-size:18px}
+.nearCopy{min-width:0;display:flex;flex-direction:column;gap:2px}
+.nearCopy b{display:block!important;font-size:13px!important;line-height:1.15!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:min(230px,35vw)!important}
+.nearCopy span{display:block!important;color:#93aa9e;font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(230px,35vw)}
+.nearActions{display:flex;align-items:center;gap:6px;flex:none}
+.nearActions button{min-height:34px!important;padding:7px 11px!important;border-radius:10px!important;border:1px solid rgba(255,255,255,.12)!important;background:#16291f!important;color:#fff!important;font-weight:800!important;font-size:11px!important;white-space:nowrap!important}
+.nearActions .ncEnter{background:#d99a42!important;color:#171008!important;border-color:#efc46f!important}
+
+.inTop{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;background:rgba(8,18,14,.9)!important;border:1px solid rgba(255,255,255,.13)!important;border-radius:16px!important;box-shadow:0 10px 30px rgba(0,0,0,.35)!important;backdrop-filter:blur(14px)!important}
+.inIdentity{min-width:0;display:flex;align-items:baseline;gap:8px;overflow:hidden}
+.inEyebrow{font-size:9px!important;letter-spacing:.12em;color:#d99a42!important;font-weight:900!important;flex:none}
+.inIdentity b{font-size:13px!important;line-height:1.15!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.inMeta{font-size:9px!important;color:#8fa59a!important;white-space:nowrap!important;flex:none}
+.inTopActions{display:flex;gap:5px;flex:none}
+.inTopActions button{min-height:30px!important;padding:6px 9px!important;border-radius:9px!important;font-size:10px!important;font-weight:900!important}
+.inTopActions .inGear{width:30px!important;padding:0!important}
+
+.inDock{background:rgba(8,18,14,.84)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:16px!important;padding:8px!important;backdrop-filter:blur(12px)!important;box-shadow:0 10px 30px rgba(0,0,0,.35)!important}
+.inDock i{display:block!important;font-style:normal!important;text-transform:uppercase!important;letter-spacing:.1em!important;color:#8fa59a!important}
+.inDock button{min-height:38px!important;border-radius:10px!important}
+.inDock button .glTx{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+
+.cwLookPad span{background:rgba(8,18,14,.55);padding:4px 7px;border-radius:999px;color:#d7e3dc!important;font-size:8px!important;letter-spacing:.08em!important}
+
+@media (pointer:coarse),(max-width:820px){
+  .sim.outside .nearCard{left:50%!important;right:auto!important;bottom:calc(122px + var(--sab))!important;width:min(390px,calc(100vw - 32px))!important;max-width:none!important;padding:9px 10px!important;gap:8px!important}
+  .sim.outside .nearCopy b{max-width:42vw!important;font-size:12px!important}
+  .sim.outside .nearCopy span{max-width:42vw!important;font-size:9px!important}
+  .sim.outside .nearIcon{width:34px;height:34px;font-size:16px}
+  .sim.outside .nearActions{gap:5px}
+  .sim.outside .nearActions button{min-height:32px!important;padding:6px 9px!important;font-size:10px!important}
+  .sim.outside .cwLookPad{background:transparent!important}
+  .sim.outside .cwLookPad span{top:8px!important;right:8px!important;opacity:.45!important}
+
+  .inTop{left:50%!important;right:auto!important;transform:translateX(-50%)!important;width:min(430px,calc(100vw - 32px))!important;padding:8px 9px!important}
+  .inIdentity{gap:6px!important}
+  .inEyebrow{font-size:8px!important}
+  .inIdentity b{font-size:11px!important}
+  .inMeta{font-size:8px!important}
+  .inTopActions button{font-size:9px!important;padding:5px 7px!important;min-height:28px!important}
+  .inTopActions .inGear{display:none!important}
+  .inDock{right:calc(10px + var(--sar))!important;top:auto!important;bottom:calc(118px + var(--sab))!important;width:148px!important}
+  .inDock i{text-align:left!important;font-size:8px!important;padding:2px 4px 4px!important}
+  .inDock button{padding:7px 8px!important;font-size:10px!important}
+  .inAct{right:auto!important;left:50%!important;transform:translateX(-50%)!important;bottom:calc(18px + var(--sab))!important;max-width:calc(100vw - 190px)!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+  .inChat{left:150px!important;right:166px!important;bottom:calc(18px + var(--sab))!important}
+}

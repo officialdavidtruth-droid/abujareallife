@@ -1,15 +1,15 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { ACT_LIST, INTERACT_RANGE, NET, type useCityNet } from '../lib/cityNet';
-import { VOICE_REQ_RANGE, type VoiceApi } from '../lib/cityVoice';
+import type { VoiceApi } from '../lib/cityVoice';
 
 import RuntimeStyle from './RuntimeStyle';
 type Net = ReturnType<typeof useCityNet>;
 const dist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(p.x - NET.me.x, p.z - NET.me.z) : Infinity; };
 const ACT_EMOJI: Record<string, string> = { wave: '👋', cheer: '🙌', dance: '💃' };
 
-/* Everything social in the open city: online list + chat, player card (talk / wave / high-five / dance / mute),
-   voice-call banners and incoming interaction notices. */
+/* Everything social in the open city: online list + chat, player card (wave / high-five / dance / mute),
+   voice notes and incoming interaction notices. */
 export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voice: VoiceApi; sel: string | null; setSel: (n: string | null) => void }) {
   const [open, setOpen] = useState(false), [txt, setTxt] = useState(''), [, tick] = useState(0), box = useRef<HTMLDivElement>(null);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
@@ -19,18 +19,13 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   const go = () => { if (net.send(txt)) setTxt(''); };
   const count = net.roster.length + 1;
   const label = !net.enabled ? 'Solo' : net.status === 'online' ? `${count} online` : net.status === 'error' ? 'Offline' : 'Connecting…';
-  const d = sel ? dist(sel) : Infinity, canTalk = d <= VOICE_REQ_RANGE, canAct = d <= INTERACT_RANGE;
-  const busy = voice.phase !== 'idle';
+  const d = sel ? dist(sel) : Infinity, canAct = d <= INTERACT_RANGE;
 
   return <>
     <RuntimeStyle css={CSS} />
     <button className="cpOnline" onClick={() => setOpen(o => !o)} aria-label="Players and chat"><span>🌍</span><em>{label}</em><b>{net.enabled ? count : '–'}</b>{net.unread > 0 && !open && <i>{net.unread > 9 ? '9+' : net.unread}</i>}</button>
 
     <div className="cpStack">
-      {voice.phase === 'incoming' && voice.peer && <div className="cpCard ring"><div>📞 <b>{voice.peer}</b> wants to talk</div><div className="cpRow"><button className="ok" onClick={voice.accept}>Accept</button><button className="no" onClick={voice.decline}>Decline</button></div></div>}
-      {voice.phase === 'calling' && voice.peer && <div className="cpCard"><div>📞 Calling <b>{voice.peer}</b>…</div><div className="cpRow"><button className="no" onClick={voice.hangup}>Cancel</button></div></div>}
-      {voice.phase === 'connecting' && voice.peer && <div className="cpCard"><div>🔗 Connecting to <b>{voice.peer}</b>…{voice.diag ? <small> · {voice.diag}</small> : null}</div><div className="cpRow"><button className="no" onClick={voice.hangup}>Cancel</button></div></div>}
-      {voice.phase === 'live' && voice.peer && <div className="cpCard live"><div>🎙️ Talking to <b>{voice.peer}</b>{dist(voice.peer) > 8 ? <small> · fading, move closer</small> : null}</div><div className="cpRow"><button onClick={voice.toggleMic}>{voice.micOff ? '🔇 Unmute' : '🎤 Mute'}</button><button className="no" onClick={voice.hangup}>Hang up</button></div></div>}
       {voice.msg && <div className="cpNote">{voice.msg}</div>}
       {net.notices.map(n => <div key={n.id} className="cpCard"><div>{ACT_EMOJI[n.k]} <b>{n.from}</b> {n.text}</div><div className="cpRow">{dist(n.from) <= INTERACT_RANGE && <button className="ok" onClick={() => { net.act(n.k, n.from); net.dismissNotice(n.id); }}>{n.reply}</button>}<button onClick={() => net.dismissNotice(n.id)}>Dismiss</button></div></div>)}
     </div>
@@ -39,11 +34,10 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
       <button className="cpX" onClick={() => setSel(null)} aria-label="Close">×</button>
       <div className="cpHead"><b>{sel}</b><span>{d === Infinity ? '' : d <= INTERACT_RANGE ? `${Math.round(d)} m away · close` : `${Math.round(d)} m away · walk closer`}</span></div>
       <div className="cpGrid">
-        <button disabled={busy || !canTalk} onClick={() => { voice.request(sel); setSel(null); }}>🎙️<small>{busy ? 'In a call' : canTalk ? 'Talk (voice)' : 'Too far to talk'}</small></button>
         {ACT_LIST.map(([k, e, l]) => <button key={k} disabled={!canAct} onClick={() => { net.act(k, sel); setSel(null); }}>{e}<small>{l}</small></button>)}
-        <button onClick={() => net.toggleMute(sel)}>{net.muted.includes(sel) ? '🔇' : '🔈'}<small>{net.muted.includes(sel) ? 'Unmute chat' : 'Mute chat'}</small></button>
+        <button onClick={() => net.toggleMute(sel)}>{net.muted.includes(sel) ? '🔇' : '🔈'}<small>{net.muted.includes(sel) ? 'Unmute chat & voice' : 'Mute chat & voice'}</small></button>
       </div>
-      <p>Voice is private: {sel} must accept first, then only the two of you hear each other.</p>
+      <p>Voice is proximity chat: turn your 🎤 on and everyone near you hears you, fading with distance.</p>
     </div>}
 
     {open && <div className="cpChat">
@@ -70,7 +64,7 @@ const CSS = `
 .cpNote{background:#d99a42;color:#1a1208;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;text-align:center}
 .cpSheet{position:absolute;z-index:30;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100vw - 24px));background:#09130ff7;border:1px solid #ffffff2e;border-radius:18px;padding:14px;color:#fff;box-shadow:0 18px 50px #000a;animation:popIn .2s both}
 .cpSheet p{margin:8px 0 0;font-size:10px;color:#7f968b}.cpHead{display:flex;flex-direction:column;gap:2px;padding-right:34px;margin-bottom:10px}.cpHead b{font-size:16px}.cpHead span{font-size:11px;color:#9fb5aa}
-.cpGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.cpGrid button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:64px;padding:8px 2px;border-radius:12px;border:1px solid #2d493b;background:#14261f;color:#fff;font-size:24px}.cpGrid button small{font-size:9px;color:#b7c8bf;text-align:center;line-height:1.15}.cpGrid button:disabled{opacity:.4}
+.cpGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.cpGrid button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:64px;padding:8px 2px;border-radius:12px;border:1px solid #2d493b;background:#14261f;color:#fff;font-size:24px}.cpGrid button small{font-size:9px;color:#b7c8bf;text-align:center;line-height:1.15}.cpGrid button:disabled{opacity:.4}
 .cpX{position:absolute;right:6px;top:4px;border:0;background:none;color:#fff;font-size:26px;width:38px;height:38px}
 .cpChat{position:absolute;z-index:30;left:50%;transform:translateX(-50%);top:calc(58px + env(safe-area-inset-top,0px));width:min(360px,calc(100vw - 24px));max-height:calc(100% - 80px);display:flex;flex-direction:column;gap:7px;background:#09130ff7;border:1px solid #ffffff2a;border-radius:16px;padding:12px;color:#fff;box-shadow:0 18px 50px #000a}
 .cpTitle{font-size:12px;font-weight:800;color:#f0b94a;padding-right:30px}.cpNoteTxt{font-size:12px;color:#cbd8d1;margin:0;padding-right:24px}

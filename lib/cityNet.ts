@@ -15,6 +15,7 @@ export const NET = {
   me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0, call: false, anim: '', animUntil: 0, hp: 100, ko: 0, hurt: 0, safe: 0 } as NetMe,
   peers: {} as Record<string, NetPeer>,
   msg: '' as string, // one-line toast written by the net layer, shown by the scene
+  talk: {} as Record<string, number>, // name -> timestamp until which that player counts as "speaking" (voice chat indicator)
 };
 
 /* Fighting: any real player can punch any other real player. Damage is applied on the VICTIM's client; the victim also reports who started it to /api/fight (heat, fine, wanted). */

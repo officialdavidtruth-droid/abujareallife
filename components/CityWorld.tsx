@@ -866,6 +866,12 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
   useEffect(() => { sun.current.target = sunTarget; }, [sunTarget]);
   useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    document.addEventListener('gesturestart', stop as any, { passive: false });
+    document.addEventListener('gesturechange', stop as any, { passive: false });
+    return () => { document.removeEventListener('gesturestart', stop as any); document.removeEventListener('gesturechange', stop as any); };
+  }, []);
+  useEffect(() => {
     VEH.drv = false;
     const oc = controls.current; if (!oc) return;
     const s = () => { drag.current.on = true; }, e = () => { drag.current.on = false; drag.current.end = performance.now(); };
@@ -895,8 +901,9 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const headY = VEH.drv ? 1.55 : 1.62 + p.y * .5;
     const viewFx = Math.sin(p.r), viewFz = Math.cos(p.r);
     if (c.look.x || c.look.y) {
-      oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - c.look.x * 0.006);
-      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + c.look.y * 0.004, .35, 1.45));
+      const lx = THREE.MathUtils.clamp(c.look.x, -80, 80), ly = THREE.MathUtils.clamp(c.look.y, -80, 80);
+      oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - lx * 0.006);
+      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + ly * 0.004, .35, 1.45));
       c.look = { x: 0, y: 0 };
     }
     let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
@@ -1107,7 +1114,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         <Html position={[0, 2.8, 0]} center><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
-      <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={1.45} target={[START.x, 1.62, START.z + 6]} />
+      <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} touches={{ ONE: -1 as any, TWO: -1 as any }} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={1.45} target={[START.x, 1.62, START.z + 6]} />
     </>
   );
 }
@@ -1156,11 +1163,13 @@ function Stick({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
 function LookPad({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
   const active = useRef<number | null>(null);
   const last = useRef({ x: 0, y: 0 });
+  const end = (e: React.PointerEvent) => { if (active.current === e.pointerId) active.current = null; };
   return <div className="cwLookPad" aria-label="Camera look area"
-    onPointerDown={e => { active.current = e.pointerId; last.current = { x: e.clientX, y: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId); }}
-    onPointerMove={e => { if (active.current !== e.pointerId) return; ctl.current.look = { x: e.clientX - last.current.x, y: e.clientY - last.current.y }; last.current = { x: e.clientX, y: e.clientY }; }}
-    onPointerUp={() => { active.current = null; ctl.current.look = { x: 0, y: 0 }; }}
-    onPointerCancel={() => { active.current = null; ctl.current.look = { x: 0, y: 0 }; }}
+    onPointerDown={e => { if (active.current !== null) return; active.current = e.pointerId; last.current = { x: e.clientX, y: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId); }}
+    onPointerMove={e => { if (active.current !== e.pointerId) return; const l = ctl.current.look; ctl.current.look = { x: l.x + (e.clientX - last.current.x), y: l.y + (e.clientY - last.current.y) }; last.current = { x: e.clientX, y: e.clientY }; }}
+    onPointerUp={end}
+    onPointerCancel={end}
+    onLostPointerCapture={end}
   ><span>↔ LOOK</span></div>;
 }
 function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onOpen?: () => void }) {
@@ -1234,7 +1243,7 @@ function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; i
 const CSS = `
 .cwTapTag{pointer-events:auto;cursor:pointer;padding:6px 10px;font-size:12px}
 .cwSay{background:#fff;color:#111;border-radius:12px;padding:5px 10px;font-size:12px;max-width:190px;text-align:center;box-shadow:0 2px 8px #0006;white-space:normal;line-height:1.25}
-.cwLookPad{display:none;position:absolute;right:12px;top:30%;width:38%;height:38%;z-index:8;touch-action:none;border-radius:24px;background:linear-gradient(180deg,#07100d08,#07100d18);pointer-events:auto}.cwLookPad span{position:absolute;right:12px;top:12px;color:#ffffff55;font-size:9px;letter-spacing:.12em;font-weight:800}.cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
+.cityWorld{touch-action:none}.cwLookPad{display:none;position:absolute;right:0;top:18%;width:52%;height:64%;z-index:8;touch-action:none;border-radius:24px;background:linear-gradient(180deg,#07100d08,#07100d18);pointer-events:auto}.cwLookPad span{position:absolute;right:12px;top:12px;color:#ffffff55;font-size:9px;letter-spacing:.12em;font-weight:800}.cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
 .cwKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:#ffffffcc;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0006;pointer-events:none}
 .cwBtns{position:absolute;right:18px;bottom:22px;z-index:12;display:grid;grid-template-columns:repeat(3,64px);gap:10px;align-items:end;justify-items:end}.cwBtns .big{grid-column:3;grid-row:1 / span 2}.cwBtns>.cam:not(.cwTouch){grid-column:1;grid-row:1}.cwBtns>.cam.cwTouch{grid-column:2;grid-row:1}.cwBtns>.cwTouch:not(.cam){grid-column:1;grid-row:2}.cwBtns>.cwBtn:not(.cam):not(.cwTouch):not(.big){grid-column:2;grid-row:2}
 .cwBtn{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}

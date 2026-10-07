@@ -1,0 +1,1 @@
+ALTER TABLE "Save" ADD COLUMN "inside" TEXT, ADD COLUMN "insideAt" TIMESTAMP(3);

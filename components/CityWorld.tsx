@@ -166,7 +166,7 @@ function Building({ b }: { b: CityBuilding }) {
         <mesh position={[0, 2.45, fz + .5]} rotation={[.4, 0, 0]}><boxGeometry args={[b.w * .7, .07, .95]} /><meshStandardMaterial color={P.sign} roughness={.9} /></mesh>
       </>}
       <mesh position={[0, 2.95, fz + .07]}><boxGeometry args={[b.w * .8, .55, .1]} /><meshStandardMaterial color={P.sign} roughness={.6} /></mesh>
-      {b.business && <Text position={[0, 2.95, fz + .13]} fontSize={.26} maxWidth={b.w * .76} textAlign="center" color="#ffffff" anchorX="center" anchorY="middle">{b.business.name}</Text>}
+      
       {/* roof: Geepee water tank, AC unit, aviation-light antenna on towers */}
       <mesh position={[rw * (r - .5) * .6, top + .4, rd * .2]}><cylinderGeometry args={[.5, .5, .8, 14]} /><meshStandardMaterial color="#14171a" roughness={.6} /></mesh>
       <mesh position={[-rw * .22, top + .28, -rd * .18]}><boxGeometry args={[1, .55, .7]} /><meshStandardMaterial color="#9aa0a6" metalness={.4} roughness={.5} /></mesh>
@@ -909,7 +909,7 @@ function LookPad({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
     onPointerCancel={() => { active.current = null; ctl.current.look = { x: 0, y: 0 }; }}
   ><span>↔ LOOK</span></div>;
 }
-function Minimap({ hud }: { hud: React.MutableRefObject<Hud> }) {
+function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onOpen?: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const cv = ref.current!, g = cv.getContext('2d')!, S = cv.width; let raf = 0, last = 0;
@@ -926,7 +926,7 @@ function Minimap({ hud }: { hud: React.MutableRefObject<Hud> }) {
     };
     raf = requestAnimationFrame(draw); return () => cancelAnimationFrame(raf);
   }, [hud]);
-  return <canvas ref={ref} className="cwMap" width={280} height={280} />;
+  return <button type="button" className="cwMapBtn" aria-label="Open game map" onClick={onOpen}><canvas ref={ref} className="cwMap" width={280} height={280} /></button>;
 }
 function DriveHud({ hud }: { hud: React.MutableRefObject<Hud> }) {
   const spd = useRef<HTMLDivElement>(null), num = useRef<HTMLElement>(null), tip = useRef<HTMLDivElement>(null);
@@ -967,7 +967,7 @@ const CSS = `
 @media (pointer:coarse),(max-width:700px){.cwLookPad{display:block}.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:20px;right:14px;grid-template-columns:repeat(3,56px);gap:8px}.cwBtn{width:58px;height:58px}.cwBtn.big{width:70px;height:70px}.cwBtn.cam{width:48px;height:48px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}.cwGear{top:246px!important}}
 `;
 
-export default function CityWorld({ look, onNear, getMinute, onSocial }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void }) {
+export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void; onOpenMap?: () => void }) {
   const net = useCityNet(look, onSocial);
   const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: n => net.muted.includes(n), onSocial });
   const [sel, setSel] = useState<string | null>(null);
@@ -997,7 +997,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x, 4.2, START.z + 8], fov: 52, far: 600 }}>
         <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
-      <Minimap hud={hud} />
+      <Minimap hud={hud} onOpen={onOpenMap} />
       <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
       <LookPad ctl={ctl} />
       <Stick ctl={ctl} />

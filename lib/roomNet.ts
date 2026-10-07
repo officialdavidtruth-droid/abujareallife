@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 import { sanitizeLook, type Look } from './characterModels';
+import type { RtcMsg } from './cityNet';
 
 /* Shared building rooms: one realtime channel per building (room:<id>). Everyone inside the same building sees each other,
    can chat, and police can arrest wanted players who are in the room. Mutable state is read every frame by the 3D scene. */
@@ -15,7 +16,7 @@ export type RoomMsg = { id: number; u: string; t: string };
 
 export function useRoomNet(roomId: string, look: Look) {
   const [roster, setRoster] = useState<string[]>([]), [ver, setVer] = useState(0), [log, setLog] = useState<RoomMsg[]>([]), [bub, setBub] = useState<Record<string, string>>({});
-  const ch = useRef<RealtimeChannel | null>(null), seq = useRef(0), lastIn = useRef<Record<string, number>>({}), lastSend = useRef(0), lastPos = useRef(0), lookRef = useRef(look);
+  const ch = useRef<RealtimeChannel | null>(null), seq = useRef(0), lastIn = useRef<Record<string, number>>({}), lastSend = useRef(0), lastPos = useRef(0), lookRef = useRef(look), rtcSubs = useRef(new Set<(m: RtcMsg) => void>());
   lookRef.current = look; const name = look.name;
   const say = useCallback((u: string, t: string) => {
     setLog(l => [...l.slice(-30), { id: ++seq.current, u, t }]); setBub(b => ({ ...b, [u]: t }));
@@ -36,6 +37,8 @@ export function useRoomNet(roomId: string, look: Look) {
       const p = ROOM.peers[String(payload?.u)]; if (!p) return;
       p.tx = num(payload.x, 40); p.tz = num(payload.z, 40); p.tr = num(payload.r, 7); p.mv = payload.m ? 1 : 0; p.w = Math.round(num(payload.w, 99));
       if (!p.init) { p.init = true; p.x = p.tx; p.z = p.tz; p.r = p.tr; }
+    }).on('broadcast', { event: 'rtc' }, ({ payload }) => { // voice set-up messages addressed to me
+      if (payload?.to !== name || typeof payload?.u !== 'string') return; rtcSubs.current.forEach(f => f(payload as RtcMsg));
     }).on('broadcast', { event: 'chat' }, ({ payload }) => {
       const u = String(payload?.u), t = String(payload?.t || '').trim().slice(0, 120), now = Date.now();
       if (!t || !ROOM.peers[u] || now - (lastIn.current[u] || 0) < 900) return; lastIn.current[u] = now; say(u, t);
@@ -50,5 +53,7 @@ export function useRoomNet(roomId: string, look: Look) {
     const s = t.trim().slice(0, 120), now = Date.now(); if (!s || now - lastSend.current < 1200) return false; lastSend.current = now;
     say(name, s); ch.current?.send({ type: 'broadcast', event: 'chat', payload: { u: name, t: s } }); return true;
   }, [name, say]);
-  return { roster, ver, log, bub, send, enabled: !!supabase };
+  const signal = useCallback((to: string, t: string, d?: any) => { ch.current?.send({ type: 'broadcast', event: 'rtc', payload: { u: name, to, t, d } }); }, [name]);
+  const subscribeRtc = useCallback((f: (m: RtcMsg) => void) => { rtcSubs.current.add(f); return () => { rtcSubs.current.delete(f); }; }, []);
+  return { roster, ver, log, bub, send, enabled: !!supabase, signal, subscribeRtc };
 }

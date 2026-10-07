@@ -13,6 +13,8 @@ import { sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import { buildInterior, staffLook, type Interior as Room, type Item, type Office, type Opt, type Post, type Spot } from '../lib/interiors';
 import { ROOM, useRoomNet } from '../lib/roomNet';
+import { useCityVoice } from '../lib/cityVoice';
+import { NET } from '../lib/cityNet';
 import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
 import type { Look } from '../lib/characterModels';
 import { businessStatus } from '../lib/businessHours';
@@ -142,6 +144,9 @@ function Player({ look, room, ctl, onSpot, onExit, frozen, snap, lock, onBlocked
 
 export default function Interior({ bizId, look, profile, onExit, onFx, onCash, getMinute }: { bizId: string; look: Look; profile: Profile; onExit: (jailed?: boolean) => void; onFx: (fx: Record<string, number>) => void; onCash: (n: number) => void; getMinute?: () => number }) {
   const biz = CITY.businesses.find(b => b.id === bizId)!, room = useMemo(() => buildInterior(biz), [biz]), net = useRoomNet(bizId, look);
+  const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: () => false, dist: n => { const p = ROOM.peers[n]; return p ? Math.hypot(p.x - ROOM.me.x, p.z - ROOM.me.z) : Infinity; } }); // voice works inside buildings too
+  const [talkers, setTalkers] = useState('');
+  useEffect(() => { const id = setInterval(() => { const now = Date.now(), w = Object.keys(NET.talk).filter(n => n !== look.name && NET.talk[n] > now && ROOM.peers[n]); setTalkers(t => { const s = w.slice(0, 3).join(' · '); return s === t ? t : s; }); }, 200); return () => clearInterval(id); }, [look.name]);
   const ctl = useRef<Ctl>({ keys: new Set(), joy: { x: 0, y: 0 }, run: false, act: false }), snap = useRef<{ x: number; z: number; r: number } | null>(null), staff = useMemo(() => room.posts.map(p => staffLook(biz, p)), [room, biz]);
   const [store, setStore] = useState(false), [spot, setSpot] = useState<Spot | null>(null), [menu, setMenu] = useState<Spot | null>(null), [actionOpen, setActionOpen] = useState(false), [msg, setMsg] = useState(''), [txt, setTxt] = useState('');
   const [job, setJob] = useState<{ kind: 'shift' | 'quest' | 'mtask'; id: string | number; end: number; label: string } | null>(null), [, tick] = useState(0), [near, setNear] = useState<string | null>(null);
@@ -244,7 +249,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     <button className="inLeaveSide" onClick={leave} aria-label="Leave building">🚪 <span>Leave</span></button>
     {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}</div>}{msg && <div className="inToast">{msg}</div>}
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
-    <div className={"inDock" + (actionOpen ? " open" : "")}><button className="inActionsToggle" onClick={() => setActionOpen(v => !v)}>🎮 <span>{actionOpen ? "Close actions" : "Actions"}</span></button>{actionOpen && <div className="inActionTray"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => { setActionOpen(false); goSpot(sp); }}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>}</div>
+    <div className={"inDock" + (actionOpen ? " open" : "")}><button className={voice.micOn ? 'on' : ''} aria-label="Toggle microphone" onClick={() => voice.toggleMic()}>{voice.micOn ? '🎤' : '🔇'} <span>{voice.micOn ? (voice.live ? `Mic on · ${voice.live} hearing you` : 'Mic on') : 'Mic off'}</span></button>{talkers && <i className="inTalk">🔊 {talkers}</i>}{voice.msg && <i className="inTalk">{voice.msg}</i>}<button className="inActionsToggle" onClick={() => setActionOpen(v => !v)}>🎮 <span>{actionOpen ? "Close actions" : "Actions"}</span></button>{actionOpen && <div className="inActionTray"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => { setActionOpen(false); goSpot(sp); }}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>}</div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
     {menu && <div className={'inMenu k-' + (menu.id.startsWith('npc') ? 'npc' : menu.id)} style={{ ['--e' as string]: `"${menu.e}"` }}><button className="x" aria-label="Close" onClick={() => setMenu(null)}>✕</button><h3><span>{menu.e} {menu.label}</span></h3><div className="inBody">

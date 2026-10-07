@@ -1259,7 +1259,7 @@ function FightHud() {
 function MicBtn({ voice, me }: { voice: VoiceApi; me: string }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => { const id = setInterval(() => ref.current?.classList.toggle('live', (NET.talk[me] || 0) > Date.now()), 120); return () => clearInterval(id); }, [me]);
-  return <button ref={ref} className={'cwBtn mic' + (voice.micOn ? ' on' : '')} aria-label="Toggle microphone" onClick={() => { unlockAudio(); voice.toggleMic(); }} onContextMenu={e => e.preventDefault()}><span>{voice.micOn ? '🎤' : '🔇'}</span><small>{voice.micOn ? 'Mic on' : 'Mic off'}</small></button>;
+  return <button ref={ref} className={'cwBtn mic' + (voice.micOn ? ' on' : '')} aria-label="Toggle microphone" onClick={() => { unlockAudio(); voice.toggleMic(); }} onContextMenu={e => e.preventDefault()}><span>{voice.micOn ? '🎤' : '🔇'}</span><small>{voice.micOn ? (voice.live ? `Mic · ${voice.live}` : 'Mic on') : 'Mic off'}</small></button>;
 }
 function Talkers({ me }: { me: string }) {
   const ref = useRef<HTMLDivElement>(null), last = useRef('');

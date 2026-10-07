@@ -13,26 +13,31 @@ export const VOICE_REQ_RANGE = VOICE_MAX; // kept for older imports
 const MAX_LINKS = 6;
 export type VoiceApi = ReturnType<typeof useCityVoice>;
 
-const dist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(p.x - NET.me.x, p.z - NET.me.z) : Infinity; };
+const cityDist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(p.x - NET.me.x, p.z - NET.me.z) : Infinity; };
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 // STUN always; TURN relay when the server has one configured (/api/turn) or NEXT_PUBLIC_TURN_* is set (needed on most phone networks, see VOICE-SETUP.md)
 let iceCache: { at: number; list: RTCIceServer[]; relay: boolean } | null = null;
+// Last-resort public relay (Open Relay) so voice has a chance on phone networks even before you configure your own TURN. Audio stays end-to-end encrypted (DTLS-SRTP). Set NEXT_PUBLIC_NO_PUBLIC_TURN=1 to turn it off; your own METERED_/CF_TURN_/TURN_ settings always win.
+const PUBLIC_TURN: RTCIceServer = { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' };
 async function iceServers(): Promise<{ list: RTCIceServer[]; relay: boolean }> {
   if (iceCache && Date.now() - iceCache.at < 5 * 60_000) return iceCache;
   let list: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], relay = false;
   try { const r = await fetch('/api/turn', { cache: 'no-store' }); if (r.ok) { const d = await r.json(); if (Array.isArray(d.iceServers) && d.iceServers.length) { list = d.iceServers; relay = !!d.relay; } } } catch { /* offline: keep STUN */ }
   const url = process.env.NEXT_PUBLIC_TURN_URL;
   if (url && !relay) { list = [...list, { urls: url.split(',').map(x => x.trim()), username: process.env.NEXT_PUBLIC_TURN_USERNAME, credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL }]; relay = true; }
+  if (!relay && !process.env.NEXT_PUBLIC_NO_PUBLIC_TURN) list = [...list, PUBLIC_TURN];
   if (!relay && typeof console !== 'undefined') console.warn('[voice] No TURN relay configured: voice will not reach players on most phone networks. Open /api/turn while signed in to see why.');
   iceCache = { at: Date.now(), list, relay }; return iceCache;
 }
 
-type Opts = { me: string; roster: string[]; signal: (to: string, t: string, d?: any) => void; subscribe: (f: (m: RtcMsg) => void) => () => void; isMuted: (n: string) => boolean; onSocial?: (a?: number) => void };
+type Opts = { dist?: (n: string) => number; me: string; roster: string[]; signal: (to: string, t: string, d?: any) => void; subscribe: (f: (m: RtcMsg) => void) => () => void; isMuted: (n: string) => boolean; onSocial?: (a?: number) => void };
 type Link = { pc: RTCPeerConnection; audio: HTMLAudioElement | null; ice: RTCIceCandidateInit[]; since: number; live: boolean; stopWatch: () => void };
 
 export function useCityVoice(o: Opts) {
   const [micOn, setMicOnS] = useState(false), [msg, setMsg] = useState(''), [linked, setLinked] = useState(0);
   const op = useRef(o); op.current = o;
+  const dist = (n: string) => (op.current.dist || cityDist)(n); // open city: world distance · inside a building: distance inside the room
+  const [live, setLive] = useState(0), lastFail = useRef(0);
   const links = useRef(new Map<string, Link>()), building = useRef(new Set<string>()), early = useRef<Record<string, RTCIceCandidateInit[]>>({}), retry = useRef<Record<string, number>>({});
   const stream = useRef<MediaStream | null>(null), micRef = useRef(false), ptt = useRef(false), stopLocal = useRef<() => void>(() => {}), ctx = useRef<AudioContext | null>(null);
   const note = (t: string) => { setMsg(t); setTimeout(() => setMsg(m => (m === t ? '' : m)), 6000); };
@@ -131,14 +136,14 @@ export function useCityVoice(o: Opts) {
   useEffect(() => {
     const id = setInterval(() => {
       const p = op.current, now = Date.now(), cfg = getSettings();
-      const near = Object.keys(NET.peers).filter(n => p.roster.includes(n) && !p.isMuted(n)).map(n => [n, dist(n)] as const).filter(([, d]) => d <= VOICE_MAX).sort((a, b) => a[1] - b[1]).slice(0, MAX_LINKS);
+      const near = p.roster.filter(n => !p.isMuted(n)).map(n => [n, dist(n)] as const).filter(([, d]) => d <= VOICE_MAX).sort((a, b) => a[1] - b[1]).slice(0, MAX_LINKS);
       for (const [n] of near) if (!links.current.has(n) && !building.current.has(n) && p.me.toLowerCase() < n.toLowerCase() && now > (retry.current[n] || 0)) connect(n);
       links.current.forEach((L, n) => {
         const d = dist(n);
-        if (d > VOICE_DROP || !p.roster.includes(n) || p.isMuted(n) || (!L.live && now - L.since > 20_000)) { drop(n, true); retry.current[n] = now + 8000; return; }
+        if (d > VOICE_DROP || !p.roster.includes(n) || p.isMuted(n) || (!L.live && now - L.since > 20_000)) { if (!L.live && d <= VOICE_DROP && now - lastFail.current > 60_000) { lastFail.current = now; note(`Couldn't connect voice with ${n}. Their network may be blocking direct calls — retrying.`); } drop(n, true); retry.current[n] = now + 8000; return; }
         if (L.audio) { const v = d <= VOICE_FULL ? 1 : 1 - (d - VOICE_FULL) / (VOICE_MAX - VOICE_FULL); L.audio.volume = clamp(v * cfg.voice); L.audio.muted = v < .02 || cfg.muteAll; } // iPhones ignore .volume, but obey .muted
       });
-      setLinked(links.current.size);
+      setLinked(links.current.size); setLive([...links.current.values()].filter(L => L.live).length);
     }, 1000);
     return () => clearInterval(id);
   }, [connect, drop]);
@@ -171,5 +176,5 @@ export function useCityVoice(o: Opts) {
     stopLocal.current(); stream.current?.getTracks().forEach(t => t.stop()); stream.current = null; ctx.current?.close().catch(() => {}); ctx.current = null;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { micOn, toggleMic, setMic, msg, linked };
+  return { micOn, toggleMic, setMic, msg, linked, live };
 }

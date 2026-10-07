@@ -46,7 +46,7 @@ function Jobs({ near, focus }: { near: Business | null; focus: Business | null }
   </>;
 }
 
-function GameMap({ onClose, onSelect }: { onClose: () => void; onSelect: (b: Business) => void }) {
+function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSelect: (b: Business) => void; getMinute?: () => number }) {
   const [pos, setPos] = useState(() => ({ x: GAME.player.x, z: GAME.player.z }));
   const [selected, setSelected] = useState<Business | null>(null);
   useEffect(() => { const i = setInterval(() => setPos({ x: GAME.player.x, z: GAME.player.z }), 100); return () => clearInterval(i); }, []);
@@ -95,7 +95,7 @@ export default function City({ look, onNear, getMinute, onSocial, tab: tabProp, 
       <div className="nearActions"><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs</button><button className="ncEnter" disabled={!bs.open || entering} onClick={() => { setEntering(true); window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id })); setTimeout(() => setEntering(false), 1200); }}>{entering ? '⏳ Entering…' : bs.open ? '🚪 Enter' : '🔒 Closed'}</button></div>
     </div>; })()}
     {tab && <div className="cityPanel sheet"><button className="close" onClick={() => setTab(null)}>×</button>
-      {tab === 'map' && <GameMap onClose={() => setTab(null)} onSelect={b => { setFocus(b); }} />}
+      {tab === 'map' && <GameMap getMinute={getMinute} onClose={() => setTab(null)} onSelect={b => { setFocus(b); }} />}
       {tab === 'businesses' && <><div className="jbHead"><h3>🏪 Businesses</h3><span>{CITY.businesses.length}</span></div><div className="jbList">{CITY.businesses.slice(0, 45).map(b => <button key={b.id} className="jbCard btn" onClick={() => { setFocus(b); setTab('jobs'); }}><div className="jbIc">{ICON[b.type] || '🏢'}</div><div className="jbBody"><b>{b.name}</b><span>{b.type} · {b.district}</span></div></button>)}</div></>}
       {tab === 'jobs' && <Jobs near={near} focus={focus} />}
     </div>}

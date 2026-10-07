@@ -43,6 +43,7 @@ export const GAME_LABEL_CSS = `
 .inTop b{font-weight:400;font-size:17px;color:#fff}.inTop span{color:#c9b8e8!important;font-size:13px}
 .inTop button{background:var(--gold)!important;color:var(--ink)!important;border:3px solid var(--ink)!important;border-radius:11px!important;padding:5px 12px!important;font-family:var(--gf);font-size:15px;font-weight:400!important;letter-spacing:.04em;box-shadow:0 3px 0 var(--ink);cursor:pointer}
 .inTop button:active{transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
+.inTop .inGear{background:var(--plum2)!important;color:#fff!important;padding:4px 9px!important}
 .inDock{gap:9px!important}
 .inDock i{font-family:var(--gf);font-size:13px!important;letter-spacing:.04em;color:var(--cream)!important;-webkit-text-stroke:4px var(--ink);paint-order:stroke fill}
 .inDock button{--c:var(--plum2);display:inline-flex;align-items:center;gap:8px;background:var(--c)!important;color:#fff!important;border:3px solid var(--ink)!important;border-radius:999px!important;padding:4px 16px 4px 5px!important;
@@ -66,5 +67,8 @@ export const GAME_LABEL_CSS = `
 @keyframes glPulseX{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
 @keyframes glPop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
 @media (max-width:700px){.inLbl{font-size:14px}.inLbl .glIco{width:24px;height:24px;font-size:12px}.glPlate b{font-size:13px}.glPlate em{font-size:11px}.inDock button{font-size:14px!important}.inAct{font-size:16px!important}}
+html[data-reduce-motion="1"] .inLbl,html[data-reduce-motion="1"] .glPlate i,html[data-reduce-motion="1"] .glPlate.vacant em,html[data-reduce-motion="1"] .inDock button.on,html[data-reduce-motion="1"] .inAct,html[data-reduce-motion="1"] .inSay,html[data-reduce-motion="1"] .cwSay,html[data-reduce-motion="1"] .stoBox,html[data-reduce-motion="1"] .stBox{animation:none!important}
+html[data-hints="0"] .cwHint,html[data-hints="0"] .cwTip,html[data-hints="0"] .hint,html[data-hints="0"] .inDock i{display:none!important}
+.inLbl,.glPlate,.glName,.cityNameTag,.inSay,.cwSay,.cityBizTag{zoom:var(--gl-scale,1)}
 @media (prefers-reduced-motion:reduce){.inLbl,.glPlate i,.glPlate.vacant em,.inDock button.on,.inAct,.inSay,.cwSay{animation:none!important}}
 `;

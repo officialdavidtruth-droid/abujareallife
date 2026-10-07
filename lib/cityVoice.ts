@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NET, type RtcMsg } from './cityNet';
+import { getSettings } from './settings';
+import { sfx, startRing, stopRing } from './audio';
 
 /* Private 1-to-1 voice calls between players (WebRTC, audio only).
    Rules: you must be within VOICE_REQ_RANGE metres to ask someone to talk, they must ACCEPT, and only then do the two of
@@ -11,57 +13,68 @@ export type Phase = 'idle' | 'calling' | 'incoming' | 'connecting' | 'live';
 export type VoiceApi = ReturnType<typeof useCityVoice>;
 
 const dist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(p.x - NET.me.x, p.z - NET.me.z) : Infinity; };
-function iceServers(): RTCIceServer[] {
-  const s: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
-  const url = process.env.NEXT_PUBLIC_TURN_URL; // optional TURN relay (needed on many mobile networks), see MULTIPLAYER.md
-  if (url) s.push({ urls: url.split(',').map(x => x.trim()), username: process.env.NEXT_PUBLIC_TURN_USERNAME, credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL });
-  return s;
+// STUN always; TURN relay when the server has one configured (/api/turn) or NEXT_PUBLIC_TURN_* is set (needed on most mobile networks, see MULTIPLAYER.md)
+let iceCache: { at: number; list: RTCIceServer[]; relay: boolean } | null = null;
+async function iceServers(): Promise<{ list: RTCIceServer[]; relay: boolean }> {
+  if (iceCache && Date.now() - iceCache.at < 5 * 60_000) return iceCache;
+  let list: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], relay = false;
+  try { const r = await fetch('/api/turn', { cache: 'no-store' }); if (r.ok) { const d = await r.json(); if (Array.isArray(d.iceServers) && d.iceServers.length) { list = d.iceServers; relay = !!d.relay; } } } catch { /* offline: keep STUN */ }
+  const url = process.env.NEXT_PUBLIC_TURN_URL;
+  if (url && !relay) { list = [...list, { urls: url.split(',').map(x => x.trim()), username: process.env.NEXT_PUBLIC_TURN_USERNAME, credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL }]; relay = true; }
+  iceCache = { at: Date.now(), list, relay }; return iceCache;
 }
 
 type Opts = { me: string; roster: string[]; signal: (to: string, t: string, d?: any) => void; subscribe: (f: (m: RtcMsg) => void) => () => void; isMuted: (n: string) => boolean; onSocial?: (a?: number) => void };
+const clamp = (v: number) => Math.max(0, Math.min(1, v));
 
 export function useCityVoice(o: Opts) {
-  const [phase, setPhaseS] = useState<Phase>('idle'), [peer, setPeerS] = useState<string | null>(null), [micOff, setMicOff] = useState(false), [msg, setMsg] = useState('');
+  const [phase, setPhaseS] = useState<Phase>('idle'), [peer, setPeerS] = useState<string | null>(null), [micOff, setMicOff] = useState(false), [msg, setMsg] = useState(''), [diag, setDiag] = useState('');
   const ph = useRef<Phase>('idle'), pr = useRef<string | null>(null), pc = useRef<RTCPeerConnection | null>(null), local = useRef<MediaStream | null>(null);
-  const ctx = useRef<AudioContext | null>(null), gain = useRef<GainNode | null>(null), el = useRef<HTMLAudioElement | null>(null), ice = useRef<RTCIceCandidateInit[]>([]);
+  const el = useRef<HTMLAudioElement | null>(null), ice = useRef<RTCIceCandidateInit[]>([]), relay = useRef(false), restarted = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null), far = useRef(0), op = useRef(o); op.current = o;
   const set = (p: Phase, who: string | null) => { ph.current = p; pr.current = who; setPhaseS(p); setPeerS(who); NET.me.call = p === 'live' || p === 'connecting'; };
-  const note = (t: string) => { setMsg(t); setTimeout(() => setMsg(m => (m === t ? '' : m)), 4500); };
+  const note = (t: string) => { setMsg(t); setTimeout(() => setMsg(m => (m === t ? '' : m)), 6000); };
   const clearT = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
 
   const cleanup = useCallback((why?: string, tell = false) => {
-    const who = pr.current; clearT();
+    const who = pr.current, wasLive = ph.current === 'live'; clearT();
     if (tell && who) op.current.signal(who, 'end');
-    pc.current?.close(); pc.current = null; ice.current = []; far.current = 0;
+    pc.current?.close(); pc.current = null; ice.current = []; far.current = 0; restarted.current = false;
     local.current?.getTracks().forEach(t => t.stop()); local.current = null;
-    if (el.current) { el.current.srcObject = null; el.current = null; }
-    gain.current = null; ctx.current?.close().catch(() => {}); ctx.current = null;
-    set('idle', null); setMicOff(false); if (why) note(why);
+    if (el.current) { el.current.pause(); el.current.srcObject = null; el.current.remove(); el.current = null; }
+    set('idle', null); setMicOff(false); setDiag(''); if (why) note(why); if (wasLive) sfx('close');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function getMic() {
+    if (!navigator.mediaDevices?.getUserMedia) { note('Voice needs a secure (https) page and a browser with microphone support.'); return false; }
     try {
-      const AC = window.AudioContext || (window as any).webkitAudioContext; ctx.current = new AC(); ctx.current.resume().catch(() => {});
       local.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
       return true;
-    } catch { note('Microphone blocked. Allow mic access for this site and try again.'); ctx.current?.close().catch(() => {}); ctx.current = null; return false; }
+    } catch (e) { const n = (e as DOMException)?.name; note(n === 'NotFoundError' ? 'No microphone found on this device.' : 'Microphone blocked. Allow mic access for this site (lock icon in the address bar) and try again.'); return false; }
   }
-  function makePc(who: string) {
-    const c = new RTCPeerConnection({ iceServers: iceServers() }); pc.current = c;
+  // the remote voice plays through a normal <audio> element: the most reliable path on Chrome, Android and iOS
+  function attachRemote(stream: MediaStream) {
+    if (el.current) { el.current.pause(); el.current.remove(); }
+    const a = document.createElement('audio'); a.autoplay = true; a.setAttribute('playsinline', ''); a.style.display = 'none'; a.srcObject = stream; document.body.appendChild(a); el.current = a;
+    a.volume = clamp(getSettings().voice);
+    a.play().catch(() => note('Tap anywhere on the screen to hear the call.'));
+  }
+  async function makePc(who: string) {
+    const { list, relay: hasRelay } = await iceServers(); relay.current = hasRelay;
+    const c = new RTCPeerConnection({ iceServers: list, iceCandidatePoolSize: 4 }); pc.current = c;
     local.current?.getTracks().forEach(t => c.addTrack(t, local.current!));
     c.onicecandidate = e => { if (e.candidate) op.current.signal(who, 'ice', e.candidate.toJSON()); };
-    c.ontrack = e => {
-      const stream = e.streams[0]; if (!stream) return;
-      const a = new Audio(); a.srcObject = stream; a.muted = true; (a as any).playsInline = true; a.play().catch(() => {}); el.current = a; // keeps the stream alive in Chrome
-      if (ctx.current) { const g = ctx.current.createGain(); g.gain.value = 1; ctx.current.createMediaStreamSource(stream).connect(g); g.connect(ctx.current.destination); gain.current = g; ctx.current.resume().catch(() => {}); }
-    };
+    c.ontrack = e => attachRemote(e.streams[0] || new MediaStream([e.track]));
+    c.oniceconnectionstatechange = () => setDiag(`network: ${c.iceConnectionState}`);
     c.onconnectionstatechange = () => {
-      if (c.connectionState === 'connected') { clearT(); set('live', who); }
-      else if (c.connectionState === 'failed') cleanup('Call failed. The network may be blocking voice.', true);
+      if (c.connectionState === 'connected') { clearT(); set('live', who); setDiag(''); }
+      else if (c.connectionState === 'disconnected' && !restarted.current) { restarted.current = true; try { c.restartIce(); } catch { /* old browser */ } }
+      else if (c.connectionState === 'failed') cleanup(relay.current ? 'The call dropped. Check your connection and try again.' : 'Could not connect the call. Phone networks usually need a relay server: ask the game owner to set up TURN (see MULTIPLAYER.md).', true);
     };
     return c;
   }
   const flush = async () => { const c = pc.current; if (!c?.remoteDescription) return; for (const x of ice.current.splice(0)) await c.addIceCandidate(x).catch(() => {}); };
+  const stuck = () => cleanup(relay.current ? 'Could not connect. Try again in a moment.' : 'Stuck connecting. This network blocks direct voice, so the game needs a TURN relay (see MULTIPLAYER.md).', true);
 
   const request = useCallback(async (who: string) => {
     if (ph.current !== 'idle') return;
@@ -78,8 +91,9 @@ export function useCityVoice(o: Opts) {
     clearT();
     if (dist(who) > VOICE_MAX) { op.current.signal(who, 'dec'); return cleanup(`${who} is too far away.`); }
     if (!(await getMic())) { op.current.signal(who, 'dec'); return cleanup(); }
+    if (ph.current !== 'incoming' || pr.current !== who) { local.current?.getTracks().forEach(t => t.stop()); local.current = null; return; } // caller hung up while the mic prompt was open
     set('connecting', who); op.current.signal(who, 'acc');
-    timer.current = setTimeout(() => cleanup('Could not connect.', true), 20000);
+    timer.current = setTimeout(stuck, 30000);
   }, [cleanup]); // eslint-disable-line react-hooks/exhaustive-deps
   const decline = useCallback(() => { const who = pr.current; if (who) op.current.signal(who, 'dec'); cleanup(); }, [cleanup]);
   const hangup = useCallback(() => cleanup('Call ended.', true), [cleanup]);
@@ -98,30 +112,34 @@ export function useCityVoice(o: Opts) {
     else if (t === 'busy') cleanup(`${u} is on another call.`);
     else if (t === 'end') cleanup(`${u} ended the call.`);
     else if (t === 'acc' && ph.current === 'calling') {
-      clearT(); set('connecting', u); timer.current = setTimeout(() => cleanup('Could not connect.', true), 20000);
-      const c = makePc(u), offer = await c.createOffer(); await c.setLocalDescription(offer); p.signal(u, 'offer', { type: offer.type, sdp: offer.sdp });
+      clearT(); set('connecting', u); timer.current = setTimeout(stuck, 30000);
+      const c = await makePc(u), offer = await c.createOffer(); await c.setLocalDescription(offer); p.signal(u, 'offer', { type: offer.type, sdp: offer.sdp });
     } else if (t === 'offer' && ph.current === 'connecting' && d) {
-      const c = makePc(u); await c.setRemoteDescription(d); await flush();
+      const c = await makePc(u); await c.setRemoteDescription(d); await flush();
       const ans = await c.createAnswer(); await c.setLocalDescription(ans); p.signal(u, 'answer', { type: ans.type, sdp: ans.sdp });
     } else if (t === 'answer' && pc.current && d) { await pc.current.setRemoteDescription(d).catch(() => {}); await flush(); }
     else if (t === 'ice' && d) { if (pc.current?.remoteDescription) await pc.current.addIceCandidate(d).catch(() => {}); else ice.current.push(d); }
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // distance rules: fade the voice with distance, drop the call if you walk away or they leave
+  // distance rules: fade the voice with distance (and the Voice slider in Settings), drop the call if you walk away or they leave
   useEffect(() => {
     const id = setInterval(() => {
       const who = pr.current; if (!who || ph.current === 'idle') return;
       const d = dist(who);
       if (d === Infinity) { cleanup(`${who} left the city.`); return; }
-      if (gain.current) gain.current.gain.value = d <= VOICE_FULL ? 1 : Math.max(0, 1 - (d - VOICE_FULL) / (VOICE_MAX - VOICE_FULL));
+      if (el.current) el.current.volume = clamp((d <= VOICE_FULL ? 1 : 1 - (d - VOICE_FULL) / (VOICE_MAX - VOICE_FULL)) * getSettings().voice);
       if (ph.current === 'live') { far.current = d > VOICE_MAX ? far.current + 500 : 0; if (far.current >= 4000) cleanup('You walked out of range.', true); }
     }, 500);
     return () => clearInterval(id);
   }, [cleanup]);
-  useEffect(() => () => cleanup(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { cleanup(); stopRing(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // phone sounds: ring while calling / being called, a happy chime when connected
+    if (phase === 'incoming') startRing('incoming'); else if (phase === 'calling') startRing('outgoing'); else stopRing();
+    if (phase === 'live') sfx('success');
+  }, [phase]);
   useEffect(() => { // some browsers need one tap before audio plays
-    const f = () => { el.current?.play().catch(() => {}); ctx.current?.resume().catch(() => {}); };
+    const f = () => { el.current?.play().catch(() => {}); };
     window.addEventListener('pointerdown', f); return () => window.removeEventListener('pointerdown', f);
   }, []);
-  return { phase, peer, micOff, msg, request, accept, decline, hangup, toggleMic };
+  return { phase, peer, micOff, msg, diag, request, accept, decline, hangup, toggleMic };
 }

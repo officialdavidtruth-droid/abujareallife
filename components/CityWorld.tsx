@@ -1,5 +1,6 @@
 'use client';
 import { GAME_LABEL_CSS } from '../lib/gameLabels';
+import { openSettings, useSettings } from '../lib/settings';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Html, OrbitControls, RoundedBox, Stars, Text } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -816,9 +817,10 @@ const CSS = `
 .cwSpeed b{font-size:28px;font-weight:800;color:#ffd23f;min-width:46px;text-align:right}.cwSpeed small{font-size:10px;font-weight:700;opacity:.8}
 .cwTip{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);z-index:7;color:#fff;font-size:12px;font-weight:700;background:#0b1511c0;border:1px solid #ffffff22;border-radius:999px;padding:6px 14px;pointer-events:none;white-space:nowrap}
 .cwTip:empty{display:none}
+.cwGear{top:268px}
 .cwMute{position:absolute;left:12px;top:222px;z-index:7;width:38px;height:38px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;font-size:17px;cursor:pointer}
 .cwTouch{display:none}
-@media (pointer:coarse),(max-width:700px){.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:26px;flex-wrap:wrap;justify-content:flex-end;max-width:270px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}}
+@media (pointer:coarse),(max-width:700px){.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:26px;flex-wrap:wrap;justify-content:flex-end;max-width:270px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}.cwGear{top:246px!important}}
 `;
 
 export default function CityWorld({ look, onNear, getMinute, onSocial }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void }) {
@@ -827,7 +829,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
   const [sel, setSel] = useState<string | null>(null);
   const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: 0, fz: -1, r: Math.PI, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
-  const [mute, setMute] = useState(false), [hasCar, setHasCar] = useState(GAME.hasCar);
+  const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
     const typing = (e: Event) => { const t = e.target as HTMLElement | null; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); };
@@ -855,7 +857,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
       <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
-      <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMute(m => { setMuted(!m); return !m; }); }}>{mute ? '🔇' : '🔊'}</button>
+      <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMuted(!cfg.muteAll); }}>{cfg.muteAll ? '🔇' : '🔊'}</button>
+      <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}

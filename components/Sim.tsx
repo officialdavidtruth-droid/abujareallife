@@ -10,6 +10,8 @@ import AuthScreen from './AuthScreen';
 import Loader from './Loader';
 import AssetLoader from './AssetLoader';
 import City from './City';
+import { setMusicMood, sfx } from '../lib/audio';
+import { openSettings } from '../lib/settings';
 import GameLayer from './GameLayer';
 import Interior from './Interior';
 import { CITY } from '../lib/cityData';
@@ -461,6 +463,8 @@ export default function Sim() {
     const a = setInterval(() => setUi(snap()), 200), b = setInterval(() => { if (lookRef.current) saveNow(lookRef.current); }, 5000);
     return () => { clearInterval(a); clearInterval(b); };
   }, []);
+  useEffect(() => { setMusicMood(outside && !inside ? 'city' : 'chill'); }, [outside, inside]); // lively amapiano-style loop on the streets, calm lo-fi indoors and at home
+  useEffect(() => { if (ui.toast) sfx('pop'); }, [ui.toast]);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
   return <div className={'sim' + (outside ? ' outside' : '')}>
     {!ready && <Loader label="Checking your session" />}
@@ -479,6 +483,7 @@ export default function Sim() {
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
+        <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button></div></div>
     <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
       {NEEDS.map(([k, l, e]) => <div key={k} className={'nrow' + (ui.needs[k] < 25 ? ' low' : '')}><span>{e}<em> {l}</em></span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>

@@ -8,6 +8,9 @@ import { CITY } from '../lib/cityData';
 import { MGR_TASK_PAY, fmtClock } from '../lib/work';
 import { makeNav } from '../lib/nav';
 import { GAME_LABEL_CSS } from '../lib/gameLabels';
+import StoreModal from './StoreModal';
+import { sfx } from '../lib/audio';
+import { openSettings } from '../lib/settings';
 import { buildInterior, staffLook, type Interior as Room, type Item, type Office, type Opt, type Post, type Spot } from '../lib/interiors';
 import { ROOM, useRoomNet } from '../lib/roomNet';
 import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
@@ -134,12 +137,13 @@ function Player({ look, room, ctl, onSpot, onExit, frozen, snap, lock, onBlocked
 export default function Interior({ bizId, look, profile, onExit, onFx, onCash }: { bizId: string; look: Look; profile: Profile; onExit: (jailed?: boolean) => void; onFx: (fx: Record<string, number>) => void; onCash: (n: number) => void }) {
   const biz = CITY.businesses.find(b => b.id === bizId)!, room = useMemo(() => buildInterior(biz), [biz]), net = useRoomNet(bizId, look);
   const ctl = useRef<Ctl>({ keys: new Set(), joy: { x: 0, y: 0 }, run: false, act: false }), snap = useRef<{ x: number; z: number; r: number } | null>(null), staff = useMemo(() => room.posts.map(p => staffLook(biz, p)), [room, biz]);
-  const [spot, setSpot] = useState<Spot | null>(null), [menu, setMenu] = useState<Spot | null>(null), [msg, setMsg] = useState(''), [txt, setTxt] = useState('');
+  const [store, setStore] = useState(false), [spot, setSpot] = useState<Spot | null>(null), [menu, setMenu] = useState<Spot | null>(null), [msg, setMsg] = useState(''), [txt, setTxt] = useState('');
   const [job, setJob] = useState<{ kind: 'shift' | 'quest' | 'mtask'; id: string | number; end: number; label: string } | null>(null), [, tick] = useState(0), [near, setNear] = useState<string | null>(null);
-  const toast = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
+  const toast = (m: string, bad = false) => { setMsg(m); setTimeout(() => setMsg(''), 4500); sfx(bad ? 'error' : /^(Done|💰|🎉|🚔 .* arrested)/.test(m) ? 'success' : 'pop'); };
+  useEffect(() => { sfx('door'); }, []);
   const [mgr, setMgr] = useState<Mgr | null>(null), lock = useRef(false), restored = useRef(false), snappedMgr = useRef(false), blockedAt = useRef(0);
   const cam = useRef<Cam>({ yaw: 0, pitch: .85, dist: 10.5 }), go = useRef<Go | null>(null), nav = useMemo(() => makeNav(room), [room]), pts = useRef(new Map<number, { x: number; y: number }>()), pinch = useRef(0);
-  const walk = (x: number, z: number, open?: Go['open']) => { const p = nav.path([ROOM.me.x, ROOM.me.z], [x, z]); if (!p || !p.length) return open ? undefined : toast("Can't walk there."); go.current = { path: p, i: 0, stuck: 0, open }; };
+  const walk = (x: number, z: number, open?: Go['open']) => { const p = nav.path([ROOM.me.x, ROOM.me.z], [x, z]); if (!p || !p.length) return open ? undefined : toast("Can't walk there.", true); go.current = { path: p, i: 0, stuck: 0, open }; };
   const npcSpot = (idx: number): Spot | null => { const po = room.posts.find(x => x.idx === idx); if (!po) return null; const sp = STAFF_POS[idx] || po, nm = staff[idx]?.name || 'Staff', jobOpt = (room.spots.find(x => x.id === 'work')?.opts || []).filter(o => o.t === 'shift' && o.idx === idx);
     return { id: 'npc' + idx, x: sp.x, z: sp.z, e: '💬', label: `${nm} · ${po.title}`, opts: [{ t: 'info', text: `"Hi, I'm ${nm}, the ${po.title} here.${jobOpt.length ? ' Want this job? Apply below and you will be given a task for the shift.' : ''}"` }, ...jobOpt] }; };
   const talk = (idx: number) => { const sp = STAFF_POS[idx]; if (!sp) return; const dx = ROOM.me.x - sp.x, dz = ROOM.me.z - sp.z, d = Math.hypot(dx, dz); if (d < 3.2) { setMenu(npcSpot(idx)); return; } setMenu(null); walk(sp.x + dx / d * 1.4, sp.z + dz / d * 1.4, { kind: 'npc', idx }); };
@@ -181,19 +185,20 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
   useEffect(() => { if (job && left === 0) (async () => {
     const r = job.kind === 'shift' ? await post('/api/shift', { action: 'finish' }) : job.kind === 'mtask' ? await post('/api/manager', { action: 'task_finish' }) : await post('/api/quest', { action: 'finish', id: job.id }); setJob(null);
     if (r.ok && r.d.info) setMgr(r.d.info);
-    if (r.ok) { onCash(r.d.cash); toast(`Done: +${naira(r.d.pay ?? r.d.reward)}${r.d.heatAdded ? ' · heat up 🔥' : ''}`); } else toast(r.d.error);
+    if (r.ok) { onCash(r.d.cash); toast(`Done: +${naira(r.d.pay ?? r.d.reward)}${r.d.heatAdded ? ' · heat up 🔥' : ''}`); } else toast(r.d.error, true);
   })(); }, [left, job]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (o: Opt) => {
-    if (job && (o.t === 'shift' || o.t === 'quest' || o.t === 'crime')) return toast('Finish what you are doing first.');
-    if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: `${o.label} · ${r.d.task}` }); setMenu(null); const po = room.posts.find(x => x.idx === o.idx); if (po) snap.current = stand(po); toast(`📍 ${o.label}: ${r.d.task} (${Math.round(r.d.secs / 60)} min). Stay in the building, walk around if you like - the shift keeps running.`); }
-    else if (o.t === 'quest') { const q = QUESTS.find(x => x.id === o.id)!, r = await post('/api/quest', { action: 'start', id: o.id }); if (!r.ok) return toast(r.d.error); setJob({ kind: 'quest', id: o.id, end: Date.now() + r.d.secs * 1000, label: q.title }); setMenu(null); }
-    else if (o.t === 'shop') { const r = await post('/api/shop', { item: o.id }); if (!r.ok) return toast(r.d.error); onCash(r.d.cash); onFx(r.d.fx); toast(`Bought: ${o.label}`); }
-    else if (o.t === 'crime') { const r = await post('/api/crime', { kind: o.id, policeNearby: cops() }); if (!r.ok) return toast(r.d.error); onCash(r.d.cash);
+    if (job && (o.t === 'shift' || o.t === 'quest' || o.t === 'crime')) return toast('Finish what you are doing first.', true);
+    if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: `${o.label} · ${r.d.task}` }); setMenu(null); const po = room.posts.find(x => x.idx === o.idx); if (po) snap.current = stand(po); toast(`📍 ${o.label}: ${r.d.task} (${Math.round(r.d.secs / 60)} min). Stay in the building, walk around if you like - the shift keeps running.`); }
+    else if (o.t === 'quest') { const q = QUESTS.find(x => x.id === o.id)!, r = await post('/api/quest', { action: 'start', id: o.id }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'quest', id: o.id, end: Date.now() + r.d.secs * 1000, label: q.title }); setMenu(null); }
+    else if (o.t === 'store') { setStore(true); setMenu(null); }
+    else if (o.t === 'shop') { const r = await post('/api/shop', { item: o.id }); if (!r.ok) return toast(r.d.error, true); onCash(r.d.cash); onFx(r.d.fx); sfx('buy'); toast(`Bought: ${o.label}`); }
+    else if (o.t === 'crime') { const r = await post('/api/crime', { kind: o.id, policeNearby: cops() }); if (!r.ok) return toast(r.d.error, true); onCash(r.d.cash);
       if (r.d.jailSecs) { toast('🚔 Caught by an officer!'); setTimeout(() => onExit(true), 1200); } else toast(r.d.caught ? '😬 It went wrong. You are WANTED.' : `💰 You got away with ${naira(r.d.loot)}${r.d.wanted ? ' · WANTED' : ''}`); setMenu(null); }
   };
   const mgrAct = async (action: string, extra: object = {}) => {
-    if (action === 'task_start' && job) return toast('Finish what you are doing first.');
-    const r = await post('/api/manager', { action, ...extra }); if (!r.ok) return toast(r.d.error); if (r.d.cash != null) onCash(r.d.cash); if (r.d.info) setMgr(r.d.info);
+    if (action === 'task_start' && job) return toast('Finish what you are doing first.', true);
+    const r = await post('/api/manager', { action, ...extra }); if (!r.ok) return toast(r.d.error, true); if (r.d.cash != null) onCash(r.d.cash); if (r.d.info) setMgr(r.d.info);
     if (action === 'task_start') { setJob({ kind: 'mtask', id: 'mtask', end: Date.now() + r.d.secs * 1000, label: `Management: ${r.d.label}` }); setMenu(null); toast(`📋 ${r.d.label} (${Math.round(r.d.secs / 60)} min). Stay in the building.`); }
     else if (action === 'apply') { toast('🎉 You are the manager here for 7 days!'); setMenu(null); if (room.office) snap.current = { x: room.office.sx, z: room.office.sz, r: 0 }; }
     else if (action === 'salary') toast(`💰 +${naira(r.d.pay)} salary collected`);
@@ -227,18 +232,20 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
       {room.office && <ManagerSeat office={room.office} mgr={mgr} meName={look.name} onTap={() => { const sp = room.spots.find(x => x.id === 'mgmt'); if (sp) goSpot(sp); }} />}
       {room.spots.map(s => <SpotMark key={s.id} s={s} active={spot?.id === s.id} onTap={goSpot} />)}
       <Text position={[0, 2.2, -room.d / 2 + .25]} fontSize={.55} color="#fff" outlineWidth={.05} outlineColor="#1a1410" anchorX="center">{biz.name}</Text>
-      <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
+      <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu || store} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
       {net.roster.map(n => ROOM.peers[n] && <Remote key={n + net.ver} name={n} bub={net.bub[n]} />)}
     </Canvas></div>
-    <div className="inTop"><b>{biz.name}</b><span>{biz.type} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span><button onClick={leave}>🚪 Leave</button></div>
+    <div className="inTop"><b>{biz.name}</b><span>{biz.type} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span><button onClick={leave}>🚪 Leave</button><button className="inGear" aria-label="Settings" onClick={openSettings}>⚙️</button></div>
     {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}</div>}{msg && <div className="inToast">{msg}</div>}
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
     <div className="inDock"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => goSpot(sp)}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>
     <div className="inCam"><button aria-label="Rotate left" onClick={() => { cam.current.yaw -= .6; }}>⟲</button><button aria-label="Reset camera" onClick={() => { cam.current.yaw = 0; cam.current.pitch = .85; cam.current.dist = 10.5; }}>🧭</button><button aria-label="Rotate right" onClick={() => { cam.current.yaw += .6; }}>⟳</button><button aria-label="Zoom in" onClick={() => { cam.current.dist = Math.max(5, cam.current.dist - 1.5); }}>＋</button><button aria-label="Zoom out" onClick={() => { cam.current.dist = Math.min(17, cam.current.dist + 1.5); }}>－</button></div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
+    {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
     {menu && <div className="inMenu"><button className="x" onClick={() => setMenu(null)}>×</button><h3>{menu.e} {menu.label}</h3>
       {menu.opts.map((o, i) => o.t === 'info' ? <p key={i}>{o.text}</p> : o.t === 'mgmt' ? mgmtMenu(i) : <button key={i} onClick={() => run(o)}>
         {o.t === 'shift' && <><span className="tx"><b>{o.label}</b><small>+{naira(o.pay)} · 45–60 min · task assigned{o.senior ? ' · needs rank 2' : ''}</small></span><em className="pill">Apply</em></>}
+        {o.t === 'store' && <><span className="tx"><b>🛍️ Browse the store</b><small>{o.count} items · household, kitchen, furniture, tech, style &amp; more</small></span><em className="pill">Open</em></>}
         {o.t === 'shop' && <><span className="tx"><b>{o.label}</b><small>{naira(o.cost)}</small></span><em className="pill">Buy</em></>}
         {o.t === 'quest' && <><span className="tx"><b>{qName(o.id).title}</b><small>{qName(o.id).blurb} · +{naira(qName(o.id).reward)} · {qName(o.id).secs}s{qName(o.id).legal ? '' : ' · 🔥 illegal'}</small></span><em className="pill">Start</em></>}
         {o.t === 'crime' && <><span className="tx"><b>{CRIMES[o.id].label}</b><small>{naira(CRIMES[o.id].loot[0])}–{naira(CRIMES[o.id].loot[1])} · +{CRIMES[o.id].heat} heat · officers inside make it riskier</small></span><em className="pill">Try</em></>}</button>)}</div>}

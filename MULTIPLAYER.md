@@ -75,3 +75,13 @@ NEXT_PUBLIC_TURN_CREDENTIAL="..."
 - **Quota:** voice audio doesn't use Supabase (it is peer-to-peer; only the setup messages do), but TURN relay traffic is billed by your TURN provider.
 - **Only 1 call at a time** per player. No group/party voice yet.
 - Not tested on real devices from here, so please test with two phones on mobile data before launch.
+
+---
+
+# Voice: fixing "Connecting…" (update)
+Voice now asks the server for relay credentials (`/api/turn`), so you no longer need `NEXT_PUBLIC_TURN_*` in the browser. In Vercel → Settings → Environment Variables add ONE option from `.env.example` (Metered.ca has a free tier and is the quickest: create an app, copy its domain and API key into `METERED_DOMAIN` / `METERED_API_KEY`), then redeploy.
+- Without a relay, calls still work on most Wi-Fi, but usually get stuck on mobile data. The call card now says so instead of failing silently.
+- The call card shows the live network state while connecting, and a "Cancel" button.
+- Both players must allow the microphone (the site needs https, which Vercel gives you).
+- The remote voice plays through a normal audio element (more reliable than before). If a browser blocks autoplay, tap the screen once.
+- Volume: Settings → Voice chat slider. Distance fade still applies (iPhones ignore volume changes, so they hear full volume).

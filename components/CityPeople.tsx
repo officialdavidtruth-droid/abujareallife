@@ -14,6 +14,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   useEffect(() => { if (open) { net.clearUnread(); box.current?.scrollTo(0, 1e9); } }, [open, net.log.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (sel && !net.roster.includes(sel)) setSel(null); }, [sel, net.roster, setSel]);
+  useEffect(() => { const onPick = (e: Event) => { const name = String((e as CustomEvent).detail || ''); if (name && net.roster.includes(name)) setSel(name); }; window.addEventListener('arl-player-select', onPick); return () => window.removeEventListener('arl-player-select', onPick); }, [net.roster, setSel]);
   const go = () => { if (net.send(txt)) setTxt(''); };
   const count = net.roster.length + 1;
   const label = !net.enabled ? 'Solo' : net.status === 'online' ? `${count} online` : net.status === 'error' ? 'Offline' : 'Connecting…';

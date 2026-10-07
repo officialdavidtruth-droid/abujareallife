@@ -406,7 +406,7 @@ type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; 
 const SHIRTS = ['#c0392b', '#2c5aa0', '#e8e8ea', '#1e9e55', '#f1c40f', '#7c3aed', '#0f766e', '#d97706', '#111827', '#be185d'];
 const PANTS = ['#1f2937', '#374151', '#4b5563', '#111827', '#2b3a55', '#5b4636'];
 const SKINS = ['#3b2417', '#4a2e1c', '#5a3825', '#6b4429', '#7a4f32', '#8d5f3d'];
-const PED_N = 96;
+const PED_N = 32; // Keep NPCs as light ambient life; real users are the primary population.
 const pick = <T,>(a: T[], k: string) => a[Math.floor(hs(k) * a.length) % a.length];
 function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {

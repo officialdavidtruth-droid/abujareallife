@@ -18,6 +18,7 @@ import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio }
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 
 import RuntimeStyle from './RuntimeStyle';
+import { worldMinute, worldCalendar, weatherAt, lightningAt } from '../lib/worldClock';
 import { createPortal } from 'react-dom';
 import { GRID, CURB, halfW, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
@@ -837,6 +838,7 @@ const START = { x: 0, z: 16 };
 export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z }, ride: null as null | { kind: 'taxi' | 'bike'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
+const WX = { over: new THREE.Color('#7d8791'), dust: new THREE.Color('#d6bf9b'), flash: new THREE.Color('#e8f0ff'), tmp: new THREE.Color() };
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
 function JailCell() {
   const bars = Array.from({ length: 13 }, (_, i) => -3 + i * .5);
@@ -849,6 +851,23 @@ function JailCell() {
   </group>;
 }
 const CAR_R = 1, CAR_OFFS = [-1.35, 0, 1.35];
+function Rain() {
+  const N = 520, g = useRef<THREE.Group>(null!), ls = useRef<THREE.LineSegments>(null!), seed = useMemo(() => Float32Array.from({ length: N * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 22 : (Math.random() - .5) * 38)), []), pos = useMemo(() => new Float32Array(N * 6), []);
+  useFrame((st, dtRaw) => {
+    const W = weatherAt(), dt = Math.min(dtRaw, .05); if (!ls.current) return;
+    ls.current.visible = W.rain > .03; if (!ls.current.visible) return;
+    g.current.position.copy(st.camera.position);
+    const n = Math.floor(N * Math.min(1, W.rain * 1.15)), wind = 2 + W.storm * 5; (ls.current.material as THREE.LineBasicMaterial).opacity = .18 + W.rain * .32;
+    for (let i = 0; i < n; i++) { let y = seed[i * 3 + 1] - (26 + W.storm * 10) * dt; if (y < -6) y += 28; seed[i * 3 + 1] = y; const x = seed[i * 3], z = seed[i * 3 + 2], o = i * 6; pos[o] = x; pos[o + 1] = y; pos[o + 2] = z; pos[o + 3] = x + wind * .035; pos[o + 4] = y - .9; pos[o + 5] = z; }
+    const geo = ls.current.geometry; geo.setDrawRange(0, n * 2); (geo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+  });
+  return <group ref={g}><lineSegments ref={ls} frustumCulled={false} visible={false}><bufferGeometry><bufferAttribute attach="attributes-position" args={[pos, 3]} /></bufferGeometry><lineBasicMaterial color="#c4d4e2" transparent opacity={.4} depthWrite={false} fog={false} /></lineSegments></group>;
+}
+function WorldBadge() {
+  const [, tick] = useState(0); useEffect(() => { const t = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(t); }, []);
+  const c = worldCalendar(), w = weatherAt();
+  return <div className="cwWorld">{c.season.e} {c.season.label} · {c.weekday} {c.clock} · {w.e} {w.label}</div>;
+}
 function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, fight }: { fight: (to: string) => boolean; look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: Math.PI });
   const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!), hemi = useRef<THREE.HemisphereLight>(null!), stars = useRef<THREE.Group>(null!);
@@ -884,13 +903,20 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     if (!oc) return;
 
     /* ── time of day (follows the in-game clock) ── */
-    const hrs = ((((getMinute ? getMinute() : 12 * 60) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
+    const hrs = ((((getMinute ? getMinute() : worldMinute()) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
     const day = sm(el, -.08, .3), n = 1 - day, dusk = Math.min(1, Math.max(0, 1 - Math.abs(el) / .28)) * .75;
     NIGHT.n = n;
     const bg = st.scene.background as THREE.Color | null; if (bg) bg.copy(SKY.night).lerp(SKY.day, day).lerp(SKY.dusk, dusk);
     const fg = st.scene.fog as THREE.Fog | null; if (fg) fg.color.copy(SKY.fogNight).lerp(SKY.fogDay, day).lerp(SKY.fogDusk, dusk);
     hemi.current.intensity = .22 + 1.03 * day;
     sun.current.intensity = .5 + 2.3 * day; sun.current.color.copy(SKY.moon).lerp(SKY.sun, day).lerp(SKY.sunLow, dusk * day);
+    { // shared weather (same for every player): overcast sky, harmattan dust, rain-thinned fog, dimmer sun, lightning
+      const W = weatherAt(), gray = Math.max(W.cloud * .55, W.rain * .75, W.storm * .9), lit = .14 + .86 * day;
+      WX.tmp.copy(WX.over).multiplyScalar(lit); if (bg) bg.lerp(WX.tmp, gray * .9); if (fg) fg.color.lerp(WX.tmp, gray * .85);
+      WX.tmp.copy(WX.dust).multiplyScalar(lit); if (bg) bg.lerp(WX.tmp, W.haze * .7); if (fg) { fg.color.lerp(WX.tmp, W.haze * .85); fg.near = 90 - W.haze * 55 - W.rain * 35; fg.far = 270 - W.haze * 130 - W.rain * 115; }
+      hemi.current.intensity *= 1 - gray * .3; sun.current.intensity *= 1 - gray * .8 - W.haze * .25;
+      const fl = lightningAt(Date.now(), W.storm); if (fl) { hemi.current.intensity += fl * 2.4; if (bg) bg.lerp(WX.flash, fl * .55); }
+    }
     const sy = Math.max(.32, Math.abs(Math.sin(ang))), sx = Math.cos(ang);
     if (Math.abs(n - lastN.current) > .01) { lastN.current = n; MATS.forEach(m => { m.emissiveIntensity = n * 1.2; }); if (stars.current) stars.current.visible = n > .4; }
 
@@ -1107,6 +1133,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Pedestrians />
       <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} />
       <TrainLine />
+      <Rain />
       <Airport />
       <JailCell />
       <group ref={group}>
@@ -1121,6 +1148,10 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
 
 /* ───────────── other real players ───────────── */
 const rWalk = (n: string) => { const q = NET.peers[n]; return !!q && q.mv > 0 && Math.hypot(q.tx - q.x, q.tz - q.z) > .08; };
+/* Crowd-friendly name tags: only the nearest few players get the full tag; the rest shrink to a small faded label, then disappear.
+   Anyone who is talking or has a chat bubble always keeps a full tag, so you can still tell who is speaking. */
+const TAGS: { at: number; rank: Record<string, number> } = { at: 0, rank: {} };
+const tagRanks = () => { const now = performance.now(); if (now - TAGS.at < 250) return; TAGS.at = now; const r: Record<string, number> = {}; Object.entries(NET.peers).map(([n, q]) => [n, Math.hypot(NET.me.x - q.x, NET.me.z - q.z)] as const).sort((a, b) => a[1] - b[1]).forEach(([n], i) => { r[n] = i; }); TAGS.rank = r; };
 function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n: string) => void }) {
   const body = useRef<THREE.Group>(null!), car = useRef<THREE.Group>(null!), hum = useRef<THREE.Group>(null!), tag = useRef<HTMLDivElement | null>(null), nameEl = useRef<HTMLDivElement | null>(null);
   const kit = pkit(), remoteModel = VEHICLE_CATALOG[Math.floor(hs(name) * VEHICLE_CATALOG.length)].id, colour = useMemo(() => vehicleById(remoteModel).color, [remoteModel]);
@@ -1132,14 +1163,20 @@ function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n:
     const d = Math.hypot(NET.me.x - q.x, NET.me.z - q.z), near = d < 150;
     body.current.visible = near && !q.drv; body.current.rotation.order = 'YXZ'; body.current.position.set(q.x, q.ko ? .28 : 0, q.z); body.current.rotation.y = q.r; body.current.rotation.x = q.ko ? -Math.PI / 2 : 0;
     car.current.visible = near && (q.cp || q.drv); car.current.position.set(q.cx, 0, q.cz); car.current.rotation.y = q.cr;
-    if (tag.current) tag.current.style.display = d < 45 ? '' : 'none';
-    nameEl.current?.classList.toggle('talking', (NET.talk[name] || 0) > Date.now());
+    tagRanks();
+    const talking = (NET.talk[name] || 0) > Date.now(), rk = TAGS.rank[name] ?? 99, full = rk < 5 || talking || !!bub;
+    if (tag.current) {
+      const show = full ? d < 60 : rk < 14 && d < 28, sc = full ? THREE.MathUtils.clamp(1.1 - d / 70, .62, 1) : .6, op = full ? THREE.MathUtils.clamp(1.25 - d / 60, .5, 1) : THREE.MathUtils.clamp(1 - d / 28, .35, .85);
+      const key = `${show}|${full}|${Math.round(sc * 20)}|${Math.round(op * 20)}`;
+      if (tag.current.dataset.k !== key) { tag.current.dataset.k = key; tag.current.style.display = show ? '' : 'none'; tag.current.style.transform = `scale(${sc.toFixed(2)})`; tag.current.style.opacity = String(op.toFixed(2)); nameEl.current?.classList.toggle('mini', !full); }
+    }
+    nameEl.current?.classList.toggle('talking', talking);
   });
   const p = NET.peers[name]; if (!p) return null;
   return <>
     <group ref={body} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onPick(name); }}>
       <Human look={p.look} getState={() => (rWalk(name) ? 'walk' : 'idle')} getAnim={() => { const q = NET.peers[name]; if (!q || rWalk(name)) return undefined; return q.anim && Date.now() < q.animUntil ? q.anim : q.call ? 'phone' : undefined; }} getSpeed={() => ((NET.peers[name]?.mv || 0) === 2 ? 2.4 : 1.1)} />
-      <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} ref={el => { tag.current = el; }}>{bub && <div className="cwSay">{bub}</div>}<div ref={nameEl} className="cityNameTag cwTapTag" onClick={() => onPick(name)}>{name}</div></div></Html>
+      <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, transformOrigin: '50% 100%' }} ref={el => { tag.current = el; }}>{bub && <div className="cwSay">{bub}</div>}<div ref={nameEl} className="cityNameTag cwTapTag" onClick={() => onPick(name)}>{name}</div></div></Html>
     </group>
     <group ref={car} visible={false}><CarModel kit={kit} color={colour} kind={0} model={remoteModel} /></group>
   </>;
@@ -1241,7 +1278,7 @@ function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; i
 }
 
 const CSS = `
-.cwTapTag{pointer-events:auto;cursor:pointer;padding:6px 10px;font-size:12px}
+.cityNameTag.mini{font-size:10px!important;padding:1px 6px 0!important;border-width:2px!important;border-radius:8px!important;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:none!important}.cwTapTag{pointer-events:auto;cursor:pointer;padding:6px 10px;font-size:12px}
 .cwSay{background:#fff;color:#111;border-radius:12px;padding:5px 10px;font-size:12px;max-width:190px;text-align:center;box-shadow:0 2px 8px #0006;white-space:normal;line-height:1.25}
 .cityWorld{touch-action:none}.cwLookPad{display:none;position:absolute;right:0;top:18%;width:52%;height:64%;z-index:8;touch-action:none;border-radius:24px;background:linear-gradient(180deg,#07100d08,#07100d18);pointer-events:auto}.cwLookPad span{position:absolute;right:12px;top:12px;color:#ffffff55;font-size:9px;letter-spacing:.12em;font-weight:800}.cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
 .cwKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:#ffffffcc;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0006;pointer-events:none}
@@ -1249,7 +1286,7 @@ const CSS = `
 .cwBtn{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
 .cwHurt{position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,#0000 40%,#ff1010cc 100%)}.cwHp{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:12;flex-direction:column;align-items:center;gap:4px;color:#fff;font-weight:800;font-size:13px;pointer-events:none;text-shadow:0 2px 0 #000}.cwHp i{display:block;width:180px;height:12px;border:3px solid #1a1410;border-radius:99px;background:#0009;overflow:hidden}.cwHp b{display:block;height:100%;width:100%;transition:width .15s}\n.cwBtn.mic.on{background:#1d7654;border-color:#3fb98a}.cwBtn.mic.live{box-shadow:0 0 0 4px #35c46b88,0 0 18px #35c46b}.cwTalkers{position:absolute;z-index:11;left:50%;transform:translateX(-50%);top:calc(58px + env(safe-area-inset-top,0px));background:#0b1511e6;border:2px solid #35c46b;color:#fff;font-size:12px;font-weight:800;padding:5px 14px;border-radius:999px;pointer-events:none;white-space:nowrap}.cityNameTag.talking{background:#35c46b!important;color:#06210f!important}.cityNameTag.talking::before{content:'🔊 '}\n.cwBtn span{font-size:22px;line-height:1}.cwBtn small{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .cwBtn:active{background:#d99a42;color:#111}.cwBtn.big{width:78px;height:78px}.cwBtn.cam{width:50px;height:50px}.cwBtn.cam small{display:none}
-.cwMap{position:absolute;left:12px;top:72px;width:140px;height:140px;border-radius:50%;border:3px solid #ffffffcc;box-shadow:0 4px 18px #0008;z-index:6;background:#35553f;pointer-events:none}
+.cwWorld{position:absolute;z-index:6;left:50%;transform:translateX(-50%);top:calc(54px + env(safe-area-inset-top,0px));background:#0b1511b0;border:1px solid #ffffff22;border-radius:999px;color:#fff;font-size:11px;font-weight:700;padding:4px 12px;white-space:nowrap;pointer-events:none}.cwMap{position:absolute;left:12px;top:72px;width:140px;height:140px;border-radius:50%;border:3px solid #ffffffcc;box-shadow:0 4px 18px #0008;z-index:6;background:#35553f;pointer-events:none}
 .cwHint{position:absolute;right:18px;bottom:110px;z-index:6;color:#fff;font-size:11px;line-height:1.55;background:#0b1511b0;border:1px solid #ffffff22;border-radius:10px;padding:8px 11px;pointer-events:none}
 .cwHint b{color:#d99a42}
 .cwSpeed{position:absolute;right:270px;bottom:30px;z-index:7;display:none;align-items:baseline;gap:4px;color:#fff;background:#0b1511d0;border:1px solid #ffffff2a;border-radius:14px;padding:8px 14px;pointer-events:none}
@@ -1294,6 +1331,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         <Scene fight={net.punch} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />
+      <WorldBadge />
       <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
       <LookPad ctl={ctl} />
       <Stick ctl={ctl} />

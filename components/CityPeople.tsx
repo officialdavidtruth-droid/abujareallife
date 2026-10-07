@@ -10,6 +10,8 @@ const ACT_EMOJI: Record<string, string> = { wave: '👋', cheer: '🙌', dance: 
 
 /* Everything social in the open city: online list + chat, player card (wave / high-five / dance / mute),
    voice notes and incoming interaction notices. */
+type Pub = { name: string; you: boolean; since: number; origin: string | null; fame: number; fameRank: number; tier: { e: string; label: string; next: { label: string; at: number } | null; pct: number }; rank: number; profession: { e: string; label: string } | null; style: string; bio: string; relationship: string; partner: string | null; top: { id: string; label: string; e: string; lv: number }[]; stalls: number; itemsSold: number };
+const since = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
 export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voice: VoiceApi; sel: string | null; setSel: (n: string | null) => void }) {
   const [open, setOpen] = useState(false), [txt, setTxt] = useState(''), [, tick] = useState(0), box = useRef<HTMLDivElement>(null);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
@@ -20,6 +22,9 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   const count = net.roster.length + 1;
   const label = !net.enabled ? 'Solo' : net.status === 'online' ? `${count} online` : net.status === 'error' ? 'Offline' : 'Connecting…';
   const d = sel ? dist(sel) : Infinity, canAct = d <= INTERACT_RANGE;
+  const [pub, setPub] = useState<Pub | null>(null), [find, setFind] = useState('');
+  useEffect(() => { setPub(null); if (!sel) return; let dead = false; fetch('/api/player?name=' + encodeURIComponent(sel)).then(r => r.ok ? r.json() : null).then(j => { if (!dead && j) setPub(j); }).catch(() => {}); return () => { dead = true; }; }, [sel]);
+  const people = [...net.roster].sort((a, b) => dist(a) - dist(b)).filter(n => !find || n.toLowerCase().includes(find.toLowerCase()));
 
   return <>
     <RuntimeStyle css={CSS} />
@@ -33,6 +38,14 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
     {sel && net.roster.includes(sel) && <div className="cpSheet">
       <button className="cpX" onClick={() => setSel(null)} aria-label="Close">×</button>
       <div className="cpHead"><b>{sel}</b><span>{d === Infinity ? '' : d <= INTERACT_RANGE ? `${Math.round(d)} m away · close` : `${Math.round(d)} m away · walk closer`}</span></div>
+      {pub ? <div className="cpProf">
+        <div className="cpBadges"><span className="cpTier">{pub.tier.e} {pub.tier.label}</span>{pub.profession && <span>{pub.profession.e} {pub.profession.label}</span>}<span>Rank {pub.rank}</span>{pub.origin && <span>{pub.origin === 'NEPO' ? '👑 Nepo' : '🥣 Lapo'}</span>}</div>
+        {pub.bio && <p className="cpBio">“{pub.bio}”</p>}
+        <div className="cpStats"><div><b>#{pub.fameRank}</b><small>Fame rank</small></div><div><b>{pub.fame}</b><small>Fame</small></div><div><b>{pub.itemsSold}</b><small>Items sold</small></div><div><b>{since(pub.since)}</b><small>Joined</small></div></div>
+        {pub.top.length > 0 && <div className="cpSkills">{pub.top.map(s => <span key={s.id}>{s.e} {s.label} · Lv {s.lv}</span>)}</div>}
+        {pub.relationship !== 'single' && pub.partner && <p className="cpRel">❤️ {pub.relationship} with {pub.partner}</p>}
+        {pub.stalls > 0 && <button className="cpStall" onClick={() => { window.dispatchEvent(new CustomEvent('arl-open-market', { detail: sel })); setSel(null); }}>🛒 Browse {pub.stalls} item{pub.stalls > 1 ? 's' : ''} for sale</button>}
+      </div> : <p className="cpLoad">Loading profile…</p>}
       <div className="cpGrid">
         {ACT_LIST.map(([k, e, l]) => <button key={k} disabled={!canAct} onClick={() => { net.act(k, sel); setSel(null); }}>{e}<small>{l}</small></button>)}
         <button onClick={() => net.toggleMute(sel)}>{net.muted.includes(sel) ? '🔇' : '🔈'}<small>{net.muted.includes(sel) ? 'Unmute chat & voice' : 'Mute chat & voice'}</small></button>
@@ -44,7 +57,8 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
       <button className="cpX" onClick={() => setOpen(false)} aria-label="Close">×</button>
       {!net.enabled ? <p className="cpNoteTxt">Multiplayer is off. Add <b>NEXT_PUBLIC_SUPABASE_URL</b> and <b>NEXT_PUBLIC_SUPABASE_ANON_KEY</b> in Vercel and redeploy.</p> : <>
         <div className="cpTitle">🏙️ Abuja · City {net.room} · {net.status === 'online' ? `${count} players` : net.status}</div>
-        <div className="cpPeople">{net.roster.length === 0 ? <span>You're the only one here right now. Invite friends!</span> : net.roster.map(n => <button key={n} onClick={() => { setSel(n); setOpen(false); }}>👤 {n}</button>)}</div>
+        {net.roster.length > 8 && <input className="cpFind" value={find} placeholder="Find a player…" onChange={e => setFind(e.target.value)} />}
+        <div className="cpPeople">{net.roster.length === 0 ? <span>You're the only one here right now. Invite friends!</span> : people.length === 0 ? <span>No player matches “{find}”.</span> : people.map(n => <button key={n} onClick={() => { setSel(n); setOpen(false); }}>👤 {n} <small>{Math.round(dist(n))}m</small></button>)}</div>
         <div className="cpLog" ref={box}>{net.log.length === 0 ? <span className="cpEmpty">Say hi to the city 👋</span> : net.log.slice(-40).map(m => <div key={m.id}><b>{m.u}:</b> {m.t}</div>)}</div>
         <div className="cpIn"><input value={txt} maxLength={120} placeholder="Say something…" enterKeyHint="send" onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') go(); }} /><button onClick={go}>Send</button></div>
       </>}
@@ -53,6 +67,9 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
 }
 
 const CSS = `
+.cpProf{display:flex;flex-direction:column;gap:7px;margin:6px 0 8px}.cpBadges{display:flex;flex-wrap:wrap;gap:5px}.cpBadges span{background:#13231d;border:1px solid #ffffff20;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700}.cpBadges .cpTier{background:#d99a42;color:#1a1410;border-color:#d99a42}
+.cpBio{margin:0;font-size:12px;color:#cfe0d7;font-style:italic}.cpStats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.cpStats div{background:#0d1b16;border:1px solid #ffffff12;border-radius:10px;padding:6px 2px;text-align:center}.cpStats b{display:block;font-size:13px;color:#f0b94a}.cpStats small{font-size:9px;color:#8fa79b}
+.cpSkills{display:flex;flex-wrap:wrap;gap:5px}.cpSkills span{font-size:11px;background:#10201a;border-radius:8px;padding:3px 8px}.cpRel{margin:0;font-size:12px}.cpLoad{font-size:12px;color:#8fa79b;margin:6px 0}.cpStall{background:#35c46b;color:#06210f;border:0;border-radius:10px;padding:9px;font-weight:800;font-size:12px;cursor:pointer}.cpFind{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:13px;margin-bottom:6px}.cpPeople small{opacity:.6;margin-left:4px}
 .cpOnline{position:absolute;z-index:12;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:7px;min-height:40px;padding:6px 14px;border-radius:999px;border:1px solid #ffffff3a;background:#0b1511e0;color:#fff;font-size:12px;cursor:pointer}
 .cpOnline em{font-style:normal;font-weight:700}.cpOnline b{display:none}.cpOnline i{font-style:normal;position:absolute;top:-4px;right:-2px;background:#e5484d;border-radius:999px;font-size:10px;font-weight:800;padding:2px 6px}
 .cpStack{position:absolute;z-index:25;left:50%;transform:translateX(-50%);top:calc(110px + env(safe-area-inset-top,0px));width:min(360px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px;pointer-events:none}

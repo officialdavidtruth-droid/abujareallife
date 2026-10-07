@@ -9,6 +9,7 @@ import Creator from './Creator';
 import Account, { type AccountUser } from './Account';
 import AuthScreen from './AuthScreen';
 import Loader from './Loader';
+import { worldMinute, worldCalendar, weatherAt } from '../lib/worldClock';
 import AssetLoader from './AssetLoader';
 import City from './City';
 import { setMusicMood, sfx } from '../lib/audio';
@@ -117,7 +118,7 @@ const H: { door?: () => void; outfit?: () => void } = {};
 const find = (id: string) => OBJ.find(o => o.id === id)!;
 
 const NEW = () => ({ pos: [0, .5] as [number, number], rot: 0, pose: 'stand' as Pose, needs: { hunger: 78, energy: 72, hygiene: 70, bladder: 70, fun: 55, social: 50 } as Record<N, number>,
-  min: 8 * 60, cash: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
+  min: worldMinute(), cash: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
 const S = NEW();
 const say = (m: string) => { S.toast = m; S.toastT = Date.now(); };
 const walk = (x: number, z: number) => { S.cur = null; S.q = route(S.pos as P, [x, z]); };
@@ -282,7 +283,7 @@ function auto() {
 
 function tick(dt: number) {
   if (!S.speed) return;
-  const gm = dt * 6 * S.speed; S.min += gm;
+  const gm = dt * 6; S.min = worldMinute(); // time is shared by every player: it follows the world clock and can't be paused or sped up
   (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
   famTick(dt);
   if (S.power && Math.random() < gm / 2200) say('⚡ NEPA took light! Fuel the generator.'), S.power = false;
@@ -699,7 +700,7 @@ export default function Sim() {
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); F.load(r.save.state.bonds, false); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {
@@ -721,17 +722,17 @@ export default function Sim() {
   return <div className={'sim' + (outside ? ' outside' : '')}>
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
-    {user && look && outside && !inside && <City tab={cityTab} onTab={setCityTab} look={look} getMinute={() => S.min} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
-    {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} username={user.username} getMinute={() => S.min} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
-    {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={() => S.min} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = cityExitPoint(b); fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
+    {user && look && outside && !inside && <City tab={cityTab} onTab={setCityTab} look={look} getMinute={worldMinute} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
+    {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} onDenied={() => setInside(null)} username={user.username} getMinute={worldMinute} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
+    {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = cityExitPoint(b); fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
-    <div className={'top' + (menu ? ' open' : '')}><div className="pill">Day {Math.floor(ui.min / 1440) + 1} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
+    <div className={'top' + (menu ? ' open' : '')}><div className="pill">{worldCalendar(ui.min).weekday} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
       <div className="pill gold">{naira(ui.cash)}</div>
       {user && look && <button className="pill" onClick={() => { setSel(null); setOutside(o => !o); setMenu(false); }}>{outside ? '🏠' : '🏙️'}<em> {outside ? 'Go home' : 'Neighborhood'}</em></button>}
       <button className="pill menuBtn" aria-label="Menu" onClick={() => setMenu(v => !v)}>{menu ? '✕' : '☰'}</button>
-      <div className="topMore"><div className="pill">{[0, 1, 2, 3].map(s => <button key={s} className={ui.speed === s ? 'on' : ''} onClick={() => { S.speed = s; }}>{s === 0 ? '⏸' : '▶'.repeat(s)}</button>)}</div>
+      <div className="topMore"><div className="pill">{worldCalendar(ui.min).season.e} {worldCalendar(ui.min).season.label} · {weatherAt().e} {weatherAt().label}</div>
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>

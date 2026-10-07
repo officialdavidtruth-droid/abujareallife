@@ -267,3 +267,21 @@ model Management {
 
   @@index([expiresAt])
 }
+
+// Player-to-player marketplace. Items are held in escrow (taken out of the seller's inventory) while a listing is ACTIVE.
+model Listing {
+  id         String   @id @default(cuid())
+  sellerId   String
+  sellerName String
+  itemKey    String
+  qty        Int      // units still for sale
+  price      Int      // per unit, in naira
+  soldQty    Int      @default(0)
+  earned     Int      @default(0) // naira the seller received after the market fee
+  status     String   @default("ACTIVE") // ACTIVE | SOLD | CANCELLED
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([sellerId, status])
+}

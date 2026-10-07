@@ -4,9 +4,10 @@ import { GAME } from './CityWorld';
 import { VEHICLE_CATALOG } from '../lib/vehicles';
 import { NET } from '../lib/cityNet';
 import { businessStatus } from '../lib/businessHours';
-import { CRIMES, FAME_TIERS, HELP_FAME, HELP_TIP, JAIL_CELL_POS, POLICE_ARREST_RANGE, POLICE_STATION_POS, PROFESSIONS, QUESTS, RELATIONSHIPS, SKILLS, skillLevel, type CrimeId, type Origin, type Profile } from '../lib/profile';
+import { CRIMES, FAME_TIERS, checkAccess, HELP_FAME, HELP_TIP, JAIL_CELL_POS, POLICE_ARREST_RANGE, POLICE_STATION_POS, PROFESSIONS, QUESTS, RELATIONSHIPS, SKILLS, skillLevel, type CrimeId, type Origin, type Profile } from '../lib/profile';
 
 import RuntimeStyle from './RuntimeStyle';
+import Market from './Market';
 type Tier = { id: string; label: string; e: string; at: number; next: { label: string; at: number } | null; pct: number };
 type St = { cash: number; heat: number; wanted: boolean; jailLeft: number; rank: number; profile: Profile; origin: Origin | null; hasCar: boolean; fame: number; tier: Tier };
 type Row = { rank: number; name: string; fame: number; origin: string | null; tier: string; you: boolean };
@@ -15,10 +16,11 @@ const post = async (url: string, body?: object) => { const r = await fetch(url, 
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
 /* Everything "no rules, real consequences": quests, crime, wanted level, real police arrests, jail, building access, relationships. */
-export default function GameLayer({ username, onCash, near, role, onEnter, open, onToggle, onCityTab, cityTab, getMinute }: { username: string; onCash: (n: number) => void; near: { name: string; type: string; id: string } | null; role: 'player' | 'police'; onEnter: (id: string) => void; open: boolean; onToggle: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; getMinute?: () => number }) {
+export default function GameLayer({ username, onCash, near, role, onEnter, onDenied, open, onToggle, onCityTab, cityTab, getMinute }: { username: string; onCash: (n: number) => void; near: { name: string; type: string; id: string } | null; role: 'player' | 'police'; onEnter: (id: string) => void; onDenied?: (reason: string) => void; open: boolean; onToggle: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; getMinute?: () => number }) {
   const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
   const [quest, setQuest] = useState<{ id: string; end: number } | null>(null), [, tick] = useState(0), [bail, setBail] = useState(0), [enter, setEnter] = useState<{ ok: boolean; reason: string; name: string } | null>(null);
-  const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false);
+  const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null);
+  useEffect(() => { const f = (e: Event) => setMarket({ seller: String((e as CustomEvent).detail || '') || undefined }); window.addEventListener('arl-open-market', f); return () => window.removeEventListener('arl-open-market', f); }, []);
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
   const refresh = useCallback(async () => { const r = await fetch('/api/status'); if (r.ok) { const d = await r.json(); setSt(d); GAME.hasCar = !!d.hasCar; onCash(d.cash); } }, [onCash]);
   useEffect(() => { refresh(); const a = setInterval(refresh, 5000), b = setInterval(() => { if (GAME.notice) { say(GAME.notice); GAME.notice = ''; } tick(x => x + 1); }, 500); return () => { clearInterval(a); clearInterval(b); }; }, [refresh]);
@@ -40,7 +42,14 @@ export default function GameLayer({ username, onCash, near, role, onEnter, open,
   const copsNear = () => Object.values(NET.peers).filter(p => p.look.outfitModel === 'uniform' && Math.hypot(p.x - NET.me.x, p.z - NET.me.z) < 25).length;
   const crime = async (k: CrimeId) => { const r = await post('/api/crime', { kind: k, policeNearby: copsNear() }); if (!r.ok) return say(r.d.error); say(r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : '😬 It went wrong. You are WANTED. Police can arrest you.') : `💰 You got away with ${naira(r.d.loot)}${r.d.wanted ? ' · you are WANTED' : ''}`); refresh(); };
   const arrest = async (name: string) => { const p = NET.peers[name]; if (!p || Math.hypot(p.x - NET.me.x, p.z - NET.me.z) > POLICE_ARREST_RANGE) return say(`Get within ${POLICE_ARREST_RANGE} m of ${name} first.`); const r = await post('/api/arrest', { target: name }); say(r.ok ? `🚔 ${name} arrested. +${naira(r.d.reward)}` : r.d.error); refresh(); };
-  const tryEnter = async () => { if (!near || entering) return; const type = near.type as any; const status = businessStatus(type, getMinute ? getMinute() : 0); if (!status.open) { setEnter({ ok: false, reason: `Closed now · Opens ${status.hours.split('–')[0]}`, name: near.name }); return; } setEntering(true); try { const r = await post('/api/access', { building: near.id, minute: getMinute ? getMinute() : 0 }); if (r.d.ok) { onEnter(near.id); return; } setEnter({ ...r.d, name: near.name }); refresh(); } finally { setEntering(false); } };
+  const tryEnter = async () => { if (!near || entering) return; const type = near.type as any; const status = businessStatus(type, getMinute ? getMinute() : 0); if (!status.open) { setEnter({ ok: false, reason: `Closed now · Opens ${status.hours.split('–')[0]}`, name: near.name }); return; } const body = { building: near.id, minute: getMinute ? getMinute() : 0 };
+    // Fast path: if the rules we already know say you can walk in, go in NOW and let the server confirm in the background (it still charges fees and records where you are). A rare refusal sends you back out with a message.
+    if (st && checkAccess(type, { rank: st.rank, profession: st.profile.profession, cash: st.cash, invited: false, jailed: !!st.jailLeft }).ok) {
+      const id = near.id; onEnter(id);
+      post('/api/access', body).then(r => { if (!r.d.ok) { GAME.notice = '⛔ ' + (r.d.reason || 'You cannot enter.'); onDenied?.(r.d.reason || ''); } }).catch(() => {});
+      return;
+    }
+    setEntering(true); try { const r = await post('/api/access', body); if (r.d.ok) { onEnter(near.id); return; } setEnter({ ...r.d, name: near.name }); refresh(); } finally { setEntering(false); } };
   const enterRef = useRef(tryEnter); enterRef.current = tryEnter;
   useEffect(() => { const f = (e: Event) => { if (near && (e as CustomEvent).detail === near.id) enterRef.current(); }; window.addEventListener('arl-enter', f); return () => window.removeEventListener('arl-enter', f); }, [near]); // the city cards can ask to enter the building you are standing next to
   const helpNear = () => { let best: string | null = null, bd = 7; for (const [n, p] of Object.entries(NET.peers)) { const d = Math.hypot(p.x - NET.me.x, p.z - NET.me.z); if (d < bd) { bd = d; best = n; } } return best; };
@@ -48,7 +57,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, open,
   const love = async (body: object) => { const r = await post('/api/relationship', body); say(r.ok ? 'Done.' : r.d.error); refresh(); setTab('love'); };
   if (!st) return null;
   const items: [string, string, () => void][] = [
-    ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
+    ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
     ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
     ['❤️', 'Love', () => setTab('love')], ['📱', 'Phone', () => setTab('phone')], ['🕶️', 'Crime', () => setTab('crime')],
   ];
@@ -68,7 +77,8 @@ export default function GameLayer({ username, onCash, near, role, onEnter, open,
     {msg && <div className="glToast">{msg}</div>}
     {quest && <div className="glToast">⏳ {QUESTS.find(q => q.id === quest.id)?.title}: {left}s</div>}
     {enter && <div className="glModal" onClick={() => setEnter(null)}><div className="glBox" onClick={e => e.stopPropagation()}><h3>{enter.name}</h3><p>{enter.ok ? '✅ ' : '⛔ '}{enter.reason}</p><button onClick={() => setEnter(null)}>Close</button></div></div>}
-    {tab === 'phone' && <PhonePanel onClose={() => setTab(null)} onCityTab={onCityTab} cityTab={cityTab} />}
+    {tab === 'phone' && <PhonePanel onClose={() => setTab(null)} onCityTab={onCityTab} cityTab={cityTab} onMarket={() => { setTab(null); setMarket({}); }} />}
+    {market && <Market seller={market.seller} onClose={() => setMarket(null)} onCash={onCash} />}
     {st.jailLeft > 0 && <div className="glJail"><h2>🚔 In jail</h2><p>{Math.floor(st.jailLeft / 60)}:{String(st.jailLeft % 60).padStart(2, '0')} left</p><button disabled={st.cash < bail} onClick={async () => { const r = await post('/api/jail'); say(r.ok ? 'Bail paid.' : r.d.error); refresh(); }}>Pay bail {naira(bail)}</button></div>}
     {tab && tab !== 'phone' && <div className="glPanel"><button className="x" onClick={() => setTab(null)}>×</button>
       {tab === 'quests' && <><h3>Quests</h3>{QUESTS.filter(q => !q.profession || q.profession.includes(p.profession)).map(q => <button key={q.id} disabled={!!quest || !!st.jailLeft || !!q.at || (!!q.minSkill && skillLevel(p.skills[q.skill]) < q.minSkill)} onClick={() => startQuest(q.id, q.secs)}><b>{q.title}</b> {!q.legal && '🔥'}<small>{q.at ? `📍 inside: ${q.at.join(' / ')} · ` : ''}{q.blurb} · {naira(q.reward)} · {q.secs}s · {q.skill} +{q.xp}{q.minSkill ? ` · needs Lv ${q.minSkill}` : ''}</small></button>)}</>}
@@ -110,17 +120,27 @@ function PlayersPanel({ username, onClose }: { username: string; onClose: () => 
 
 function MyLifePanel({ username, st, prof, profile }: { username: string; st: St; prof?: typeof PROFESSIONS[number]; profile: Profile }) {
   const relationship = profile.partner ? `${profile.relationship} with ${profile.partner}` : profile.relationship === 'single' ? 'Single' : profile.relationship;
+  const [pub, setPub] = useState<any>(null), [bio, setBio] = useState(profile.bio || ''), [saved, setSaved] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => { fetch('/api/player?name=' + encodeURIComponent(username)).then(r => r.ok ? r.json() : null).then(j => j && setPub(j)).catch(() => {}); }, [username]);
+  const saveBio = async () => { setBusy(true); const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profile: { ...profile, bio } }) }); setBusy(false); setSaved(r.ok ? 'Saved ✓' : 'Could not save'); setTimeout(() => setSaved(''), 2500); };
+  const dirty = bio.trim() !== (profile.bio || '').trim();
+  const skills = SKILLS.map(s => ({ s, lv: skillLevel(profile.skills[s.id]) })).sort((a, b) => b.lv - a.lv);
   return <>
-    <div className="panelTitleRow"><div><h3>🧍 @{username}</h3><p className="m">Your life, progression and identity</p></div></div>
+    <div className="panelTitleRow"><div><h3>🧍 @{username}</h3><p className="m">{pub ? `${pub.tier.e} ${pub.tier.label} · Fame #${pub.fameRank} · Joined ${new Date(pub.since).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : 'Your life, progression and identity'}</p></div></div>
     <div className="lifeHero"><div className="lifeMoney"><small>Available cash</small><b>{naira(st.cash)}</b></div><div className="lifeRank"><span>{prof?.e || '🎮'} {prof?.label || 'Player'}</span><b>Rank {st.rank}</b></div></div>
-    <div className="lifeGrid"><div><span>⭐ Fame</span><b>{st.fame}</b></div><div><span>🚗 Vehicle</span><b>{st.hasCar ? 'Owned' : 'None'}</b></div><div><span>❤️ Relationship</span><b>{relationship}</b></div><div><span>{st.wanted ? '🚨 Heat' : '🛡️ Status'}</span><b>{st.wanted ? 'WANTED' : st.heat ? `${st.heat} heat` : 'Clean'}</b></div></div>
-    <div className="lifeSection"><h4>Skills</h4>{SKILLS.map(s => <div key={s.id} className="skillRow"><span>{s.e} {s.label}{profile.focus === s.id ? ' ⭐' : ''}</span><b>Lv {skillLevel(profile.skills[s.id])}</b><div className="skillTrack"><i style={{ width: `${Math.min(100, (profile.skills[s.id] % 10) * 10)}%` }} /></div></div>)}</div>
+    <div className="lifeGrid"><div><span>⭐ Fame</span><b>{st.fame}</b></div><div><span>🚗 Vehicle</span><b>{st.hasCar ? 'Owned' : 'None'}</b></div><div><span>❤️ Relationship</span><b>{relationship}</b></div><div><span>{st.wanted ? '🚨 Heat' : '🛡️ Status'}</span><b>{st.wanted ? 'WANTED' : st.heat ? `${st.heat} heat` : 'Clean'}</b></div>
+      <div><span>🛒 Items sold</span><b>{pub ? pub.itemsSold : '–'}</b></div><div><span>🏷️ Active stalls</span><b>{pub ? pub.stalls : '–'}</b></div></div>
+    <div className="lifeSection"><h4>About me</h4>
+      <textarea className="bioBox" maxLength={120} value={bio} placeholder="Write a short bio other players will see on your profile card…" onChange={e => setBio(e.target.value)} />
+      <div className="row"><small>{bio.length}/120 · shown to everyone who taps your name</small><button disabled={busy || !dirty} onClick={saveBio}>{saved || (busy ? 'Saving…' : 'Save bio')}</button></div></div>
+    <div className="lifeSection"><h4>Skills</h4>{skills.map(({ s, lv }) => <div key={s.id} className="skillRow"><span>{s.e} {s.label}{profile.focus === s.id ? ' ⭐' : ''}</span><b>Lv {lv}</b><div className="skillTrack"><i style={{ width: `${Math.min(100, (profile.skills[s.id] % 10) * 10)}%` }} /></div></div>)}</div>
     <div className="lifeSection"><h4>Identity</h4><div className="identityLine"><span>Origin</span><b>{st.origin === 'NEPO' ? '👑 Nepo baby' : st.origin === 'LAPO' ? '🥣 Lapo baby' : '—'}</b></div><div className="identityLine"><span>Style</span><b>{profile.style}</b></div><div className="identityLine"><span>Focus</span><b>{profile.focus || 'Balanced'}</b></div></div>
     <p className="m">Edit your character from ☰ → Character. Your account, character and progress are saved to your player profile.</p>
+    <RuntimeStyle css={`.bioBox{width:100%;min-height:64px;resize:none;background:#0a1511;border:1px solid #2a4337;border-radius:10px;padding:9px;color:#fff;font:inherit;font-size:13px;box-sizing:border-box}.lifeSection .row small{color:#8fa79b;font-size:10px}.lifeSection .row button{white-space:nowrap}`} />
   </>;
 }
 
-function PhonePanel({ onClose, onCityTab, cityTab }: { onClose: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab }) {
+function PhonePanel({ onClose, onCityTab, cityTab, onMarket }: { onClose: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; onMarket: () => void }) {
   const [app, setApp] = useState<'home' | 'garage' | 'messages'>('home');
   const [vehicles, setVehicles] = useState<any[]>([]), [catalog, setCatalog] = useState(VEHICLE_CATALOG), [busy, setBusy] = useState('');
   const refreshVehicles = useCallback(async () => { const r = await fetch('/api/vehicles'); if (r.ok) { const d = await r.json(); setVehicles(d.vehicles || []); setCatalog(d.catalog || VEHICLE_CATALOG); } }, []);
@@ -134,6 +154,7 @@ function PhonePanel({ onClose, onCityTab, cityTab }: { onClose: () => void; onCi
       <button onClick={() => onCityTab(cityTab === 'jobs' ? null : 'jobs')}><b>💼</b><span>Jobs</span></button>
       <button onClick={() => setApp('messages')}><b>💬</b><span>Messages</span></button>
       <button onClick={() => setApp('garage')}><b>🚗</b><span>Garage</span></button>
+      <button onClick={onMarket}><b>🛒</b><span>Market</span></button>
       <button onClick={() => setApp('garage')}><b>🏪</b><span>Dealership</span></button>
       <button onClick={() => onClose()}><b>🧍</b><span>My Life</span></button>
       <button onClick={() => onClose()}><b>🏦</b><span>Bank</span></button>

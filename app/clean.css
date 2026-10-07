@@ -190,9 +190,9 @@
     right:auto!important;
     top:calc(10px + var(--sat))!important;
     transform:translateX(-50%)!important;
-    width:min(410px,calc(100vw - 300px))!important;
+    width:min(520px,calc(100vw - 360px))!important;
     min-width:300px!important;
-    max-width:410px!important;
+    max-width:520px!important;
     box-sizing:border-box!important;
     padding:6px 7px 6px 10px!important;
     gap:7px!important;
@@ -218,28 +218,20 @@
   }
   .inCam button{width:34px!important;height:34px!important;font-size:14px!important}
 
-  /* Context actions: compact horizontal tray above the bottom controls. */
+  /* Context actions: one compact Actions button; details open in a small tray. */
   .inDock{
-    left:auto!important;
-    right:calc(12px + var(--sar))!important;
-    top:auto!important;
-    bottom:calc(104px + var(--sab))!important;
-    width:min(290px,42vw)!important;
-    display:grid!important;
-    grid-template-columns:repeat(2,minmax(0,1fr))!important;
-    gap:5px!important;
-    align-items:stretch!important;
-    z-index:45!important;
-    padding:7px!important;
-    background:rgba(7,16,13,.82)!important;
-    border:1px solid rgba(255,255,255,.14)!important;
-    border-radius:14px!important;
-    backdrop-filter:blur(8px)!important;
+    left:auto!important;right:calc(14px + var(--sar))!important;top:auto!important;bottom:calc(108px + var(--sab))!important;
+    width:auto!important;display:flex!important;align-items:flex-end!important;z-index:45!important;padding:0!important;background:none!important;border:0!important;
   }
-  .inDock i{grid-column:1/-1!important;text-align:left!important;font-size:8px!important;padding:0 3px 1px!important;white-space:nowrap!important}
-  .inDock button{min-width:0!important;width:100%!important;padding:5px 7px!important;font-size:10px!important;justify-content:flex-start!important;gap:5px!important;border-width:2px!important;box-shadow:0 2px 0 var(--ink),0 5px 8px #0003!important}
-  .inDock button .glIco{width:23px!important;height:23px!important;font-size:12px!important;border-width:2px!important}
-  .inDock button .glTx{font-size:10px!important;-webkit-text-stroke:3px var(--ink)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .inActionsToggle{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;min-width:92px!important;height:38px!important;padding:5px 10px!important;
+    background:rgba(7,16,13,.92)!important;border:2px solid rgba(255,255,255,.18)!important;border-radius:12px!important;color:#fff!important;font-family:var(--gf)!important;font-size:11px!important;
+    box-shadow:0 5px 16px #0007!important}
+  .inActionTray{position:absolute!important;right:0!important;bottom:44px!important;width:min(286px,46vw)!important;max-height:210px!important;overflow:auto!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;padding:7px!important;
+    background:rgba(7,16,13,.94)!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:14px!important;backdrop-filter:blur(10px)!important;box-shadow:0 10px 28px #0009!important}
+  .inActionTray i{grid-column:1/-1!important;font-style:normal!important;font-size:9px!important;color:#d7c9ec!important;padding:0 3px 2px!important;white-space:nowrap!important}
+  .inActionTray button{min-width:0!important;width:100%!important;padding:5px 6px!important;font-size:10px!important;justify-content:flex-start!important;gap:4px!important;border-width:2px!important;box-shadow:0 2px 0 var(--ink),0 4px 8px #0003!important}
+  .inActionTray button .glIco{width:23px!important;height:23px!important;font-size:12px!important;border-width:2px!important}
+  .inActionTray button .glTx{font-size:9px!important;-webkit-text-stroke:2px var(--ink)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* Interaction prompt: centered, small, and never across the player. */
   .inAct{
@@ -299,7 +291,7 @@
 }
 
 @media (pointer:coarse) and (orientation:landscape),(max-width:900px) and (orientation:landscape){
-  .inTop{width:min(390px,calc(100vw - 320px))!important;min-width:280px!important}
+  .inTop{width:min(500px,calc(100vw - 360px))!important;min-width:280px!important}
   .inDock{width:min(270px,38vw)!important;bottom:calc(96px + var(--sab))!important}
   .inCam{bottom:calc(108px + var(--sab))!important}
   .inChat{width:min(320px,34vw)!important}

@@ -100,6 +100,12 @@ export const INTERIOR_UI_CSS = `
 /* ---------- name plates: a little smaller, so they cover less of the room ---------- */
 .glPlate b{font-size:13px}.glPlate em{font-size:11px}
 
+
+/* ---------- mobile: world action badges are replaced by the screen-space Actions tray ---------- */
+@media (pointer:coarse),(max-width:900px){
+  .inLbl{display:none!important}
+}
+
 /* ---------- the "what can I do here" sheet (jobs, buy, quests, management...) ---------- */
 .inMenu{--c:var(--gold);position:absolute;z-index:14;left:auto;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));transform:none;
   width:min(340px,39vw);max-height:none;padding:0;gap:0;display:flex;flex-direction:column;overflow:hidden;

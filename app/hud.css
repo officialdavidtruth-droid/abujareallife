@@ -70,3 +70,42 @@
 .jbApply{margin-top:6px;background:#d99a42;color:#111;border:0;border-radius:999px;padding:8px 12px;font-weight:900;font-size:12px;white-space:nowrap}
 .jbFar{margin-top:6px;text-transform:none!important;letter-spacing:0!important;font-size:10px!important;color:#9fb5aa}
 .nearCard .ncEnter{background:#d99a42;color:#111;font-weight:900}
+
+/* ===== MOBILE / TABLET OVERLAY PASS 2026-10 =====
+   Panels are centered and bounded; they never hang off the viewport. */
+@media (pointer:coarse),(max-width:900px){
+  .cityPanel.sheet{
+    position:absolute!important;
+    left:50%!important;
+    right:auto!important;
+    top:50%!important;
+    bottom:auto!important;
+    transform:translate(-50%,-50%)!important;
+    width:min(560px,calc(100vw - 28px))!important;
+    max-width:560px!important;
+    height:min(72vh,560px)!important;
+    max-height:calc(100vh - 92px)!important;
+    min-height:0!important;
+    padding:12px!important;
+    z-index:160!important;
+    box-sizing:border-box!important;
+  }
+  .cityPanel.sheet .jbList{max-height:none!important;flex:1 1 auto;min-height:0;overflow-y:auto}
+  .cityPanel.sheet .jbCard{grid-template-columns:36px minmax(0,1fr) auto!important;gap:8px!important;padding:8px!important}
+  .cityPanel.sheet .jbIc{width:36px!important;height:36px!important;font-size:18px!important}
+  .cityPanel.sheet .jbBody b{font-size:12px!important}
+  .cityPanel.sheet .jbBody>span{font-size:10px!important}
+  .cityPanel.sheet .jbTags{gap:3px!important}
+  .cityPanel.sheet .jbTags i{font-size:9px!important;padding:2px 5px!important}
+  .cityPanel.sheet .jbShift{min-width:86px!important}
+  .cityPanel.sheet .jbShift small{font-size:8px!important}
+  .cityPanel.sheet .jbShift b{font-size:12px!important}
+  .cityPanel.sheet .jbApply{font-size:10px!important;padding:6px 8px!important;margin-top:4px!important}
+  .cityPanel.sheet .jbTip{font-size:9px!important;padding-top:2px!important}
+  .cityPanel.sheet .jbChips{max-width:100%;overflow-x:auto}
+  .cityPanel.sheet .close{width:34px!important;height:34px!important;right:8px!important;top:7px!important}
+}
+
+@media (pointer:coarse) and (orientation:landscape),(max-width:900px) and (orientation:landscape){
+  .cityPanel.sheet{width:min(520px,calc(100vw - 40px))!important;height:min(78vh,500px)!important}
+}

@@ -182,3 +182,125 @@
 .cwMapBtn{position:absolute;left:12px;top:72px;width:140px;height:140px;padding:0;border:0;border-radius:50%;background:transparent;z-index:6;cursor:pointer}
 .cwMapBtn .cwMap{position:static;width:140px;height:140px}
 .cwMapBtn:focus-visible{outline:3px solid #d99a42;outline-offset:3px}
+
+/* ===== INTERIOR MOBILE / TABLET OVERLAY PASS 2026-10 ===== */
+@media (pointer:coarse),(max-width:900px){
+  .inTop{
+    left:50%!important;
+    right:auto!important;
+    top:calc(10px + var(--sat))!important;
+    transform:translateX(-50%)!important;
+    width:min(410px,calc(100vw - 300px))!important;
+    min-width:300px!important;
+    max-width:410px!important;
+    box-sizing:border-box!important;
+    padding:6px 7px 6px 10px!important;
+    gap:7px!important;
+    border-radius:14px!important;
+    z-index:120!important;
+  }
+  .inIdentity{min-width:0!important;flex:1 1 auto!important;gap:5px!important}
+  .inEyebrow{font-size:8px!important}
+  .inIdentity b{font-size:12px!important;max-width:150px!important}
+  .inMeta{font-size:8px!important;max-width:105px!important}
+  .inTopActions{flex:none!important;display:flex!important;gap:5px!important}
+  .inTopActions .inGear{display:none!important}
+  .inTopActions button{font-size:10px!important;padding:5px 8px!important;min-height:30px!important}
+
+  /* Camera controls belong beside the joystick, not under the building header. */
+  .inCam{
+    left:calc(132px + var(--sal))!important;
+    right:auto!important;
+    top:auto!important;
+    bottom:calc(112px + var(--sab))!important;
+    gap:5px!important;
+    z-index:40!important;
+  }
+  .inCam button{width:34px!important;height:34px!important;font-size:14px!important}
+
+  /* Context actions: compact horizontal tray above the bottom controls. */
+  .inDock{
+    left:auto!important;
+    right:calc(12px + var(--sar))!important;
+    top:auto!important;
+    bottom:calc(104px + var(--sab))!important;
+    width:min(290px,42vw)!important;
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:5px!important;
+    align-items:stretch!important;
+    z-index:45!important;
+    padding:7px!important;
+    background:rgba(7,16,13,.82)!important;
+    border:1px solid rgba(255,255,255,.14)!important;
+    border-radius:14px!important;
+    backdrop-filter:blur(8px)!important;
+  }
+  .inDock i{grid-column:1/-1!important;text-align:left!important;font-size:8px!important;padding:0 3px 1px!important;white-space:nowrap!important}
+  .inDock button{min-width:0!important;width:100%!important;padding:5px 7px!important;font-size:10px!important;justify-content:flex-start!important;gap:5px!important;border-width:2px!important;box-shadow:0 2px 0 var(--ink),0 5px 8px #0003!important}
+  .inDock button .glIco{width:23px!important;height:23px!important;font-size:12px!important;border-width:2px!important}
+  .inDock button .glTx{font-size:10px!important;-webkit-text-stroke:3px var(--ink)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* Interaction prompt: centered, small, and never across the player. */
+  .inAct{
+    left:50%!important;
+    right:auto!important;
+    bottom:calc(96px + var(--sab))!important;
+    transform:translateX(-50%)!important;
+    max-width:min(300px,42vw)!important;
+    font-size:12px!important;
+    padding:7px 11px!important;
+    border-width:2px!important;
+    border-radius:11px!important;
+    z-index:50!important;
+  }
+
+  /* Chat is a compact strip in the center, leaving controls clear. */
+  .inChat{
+    left:50%!important;
+    right:auto!important;
+    bottom:calc(8px + var(--sab))!important;
+    transform:translateX(-50%)!important;
+    width:min(360px,40vw)!important;
+    z-index:35!important;
+  }
+  .inChat div{display:none!important}
+  .inChat input{width:100%!important;box-sizing:border-box!important;padding:7px 10px!important;font-size:11px!important;border-width:2px!important}
+
+  /* Joystick remains isolated on the lower-left. */
+  .inStick{left:calc(18px + var(--sal))!important;bottom:calc(14px + var(--sab))!important;width:100px!important;height:100px!important;z-index:35!important}
+  .inStick i{width:42px!important;height:42px!important}
+
+  /* Open action menus become centered modal cards, never half off-screen. */
+  .inWrap .inMenu{
+    left:50%!important;
+    right:auto!important;
+    top:50%!important;
+    bottom:auto!important;
+    transform:translate(-50%,-50%)!important;
+    width:min(500px,calc(100vw - 32px))!important;
+    max-width:500px!important;
+    height:min(72vh,520px)!important;
+    max-height:calc(100vh - 76px)!important;
+    min-height:0!important;
+    border-radius:18px!important;
+    box-sizing:border-box!important;
+    z-index:180!important;
+  }
+  .inMenu h3{font-size:18px!important;padding:9px 48px 8px 13px!important}
+  .inBody{padding:9px!important;gap:7px!important}
+  .inBody>div{gap:7px!important}
+  .inBody button:not(.x){padding:7px!important;gap:7px!important;border-width:2px!important;border-radius:12px!important;box-shadow:0 3px 0 var(--ink)!important}
+  .inBody button:not(.x)::before{width:32px!important;height:32px!important;font-size:16px!important;border-width:2px!important}
+  .inBody .tx b{font-size:13px!important}
+  .inBody .tx small{font-size:10px!important;line-height:1.2!important}
+  .inBody .pill{font-size:11px!important;padding:5px 9px!important;border-width:2px!important}
+  .inBody p{font-size:11px!important;padding:6px 9px!important;border-width:2px!important}
+}
+
+@media (pointer:coarse) and (orientation:landscape),(max-width:900px) and (orientation:landscape){
+  .inTop{width:min(390px,calc(100vw - 320px))!important;min-width:280px!important}
+  .inDock{width:min(270px,38vw)!important;bottom:calc(96px + var(--sab))!important}
+  .inCam{bottom:calc(108px + var(--sab))!important}
+  .inChat{width:min(320px,34vw)!important}
+}

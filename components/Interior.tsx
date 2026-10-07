@@ -235,7 +235,6 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
       {room.posts.map(p => <Staff key={p.idx} post={p} look={staff[p.idx]} onTalk={talk} />)}
       {room.office && <ManagerSeat office={room.office} mgr={mgr} meName={look.name} onTap={() => { const sp = room.spots.find(x => x.id === 'mgmt'); if (sp) goSpot(sp); }} />}
       {room.spots.map(s => <SpotMark key={s.id} s={s} active={spot?.id === s.id} onTap={goSpot} />)}
-      <Text position={[0, 2.2, -room.d / 2 + .25]} fontSize={.55} color="#fff" outlineWidth={.05} outlineColor="#1a1410" anchorX="center">{biz.name}</Text>
       <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu || store} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
       {net.roster.map(n => ROOM.peers[n] && <Remote key={n + net.ver} name={n} bub={net.bub[n]} />)}
     </Canvas></div>

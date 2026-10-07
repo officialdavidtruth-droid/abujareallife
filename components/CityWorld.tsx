@@ -10,7 +10,7 @@ import Human from './Human';
 import { CITY } from '../lib/cityData';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
-import { NET, useCityNet } from '../lib/cityNet';
+import { FIGHT, NET, useCityNet } from '../lib/cityNet';
 import { JAIL_CELL_POS } from '../lib/profile';
 import { useCityVoice } from '../lib/cityVoice';
 import CityPeople from './CityPeople';
@@ -19,9 +19,9 @@ import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 
 import RuntimeStyle from './RuntimeStyle';
 import { createPortal } from 'react-dom';
-import { GRID, halfW, curbSpot, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
+import { GRID, CURB, halfW, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
-type Ctl = { joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
+type Ctl = { punch: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
 type Kind = 'glass' | 'concrete' | 'brick' | 'plaster';
 type Prof = { kind: Kind; f: [number, number]; sign: string; wall?: string; balc?: boolean };
@@ -324,8 +324,14 @@ function CarModel({ kit, color, kind, model }: { kit: Kit; color: string; kind: 
     <mesh position={[-1.55, .58, .91]} material={new THREE.MeshStandardMaterial({ color: '#111', metalness: .25, roughness: .55 })}><boxGeometry args={[.5, .05, .05]} /></mesh>
   </group>;
 }
-type SimCar = { s: number; color: string; kind: number; model: string };
-type Lane = { axis: 'x' | 'z'; dir: 1 | -1; fixed: number; speed: number; rot: number; cars: SimCar[] };
+type Role = 'car' | 'taxi' | 'bike' | 'police';
+// Every road user lives in the same lane simulation, so taxis, bikes and police keep gaps / obey lights exactly like normal traffic.
+// hail: 0 = driving, 1 = pulling over for a player, 2 = stopped at the kerb waiting.   busy = carrying a player right now.
+type SimCar = { s: number; color: string; kind: number; model: string; role: Role; mul: number; v?: number; off: number; hail: 0 | 1 | 2; stopping?: boolean; readyAt?: number; busy?: boolean };
+type Lane = { axis: 'x' | 'z'; dir: 1 | -1; fixed: number; speed: number; rot: number; road: number; cars: SimCar[] };
+const ROAM = { cars: [] as { l: Lane; c: SimCar }[], sel: -1, rideIdx: -1, openSheet: (_i: number) => {}, tap: (_i: number) => {} };
+const roleOf = (n: number): Role => (n % 5 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
+const ROLE_MUL: Record<Role, number> = { car: 1, taxi: 1, bike: .8, police: 1.15 };
 const COLORS = ['#c0392b', '#e8e8ea', '#1f2933', '#2c5aa0', '#8e949a', '#b7791f', '#0f766e', '#7c2d12', '#d9d9dc', '#1e9e55'];
 function makeLanes(): Lane[] {
   const lanes: Lane[] = []; let n = 0;
@@ -334,46 +340,103 @@ function makeLanes(): Lane[] {
     for (const axis of ['x', 'z'] as const) for (const dir of [1, -1] as const) {
       const fixed = axis === 'x' ? i * GRID + (dir === 1 ? off : -off) : i * GRID + (dir === 1 ? -off : off); // drive on the right
       const rot = axis === 'x' ? (dir === 1 ? 0 : Math.PI) : (dir === 1 ? -Math.PI / 2 : Math.PI / 2);
-      const cars = Array.from({ length: major ? 2 : 1 }, (_, k) => ({ s: -100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id }));
-      lanes.push({ axis, dir, fixed, speed: major ? 9 : 6.5, rot, cars });
+      const cars = Array.from({ length: major ? 2 : 1 }, (_, k): SimCar => { const role = roleOf(n); return { s: -100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id, role, mul: ROLE_MUL[role], off: 0, hail: 0 }; });
+      lanes.push({ axis, dir, fixed, speed: major ? 9 : 6.5, rot, road: i, cars });
     }
   }
   return lanes;
 }
 const nextCenter = (s: number, dir: 1 | -1) => (dir === 1 ? Math.floor(s / GRID + 1e-6) * GRID + GRID : Math.ceil(s / GRID - 1e-6) * GRID - GRID);
+/* Roaming taxis & bike taxis: they drive the city like normal traffic. Tap one to hail it; it pulls over to the kerb, then tap again to choose a destination. */
 function Traffic() {
   const lanes = useMemo(makeLanes, []), kit = useMemo(carKit, []);
   const flat = useMemo(() => lanes.flatMap(l => l.cars.map(c => ({ l, c }))), [lanes]);
   const refs = useRef<(THREE.Group | null)[]>([]);
+  const lbl = useRef<THREE.Group>(null!), lblEl = useRef<HTMLDivElement | null>(null), lblKey = useRef('');
+  useEffect(() => {
+    ROAM.cars = flat;
+    ROAM.tap = (i: number) => {
+      const e = ROAM.cars[i]; if (!e || e.c.busy || GAME.ride || VEH.drv || GAME.jailed) return;
+      const t = TPOS[i], d = t ? Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z) : 999, role = e.c.role;
+      if (e.c.hail === 2) { if (d < 9) ROAM.openSheet(i); else GAME.notice = `Walk up to the ${role === 'taxi' ? 'taxi' : 'bike'} first.`; return; }
+      if (e.c.hail === 1) return;
+      if (d > 45) { GAME.notice = 'Too far away: wait for it to come closer.'; return; }
+      const old = ROAM.cars[ROAM.sel]; if (old && old.c.hail && old.c !== e.c) releaseRoamer(old.c);
+      e.c.hail = 1; e.c.stopping = false; e.c.v = e.l.speed * e.c.mul; ROAM.sel = i;
+      GAME.notice = role === 'taxi' ? '🚕 Taxi is pulling over for you...' : '🚲 Bike taxi is pulling over for you...';
+    };
+    return () => { ROAM.cars = []; ROAM.sel = -1; ROAM.rideIdx = -1; };
+  }, [flat]);
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
+    let nearI = -1, nearD = 45;
     flat.forEach(({ l, c }, i) => {
-      let adv = l.speed * dt, gap = Infinity;
-      for (const o of l.cars) if (o !== c) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) gap = d; }
+      const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }), g = refs.current[i];
+      if (c.busy) { tp.x = 1e5; tp.z = 1e5; if (g) g.visible = false; return; } // it is carrying a player (the ride has its own model)
+      if (g) g.visible = true;
+      const base = l.speed * c.mul, EX = halfW(l.road) * .5 + CURB; // EX: how far the vehicle slides sideways to reach the kerb
+      let v = c.v ?? base;
+      if (c.hail === 1) {
+        const prev = l.dir === 1 ? c.s - Math.floor(c.s / GRID) * GRID : Math.ceil(c.s / GRID) * GRID - c.s; // metres past the last junction
+        if (prev >= 6 && prev <= 12) c.stopping = true; // brake only mid-block, never inside a junction
+        if (c.stopping) v = Math.max(0, v - 10 * dt);
+        c.off = Math.min(EX, c.off + 2.2 * dt);
+        if (c.stopping && v === 0 && c.off >= EX - .02) { c.hail = 2; c.readyAt = t; GAME.notice = c.role === 'taxi' ? '🚕 Taxi stopped: walk up and tap it.' : '🚲 Bike taxi stopped: walk up and tap it.'; }
+        c.v = v;
+      } else if (c.hail === 2) {
+        v = 0; c.v = 0; c.off = EX;
+        const d = Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z);
+        if (t - (c.readyAt || t) > 45 || d > 70 || GAME.ride || VEH.drv) releaseRoamer(c); // you changed your mind: it drives off
+      } else {
+        if (c.off > 0) c.off = Math.max(0, c.off - 2.2 * dt);
+        if (c.v !== undefined) { v = Math.min(base, c.v + 5 * dt); c.v = v >= base && c.off === 0 ? undefined : v; }
+      }
+      let adv = v * dt, gap = Infinity;
+      for (const o of l.cars) if (o !== c && !o.busy) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) gap = d; }
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
       for (const o of OBS) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
       if (Math.abs(ci) <= 5 && lightState(t, l.axis) !== 'g' && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
       c.s += adv * l.dir; if (c.s > 118) c.s = -118; else if (c.s < -118) c.s = 118;
-      const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }); if (l.axis === 'x') { tp.x = c.s; tp.z = l.fixed; } else { tp.x = l.fixed; tp.z = c.s; } tp.r = l.rot;
-      const g = refs.current[i]; if (g) { if (l.axis === 'x') g.position.set(c.s, 0, l.fixed); else g.position.set(l.fixed, 0, c.s); g.rotation.y = l.rot; }
+      const px = l.axis === 'x' ? c.s : l.fixed - l.dir * c.off, pz = l.axis === 'x' ? l.fixed + l.dir * c.off : c.s;
+      tp.x = px; tp.z = pz; tp.r = l.rot;
+      if (g) { g.position.set(px, 0, pz); g.rotation.y = l.rot; }
+      if ((c.role === 'taxi' || c.role === 'bike') && !GAME.ride && !VEH.drv && !GAME.jailed) {
+        const dd = Math.hypot(GAME.player.x - px, GAME.player.z - pz);
+        if (ROAM.sel === i && c.hail) { nearI = i; nearD = -1; } else if (!c.hail && dd < nearD) { nearI = i; nearD = dd; }
+      }
     });
+    // one floating "hail" tag that follows the closest hailable taxi / bike
+    const el = lblEl.current, grp = lbl.current;
+    if (el && grp) {
+      let key = '';
+      if (nearI >= 0) {
+        const e = flat[nearI], tp = TPOS[nearI], d = Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z), ic = e.c.role === 'taxi' ? '🚕' : '🚲';
+        grp.position.set(tp.x, e.c.role === 'taxi' ? 2.5 : 2.1, tp.z);
+        key = e.c.hail === 1 ? `${ic} Pulling over...` : e.c.hail === 2 ? (d < 9 ? `${ic} Tap to ride` : `${ic} Waiting: walk up`) : `${ic} Tap to hail`;
+        if (e.c.hail === 2 && d < 9) key += '|go'; else if (e.c.hail === 0) key += '|go';
+      }
+      if (key !== lblKey.current) { lblKey.current = key; el.style.display = key ? '' : 'none'; el.className = 'hailTag' + (key.endsWith('|go') ? ' go' : ''); el.textContent = key.replace('|go', ''); el.dataset.i = String(nearI); }
+    }
   });
-  return <>{flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}><CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} /></group>)}</>;
+  return <>
+    {flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}
+      onClick={c.role === 'taxi' || c.role === 'bike' ? (e => { if (e.delta > 6) return; e.stopPropagation(); ROAM.tap(i); }) : undefined}>
+      {c.role === 'taxi' ? <TaxiBody kit={kit} /> : c.role === 'bike' ? <BikeBody scale={.95} rider /> : c.role === 'police' ? <PoliceBody kit={kit} /> : <CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} />}
+    </group>)}
+    <group ref={lbl}><Html center zIndexRange={[4, 0]}><div ref={lblEl} className="hailTag" style={{ display: 'none' }} onClick={() => { const i = Number(lblEl.current?.dataset.i); if (i >= 0) ROAM.tap(i); }} /></Html></group>
+  </>;
+}
+/* a roamer is finished with its passenger / hail: back on the road */
+function releaseRoamer(c: SimCar) { c.hail = 0; c.stopping = false; c.readyAt = undefined; if (ROAM.cars[ROAM.sel]?.c === c) ROAM.sel = -1; }
+function respawnRoamer(idx: number) {
+  const e = ROAM.cars[idx]; if (!e) return; const { l, c } = e;
+  let best = c.s, bd = -1;
+  for (let k = 0; k < 14; k++) { const s = -110 + Math.random() * 220, near = Math.min(...l.cars.filter(o => o !== c).map(o => Math.abs(o.s - s)), 999), far = Math.hypot((l.axis === 'x' ? s : l.fixed) - GAME.player.x, (l.axis === 'x' ? l.fixed : s) - GAME.player.z); const score = Math.min(near, 30) + Math.min(far, 60); if (score > bd) { bd = score; best = s; } }
+  c.s = best; c.off = 0; c.hail = 0; c.stopping = false; c.v = undefined; c.busy = false; c.readyAt = undefined;
 }
 
-
-/* ───────────── player transport stands: taxis + hire bikes ───────────── */
-// Parked on the sidewalk strip beside the road (curbSpot), never in the traffic lanes. They face the way traffic flows on that side.
-const TRANSPORT_STOPS = [
-  { kind: 'taxi' as const, label: 'Taxi Stand', ...curbSpot('x', 0, 11, 1) },
-  { kind: 'taxi' as const, label: 'Taxi Stand', ...curbSpot('x', 0, -11, -1) },
-  { kind: 'taxi' as const, label: 'Taxi Stand', ...curbSpot('z', 0, -11, 1) },
-  { kind: 'bike' as const, label: 'Bike Hire', ...curbSpot('x', 1, 11, -1) },
-  { kind: 'bike' as const, label: 'Bike Hire', ...curbSpot('z', 1, 11, -1) },
-  { kind: 'bike' as const, label: 'Bike Hire', ...curbSpot('x', -1, -11, 1) },
-];
-type Stand = typeof TRANSPORT_STOPS[number];
+/* ───────────── transport: roaming taxis + bike taxis (hail them in the street) ───────────── */
 const DESTS = CITY.districts.slice(0, 8).map(d => ({ name: d.name, x: d.x, z: d.z }));
 
 /* ───────────── roadside advertising billboards ───────────── */
@@ -388,9 +451,8 @@ const BILLBOARDS = ([
   ['z', 0, 33, -1, 'DRIVE & EXPLORE', 'Taxis · Bikes · Cars'],
 ] as const).map(([axis, road, along, side, title, sub], i) => ({ ...billboardSpot(axis, road, along, side), ax: axis === 'x' ? 1 : 0, az: axis === 'x' ? 0 : 1, title, sub, i }));
 
-// Solid footprints so players cannot walk through parked taxis / bikes / billboard posts.
+// Solid footprints so players cannot walk through billboard posts.
 const TRANSPORT_SOLIDS = [
-  ...TRANSPORT_STOPS.flatMap(t => { const fx = Math.cos(t.r), fz = -Math.sin(t.r); return t.kind === 'taxi' ? [-1.2, 1.2].map(o => ({ x: t.x + fx * o, z: t.z + fz * o, r: 1.0 })) : [{ x: t.x, z: t.z, r: .8 }]; }),
   ...BILLBOARDS.flatMap(b => [-1.7, 1.7].map(o => ({ x: b.x + b.ax * o, z: b.z + b.az * o, r: .1 }))),
 ];
 
@@ -414,14 +476,16 @@ function BikeBody({ scale = 1, rider }: { scale?: number; rider?: boolean }) { /
     {rider && <group position={[-.18, .6, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
   </group>;
 }
-/* One small label per stand: nothing when you are far, "🚕 Taxi" in the middle distance, "Tap to ride" when you are next to it. Never stacked on the vehicle. */
-function StandLabel({ t }: { t: Stand }) {
-  const el = useRef<HTMLDivElement>(null), mode = useRef('');
-  useFrame(() => {
-    const d = Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z), m = GAME.ride ? 'off' : d < 5 ? 'near' : d < 16 ? 'mid' : 'off';
-    if (m !== mode.current && el.current) { mode.current = m; el.current.className = 'trTag ' + m; el.current.textContent = m === 'near' ? (t.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire') : (t.kind === 'taxi' ? '🚕 Taxi' : '🚲 Bikes'); }
-  });
-  return <Html position={[0, t.kind === 'taxi' ? 2.45 : 1.9, 0]} center zIndexRange={[4, 0]}><div ref={el} className="trTag off" /></Html>;
+function PoliceBody({ kit }: { kit: Kit }) {
+  const red = useRef<THREE.MeshStandardMaterial>(null!), blue = useRef<THREE.MeshStandardMaterial>(null!);
+  useFrame(st => { const f = Math.floor(st.clock.elapsedTime * 5) % 2, k = NIGHT.n * 3 + 1.2; if (red.current) red.current.emissiveIntensity = f ? .1 : k; if (blue.current) blue.current.emissiveIntensity = f ? k : .1; });
+  return <group>
+    <CarModel kit={kit} color="#eef1f6" kind={0} model="toyota-corolla-2024" />
+    <mesh position={[-.17, 1.47, 0]}><boxGeometry args={[.5, .05, 1.2]} /><meshStandardMaterial color="#111" /></mesh>
+    <mesh position={[-.17, 1.55, .3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={red} color="#ff2b2b" emissive="#ff1010" emissiveIntensity={1} /></mesh>
+    <mesh position={[-.17, 1.55, -.3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={blue} color="#2b6bff" emissive="#1050ff" emissiveIntensity={1} /></mesh>
+    {[1, -1].map(sd => <Text key={sd} position={[-.2, .78, sd * .94]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.2} color="#1d3f8f" anchorX="center" anchorY="middle">POLICE</Text>)}
+  </group>;
 }
 function TransportSheet({ kind, onPick, onClose }: { kind: 'taxi' | 'bike'; onPick: (d: { name: string; x: number; z: number }) => void; onClose: () => void }) {
   return createPortal(<div className="trSheet">
@@ -433,10 +497,16 @@ function TransportSheet({ kind, onPick, onClose }: { kind: 'taxi' | 'bike'; onPi
 }
 function TransportVehicles() {
   const kit = useMemo(carKit, []);
-  const [open, setOpen] = useState<number | null>(null), [near, setNear] = useState<number | null>(null), [, setTick] = useState(0);
+  const [open, setOpen] = useState<number | null>(null), [, setTick] = useState(0);
   const activeRef = useRef<THREE.Group>(null!), rs = useRef<RideState | null>(null), route = useRef<Route | null>(null);
-  useEffect(() => { const id = setInterval(() => { let best: number | null = null, bd = 6; if (!GAME.ride) TRANSPORT_STOPS.forEach((t, i) => { const d = Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z); if (d < bd) { bd = d; best = i; } }); setNear(best); }, 180); return () => clearInterval(id); }, []);
-  useEffect(() => { if (open !== null && near !== open) setOpen(null); }, [near, open]); // walk away (or start a ride) and the menu closes
+  useEffect(() => { ROAM.openSheet = (i: number) => { if (!GAME.ride) setOpen(i); }; return () => { ROAM.openSheet = () => {}; }; }, []);
+  useEffect(() => { // walk away (or the vehicle drives off) and the destination menu closes
+    const id = setInterval(() => {
+      if (open === null) return; const e = ROAM.cars[open], tp = TPOS[open];
+      if (!e || e.c.hail !== 2 || !tp || Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z) > 12) setOpen(null);
+    }, 250);
+    return () => clearInterval(id);
+  }, [open]);
 
   useFrame((st, dtRaw) => {
     const ride = GAME.ride, g = activeRef.current;
@@ -447,34 +517,35 @@ function TransportVehicles() {
     ride.x = r.x; ride.z = r.z; ride.r = r.r;
     g.visible = true; g.position.set(r.x, 0, r.z); g.rotation.y = r.r;
     OBS[2].x = r.x; OBS[2].z = r.z; GAME.player.x = r.x; GAME.player.z = r.z;
-    if (r.done) { // arrived: the rider steps out onto the sidewalk
+    if (r.done) { // arrived: the rider steps out onto the sidewalk and the taxi / bike goes back to roaming the city
       GAME.ride = null; rs.current = null; route.current = null; OBS[2].on = false;
       GAME.player.x = rt.drop[0]; GAME.player.z = rt.drop[1]; GAME.tp = { x: rt.drop[0], z: rt.drop[1] };
-      GAME.notice = `📍 Arrived at ${ride.name}`; g.visible = false; setTick(v => v + 1);
+      GAME.notice = `📍 Arrived at ${ride.name}`; g.visible = false;
+      if (ROAM.rideIdx >= 0) { respawnRoamer(ROAM.rideIdx); ROAM.rideIdx = -1; }
+      setTick(v => v + 1);
     }
   });
 
   const go = async (idx: number, d: { name: string; x: number; z: number }) => {
-    const stand = TRANSPORT_STOPS[idx], rt = planRide(stand, [d.x, d.z]);
-    if (!rt) { GAME.notice = 'No route to that place from here.'; return; }
-    const res = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: stand.kind }) });
+    const e = ROAM.cars[idx], tp = TPOS[idx]; if (!e || !tp || e.c.hail !== 2 || e.c.busy) { setOpen(null); return; }
+    const { l, c } = e, kind = c.role === 'bike' ? 'bike' : 'taxi';
+    const rt = planRide({ x: tp.x, z: tp.z, axis: l.axis, road: l.road, along: c.s, h: l.dir }, [d.x, d.z]);
+    if (!rt) { GAME.notice = 'It cannot set off from here: hail one nearer the middle of the map.'; releaseRoamer(c); setOpen(null); return; }
+    const res = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { GAME.notice = data.error || 'Transport unavailable.'; return; }
-    route.current = rt; rs.current = newRide(rt, stand.r);
-    GAME.ride = { kind: stand.kind, x: stand.x, z: stand.z, r: stand.r, name: d.name, path: rt.pts, i: 0, speed: stand.kind === 'taxi' ? 11 : 7.5, stand: idx };
-    GAME.notice = `${stand.kind === 'taxi' ? '🚕 Your driver' : '🚲 Your rider'} is taking you to ${d.name}`;
+    if (c.hail !== 2 || c.busy) { GAME.notice = 'That ride left without you.'; setOpen(null); return; }
+    route.current = rt; rs.current = newRide(rt, l.rot);
+    GAME.ride = { kind, x: tp.x, z: tp.z, r: l.rot, name: d.name, path: rt.pts, i: 0, speed: kind === 'taxi' ? 11 : 7.5, stand: -1 };
+    c.busy = true; c.hail = 0; c.stopping = false; ROAM.rideIdx = idx; ROAM.sel = -1;
+    GAME.notice = `${kind === 'taxi' ? '🚕 Your driver' : '🚲 Your rider'} is taking you to ${d.name}`;
     setOpen(null); setTick(v => v + 1);
   };
-  const busy = GAME.ride?.stand;
+  const openKind = open !== null ? (ROAM.cars[open]?.c.role === 'bike' ? 'bike' : 'taxi') : 'taxi';
   return <>
-    {TRANSPORT_STOPS.map((t, i) => <group key={i} position={[t.x, 0, t.z]} rotation-y={t.r} onClick={e => { e.stopPropagation(); if (GAME.ride) return; if (Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z) > 8) { GAME.notice = `Walk up to the ${t.kind === 'taxi' ? 'taxi' : 'bike'} first.`; return; } setOpen(i); }}>
-      <mesh position={[0, .02, 0]} rotation-x={-Math.PI / 2}><planeGeometry args={[t.kind === 'taxi' ? 5.4 : 2.6, t.kind === 'taxi' ? 2.5 : 1.5]} /><meshStandardMaterial color="#3b4a43" roughness={1} /></mesh>
-      {busy !== i && (t.kind === 'taxi' ? <TaxiBody kit={kit} /> : <BikeBody scale={.9} />)}
-      <group rotation-y={-t.r}><StandLabel t={t} /></group>
-    </group>)}
     <group ref={activeRef} visible={false}>{GAME.ride?.kind === 'bike' ? <BikeBody scale={1} rider /> : <TaxiBody kit={kit} driver />}</group>
-    {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={TRANSPORT_STOPS[open].kind} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
-    <RuntimeStyle css={`.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
+    {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={openKind} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
+    <RuntimeStyle css={`.hailTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:5px 12px 4px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;pointer-events:auto;cursor:pointer}.hailTag.go{background:var(--gold,#ffb81c)}\n.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
 .trSheet{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(320px,40vw);display:flex;flex-direction:column;overflow:hidden;background:var(--plum,#261a36);color:var(--cream,#fff3d6);border:4px solid var(--ink,#1a1410);border-radius:22px;box-shadow:0 6px 0 var(--ink,#1a1410),0 18px 34px #000a;font-family:var(--gf,system-ui);animation:trIn .24s cubic-bezier(.3,1.4,.5,1)}
 .trSheet h3{flex:none;margin:0;padding:10px 54px 8px 16px;background:var(--gold,#ffb81c);border-bottom:4px solid var(--ink,#1a1410);font-weight:400;font-size:22px;line-height:1.1;letter-spacing:.04em;color:#fff;background-image:repeating-linear-gradient(135deg,#ffffff1c 0 10px,#0000 10px 20px)}.trSheet h3 span{display:block;-webkit-text-stroke:6px var(--ink,#1a1410);paint-order:stroke fill}
 .trX{all:unset;box-sizing:border-box;position:absolute;z-index:2;right:10px;top:8px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;cursor:pointer;background:var(--red,#ff5147);border:3px solid var(--ink,#1a1410);box-shadow:0 3px 0 var(--ink,#1a1410);color:#fff;font-size:15px}.trX:active{transform:translateY(3px);box-shadow:none}
@@ -778,7 +849,7 @@ function JailCell() {
   </group>;
 }
 const CAR_R = 1, CAR_OFFS = [-1.35, 0, 1.35];
-function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }: { look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
+function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, fight }: { fight: (to: string) => boolean; look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: Math.PI });
   const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!), hemi = useRef<THREE.HemisphereLight>(null!), stars = useRef<THREE.Group>(null!);
   const carG = useRef<THREE.Group>(null!), carTag = useRef<HTMLDivElement | null>(null), spot = useRef<THREE.SpotLight>(null!), nameTag = useRef<HTMLDivElement | null>(null);
@@ -866,6 +937,22 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       if (gp.buttons[0]?.pressed) wantJump = true;
       if (gp.buttons[7]?.pressed || gp.buttons[10]?.pressed || gp.buttons[1]?.pressed) wantRun = true;
     }
+    /* ── fighting: punch the nearest real player, get knocked out at 0 HP ── */
+    const nowMs = Date.now(), me = NET.me;
+    if (me.ko && nowMs >= me.ko) { me.ko = 0; me.hp = 35; me.safe = nowMs + 4000; GAME.notice = '💪 You got back up.'; }
+    const down = me.ko > nowMs;
+    if (!down && me.hp < 100 && nowMs > me.hurt + 6000) me.hp = Math.min(100, me.hp + 5 * dt); // slow regeneration
+    if (NET.msg) { GAME.notice = NET.msg; NET.msg = ''; }
+    if (c.punch) {
+      c.punch = false;
+      if (!down && !VEH.drv && !GAME.jailed) {
+        let tgt = '', bd = FIGHT.range, tx = 0, tz = 0;
+        for (const [pn, q] of Object.entries(NET.peers)) { if (q.drv || q.ko) continue; const dd = Math.hypot(q.x - p.x, q.z - p.z); if (dd < bd) { bd = dd; tgt = pn; tx = q.x; tz = q.z; } }
+        if (tgt) p.r = Math.atan2(tx - p.x, tz - p.z);
+        fight(tgt);
+      }
+    }
+    if (down) { ix = 0; iy = 0; wantJump = false; wantRun = false; c.interact = false; c.jump = false; }
     const m = Math.hypot(ix, iy); if (m > 1) { ix /= m; iy /= m; }
     const mag = Math.min(m, 1);
     let snapCam = false;
@@ -945,7 +1032,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     }
     c.jump = false;
     GAME.player.x = p.x; GAME.player.z = p.z;
-    group.current.position.set(p.x, p.y, p.z); group.current.rotation.y = p.r;
+    group.current.rotation.order = 'YXZ'; group.current.position.set(p.x, p.y + (me.ko > nowMs ? .28 : 0), p.z); group.current.rotation.y = p.r; group.current.rotation.x = me.ko > nowMs ? -Math.PI / 2 : 0; // knocked out: lying on the ground
     group.current.visible = !VEH.drv;
     if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';
 
@@ -1036,7 +1123,7 @@ function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n:
     q.x += (q.tx - q.x) * k; q.z += (q.tz - q.z) * k; q.r += wrap(q.tr - q.r) * k;
     q.cx += (q.tcx - q.cx) * k; q.cz += (q.tcz - q.cz) * k; q.cr += wrap(q.tcr - q.cr) * k;
     const d = Math.hypot(NET.me.x - q.x, NET.me.z - q.z), near = d < 150;
-    body.current.visible = near && !q.drv; body.current.position.set(q.x, 0, q.z); body.current.rotation.y = q.r;
+    body.current.visible = near && !q.drv; body.current.rotation.order = 'YXZ'; body.current.position.set(q.x, q.ko ? .28 : 0, q.z); body.current.rotation.y = q.r; body.current.rotation.x = q.ko ? -Math.PI / 2 : 0;
     car.current.visible = near && (q.cp || q.drv); car.current.position.set(q.cx, 0, q.cz); car.current.rotation.y = q.cr;
     if (tag.current) tag.current.style.display = d < 45 ? '' : 'none';
   });
@@ -1107,6 +1194,20 @@ function DriveHud({ hud }: { hud: React.MutableRefObject<Hud> }) {
   }, [hud]);
   return <><div ref={spd} className="cwSpeed"><b ref={num}>0</b><small>km/h</small></div><div ref={tip} className="cwTip" /></>;
 }
+function FightHud() {
+  const box = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), fx = useRef<HTMLDivElement>(null), txt = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const m = NET.me, now = Date.now(), ko = m.ko > now, hurtRecent = now - m.hurt < 7000;
+      if (box.current) box.current.style.display = ko || m.hp < 100 || hurtRecent ? 'flex' : 'none';
+      if (bar.current) { bar.current.style.width = `${Math.max(0, m.hp)}%`; bar.current.style.background = m.hp > 50 ? '#35c46b' : m.hp > 25 ? '#f2b705' : '#ff5147'; }
+      if (txt.current) txt.current.textContent = ko ? `😵 Knocked out: ${Math.ceil((m.ko - now) / 1000)}s` : `❤️ ${Math.ceil(m.hp)}`;
+      if (fx.current) fx.current.style.opacity = ko ? '.55' : String(Math.max(0, 1 - (now - m.hurt) / 350) * .5);
+    }, 80);
+    return () => clearInterval(id);
+  }, []);
+  return <><div ref={fx} className="cwHurt" /><div ref={box} className="cwHp" style={{ display: 'none' }}><span ref={txt} /><i><b ref={bar} /></i></div></>;
+}
 function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; icon: string; down: () => void; up?: () => void }) {
   return <button className={'cwBtn ' + cls} aria-label={label} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); down(); }} onPointerUp={() => up?.()} onPointerCancel={() => up?.()} onContextMenu={e => e.preventDefault()}><span>{icon}</span><small>{label}</small></button>;
 }
@@ -1118,7 +1219,7 @@ const CSS = `
 .cwKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:#ffffffcc;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0006;pointer-events:none}
 .cwBtns{position:absolute;right:18px;bottom:22px;z-index:12;display:grid;grid-template-columns:repeat(3,64px);gap:10px;align-items:end;justify-items:end}.cwBtns .big{grid-column:3;grid-row:1 / span 2}.cwBtns>.cam:not(.cwTouch){grid-column:1;grid-row:1}.cwBtns>.cam.cwTouch{grid-column:2;grid-row:1}.cwBtns>.cwTouch:not(.cam){grid-column:1;grid-row:2}.cwBtns>.cwBtn:not(.cam):not(.cwTouch):not(.big){grid-column:2;grid-row:2}
 .cwBtn{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
-.cwBtn span{font-size:22px;line-height:1}.cwBtn small{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.cwHurt{position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,#0000 40%,#ff1010cc 100%)}.cwHp{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:12;flex-direction:column;align-items:center;gap:4px;color:#fff;font-weight:800;font-size:13px;pointer-events:none;text-shadow:0 2px 0 #000}.cwHp i{display:block;width:180px;height:12px;border:3px solid #1a1410;border-radius:99px;background:#0009;overflow:hidden}.cwHp b{display:block;height:100%;width:100%;transition:width .15s}\n.cwBtn span{font-size:22px;line-height:1}.cwBtn small{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .cwBtn:active{background:#d99a42;color:#111}.cwBtn.big{width:78px;height:78px}.cwBtn.cam{width:50px;height:50px}.cwBtn.cam small{display:none}
 .cwMap{position:absolute;left:12px;top:72px;width:140px;height:140px;border-radius:50%;border:3px solid #ffffffcc;box-shadow:0 4px 18px #0008;z-index:6;background:#35553f;pointer-events:none}
 .cwHint{position:absolute;right:18px;bottom:110px;z-index:6;color:#fff;font-size:11px;line-height:1.55;background:#0b1511b0;border:1px solid #ffffff22;border-radius:10px;padding:8px 11px;pointer-events:none}
@@ -1137,7 +1238,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const net = useCityNet(look, onSocial);
   const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: n => net.muted.includes(n), onSocial });
   const [sel, setSel] = useState<string | null>(null);
-  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false });
+  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: 0, fz: -1, r: Math.PI, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
@@ -1147,6 +1248,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       if (typing(e)) return; const k = e.key.toLowerCase();
       if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
       if (k === 'c') ctl.current.recenter = true;
+      if (k === 'f' && !e.repeat) ctl.current.punch = true;
       if (k === 'e' && !e.repeat) { ctl.current.interact = true; unlockAudio(); }
       if (k === 'h' && !e.repeat) { ctl.current.horn = true; unlockAudio(); }
       ctl.current.keys.add(k);
@@ -1161,23 +1263,25 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <RuntimeStyle css={CSS} />
       <RuntimeStyle css={GAME_LABEL_CSS} />
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x, 4.2, START.z + 8], fov: 52, far: 600 }}>
-        <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
+        <Scene fight={net.punch} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />
       <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
       <LookPad ctl={ctl} />
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
+      <FightHud />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMuted(!cfg.muteAll); }}>{cfg.muteAll ? '🔇' : '🔊'}</button>
       <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+        <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter view<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter view · <b>F</b> punch<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
     </div>
   );
 }

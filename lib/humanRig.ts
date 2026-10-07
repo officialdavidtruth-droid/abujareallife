@@ -138,6 +138,7 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   if (k === 'think') { j.raX = .8; j.reX = 2.3; j.laX = .6; j.leX = 1.8; j.laZ = -.1; j.hX = .12; j.hY = .2; j.hZ = .08; }
   if (k === 'wardrobe') { j.raX = 1.0; j.reX = .6; j.laX = 1.0; j.leX = .6; j.sY = .3 * sin(t * 3); j.hY = .3 * sin(t * 3); }
   if (k === 'music') { const s = sin(t * 5.5); j.llX = .12 * s; j.rlX = -.12 * s; j.lkX = .2 + .15 * mx(0, s); j.rkX = .2 + .15 * mx(0, -s); j.hipY = -.02 + .02 * Math.abs(s); j.sZ = .08 * s; j.hZ = -.14 * s; j.laX = .3; j.raX = .3; j.leX = .9; j.reX = .9 + .3 * s; }
+  if (k === 'punch') { const s = sin(t * 21), a = mx(0, s), b = mx(0, -s); j.sX = .12; j.sY = .28 * s; j.hX = .05; j.raX = .5 + 1.0 * a; j.reX = 1.7 - 1.6 * a; j.raZ = -.05; j.laX = .5 + 1.0 * b; j.leX = 1.7 - 1.6 * b; j.laZ = .05; j.llX = .25; j.rlX = -.25; j.lkX = .3; j.rkX = .3; }
   return j;
 }
 

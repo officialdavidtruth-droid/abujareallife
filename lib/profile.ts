@@ -128,6 +128,9 @@ export const catchChance = (c: CrimeId, skillLvl: number, policeNearby: number) 
   Math.max(0.05, Math.min(0.95, CRIMES[c].base - skillLvl * 0.04 + policeNearby * 0.12));
 export const POLICE_ARREST_RANGE = 6;       // metres
 export const POLICE_REWARD = 40_000;        // paid to the officer for a valid arrest
+// Player-vs-player fights: whoever STARTS a fight gets heat; knocking someone out also costs them a fine paid to the victim.
+export const ASSAULT_HEAT = 15, KO_HEAT = 30, OFFICER_HEAT = 25;   // 15 + 30 = 45 >= WANTED_AT, so a knockout makes you wanted
+export const FIGHT_FINE_PCT = 0.1, FIGHT_FINE_MAX = 25_000;      // knockout fine: 10% of the attacker's cash, capped
 
 /* ───────── Building access: rank / invitation / access ───────── */
 export type AccessRule = { rank?: number; profession?: ProfessionId[]; inviteOnly?: boolean; open?: boolean; minCash?: number };

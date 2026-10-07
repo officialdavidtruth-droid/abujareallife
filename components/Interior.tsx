@@ -7,7 +7,7 @@ import Human from './Human';
 import { CITY } from '../lib/cityData';
 import { MGR_TASK_PAY, fmtClock } from '../lib/work';
 import { makeNav } from '../lib/nav';
-import { GAME_LABEL_CSS } from '../lib/gameLabels';
+import { GAME_LABEL_CSS, INTERIOR_UI_CSS } from '../lib/gameLabels';
 import StoreModal from './StoreModal';
 import { sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
@@ -57,7 +57,7 @@ function Decor({ room }: { room: Room }) {
 }
 // An NPC employee at their post: desk staff work in place, others walk their rounds. If a player on a shift is standing at the post, the NPC steps aside.
 function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: number) => void }) {
-  const g = useRef<THREE.Group>(null!), [occ, setOcc] = useState(false), hx = post.stand?.[0] ?? post.x, hz = post.stand?.[1] ?? post.z;
+  const g = useRef<THREE.Group>(null!), tag = useRef<HTMLDivElement>(null), hid = useRef(false), [occ, setOcc] = useState(false), hx = post.stand?.[0] ?? post.x, hz = post.stand?.[1] ?? post.z;
   const s = useRef({ x: post.patrol ? post.patrol[0][0] : post.x, z: post.patrol ? post.patrol[0][1] : post.z, r: post.r, seg: 1, wait: 1 + (post.idx % 3), mv: false });
   useEffect(() => {
     const here = (x: number, z: number, w: number) => Math.abs(w) === post.idx + 1 && Math.hypot(x - hx, z - hz) < 1.8;
@@ -72,30 +72,32 @@ function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: n
         else { const st = Math.min(d, 1.15 * dt); q.x += dx / d * st; q.z += dz / d * st; q.mv = true; let dr = Math.atan2(dx, dz) - q.r; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); q.r += dr * Math.min(1, dt * 8); } }
     }
     g.current.position.set(q.x, post.y ?? 0, q.z); g.current.rotation.y = q.r; STAFF_POS[post.idx] = { x: q.x, z: q.z };
+    const nr = Math.hypot(ROOM.me.x - q.x, ROOM.me.z - q.z) < 1.9; if (nr !== hid.current && tag.current) { hid.current = nr; tag.current.classList.toggle('near', nr); } // name plate steps out of the way when you are close
   });
   if (occ) return null;
   const anim = () => { const near = Math.hypot(ROOM.me.x - s.current.x, ROOM.me.z - s.current.z) < 2.4; return post.anim === 'work' && near && (performance.now() / 1000) % 8 < 3 ? 'wave' : post.anim; };
   return <group ref={g} position={[s.current.x, post.y ?? 0, s.current.z]} rotation-y={post.r} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTalk(post.idx); }}>
     <mesh position={[0, 1, 0]}><cylinderGeometry args={[.6, .6, 2, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
     <Human look={look} getState={() => (s.current.mv ? 'walk' : 'idle')} getAnim={post.patrol ? undefined : anim} />
-    <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div className="inTag"><button className="glPlate" onClick={() => onTalk(post.idx)}><b>{look.name}</b><em>{post.title}</em><i>💬</i></button></div></Html></group>;
+    <Html position={[0, 2.75, 0]} center zIndexRange={[5, 0]}><div className="inTag" ref={tag}><button className="glPlate" onClick={() => onTalk(post.idx)}><b>{look.name}</b><em>{post.title}</em><i>💬</i></button></div></Html></group>;
 }
 type Mgr = { seat: boolean; title: string; needed: number; daily: number; tasks: { id: string; label: string; mins: number }[]; holder: { name: string; look: Look; until: number } | null;
   me: { isHolder: boolean; holdsSeat: boolean; progress: number; salaryInMs: number; otherSeat: boolean }; active: { label: string; secs: number; left: number } | null };
 // The manager's desk. Vacant until someone applies. If the manager is not in the room right now, their character still sits at the desk.
 function ManagerSeat({ office, mgr, meName, onTap }: { office: Office; mgr: Mgr | null; meName: string; onTap: () => void }) {
-  const [absent, setAbsent] = useState(true), h = mgr?.holder || null;
+  const [absent, setAbsent] = useState(true), h = mgr?.holder || null, tag = useRef<HTMLDivElement>(null), hid = useRef(false);
+  useFrame(() => { const nr = Math.hypot(ROOM.me.x - office.x, ROOM.me.z - office.z) < 2.3; if (nr !== hid.current && tag.current) { hid.current = nr; tag.current.classList.toggle('near', nr); } });
   useEffect(() => { const i = setInterval(() => setAbsent(!h || !(h.name === meName || mgr?.me.isHolder || ROOM.peers[h.name])), 500); return () => clearInterval(i); }, [h, meName, mgr]);
   if (!mgr?.seat) return null; const sitting = !!h && absent;
   return <group>
     <mesh position={[office.x, .6, office.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTap(); }}><boxGeometry args={[2.6, 1.2, 1.1]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
     {sitting && <group position={[office.sx, 0, office.sz]}><Human look={h!.look} getState={() => 'idle'} getAnim={() => 'work'} /></group>}
-    <Html position={[office.x, sitting ? 2.4 : 1.5, sitting ? office.sz : office.z]} center zIndexRange={[5, 0]}><div className="inTag"><button className={'glPlate ' + (h ? 'boss' : 'vacant')} onClick={onTap}>{h ? <><b>{h.name}</b><em>👔 {office.title}</em></> : <><b>{office.title}</b><em>Vacant · apply!</em><i>!</i></>}</button></div></Html>
+    <Html position={[office.x, sitting ? 2.75 : 2.35, sitting ? office.sz : office.z]} center zIndexRange={[5, 0]}><div className="inTag" ref={tag}><button className={'glPlate ' + (h ? 'boss' : 'vacant')} onClick={onTap}>{h ? <><b>{h.name}</b><em>👔 {office.title}</em></> : <><b>{office.title}</b><em>Vacant · apply!</em><i>!</i></>}</button></div></Html>
   </group>;
 }
 function SpotMark({ s, active, onTap }: { s: Spot; active: boolean; onTap: (s: Spot) => void }) {
   return <group position={[s.x, 0, s.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTap(s); }}><mesh position={[0, .6, 0]}><cylinderGeometry args={[1.1, 1.1, 1.2, 16]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh><mesh rotation-x={-Math.PI / 2} position={[0, .03, 0]}><ringGeometry args={[.7, .95, 32]} /><meshBasicMaterial color={active ? '#ffd166' : '#3fb98a'} /></mesh>
-    <Html position={[0, 1.7, 0]} center zIndexRange={[5, 0]}><button className={'inLbl gl-' + s.id + (active ? ' on' : '')} onClick={() => onTap(s)}><span className="glIco">{s.e}</span><span className="glTx">{s.label}</span></button></Html></group>;
+    <Html position={[0, 2.05, 0]} center zIndexRange={[5, 0]}><button className={'inLbl gl-' + s.id + (active ? ' on' : '')} aria-label={s.label} onClick={() => onTap(s)}><span className="glIco">{s.e}</span><span className="glTx">{s.label}</span></button></Html></group>;
 }
 function Remote({ name, bub }: { name: string; bub?: string }) {
   const g = useRef<THREE.Group>(null!), p = ROOM.peers[name]; if (!p) return null;
@@ -221,7 +223,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
   const stick = useRef<HTMLDivElement>(null), knob = useRef<HTMLElement>(null);
   const joy = (e: React.PointerEvent, on: boolean) => { const r = stick.current!.getBoundingClientRect(); let x = (e.clientX - r.left - r.width / 2) / (r.width / 2), y = (e.clientY - r.top - r.height / 2) / (r.height / 2); const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; } ctl.current.joy = on ? { x, y } : { x: 0, y: 0 }; if (knob.current) knob.current.style.transform = `translate(calc(-50% + ${on ? x * 30 : 0}px),calc(-50% + ${on ? y * 30 : 0}px))`; };
 
-  return <div className="inWrap">
+  return <div className={'inWrap' + (menu || store ? ' menuOpen' : '')}>
     <div className="inCanvas" onPointerDown={gDown} onPointerMove={gMove} onPointerUp={gUp} onPointerCancel={gUp} onPointerLeave={gUp} onWheel={e => { cam.current.dist = Math.min(17, Math.max(5, cam.current.dist + e.deltaY * .01)); }}>
     <Canvas shadows dpr={[1, 1.5]} camera={{ position: [0, 8.5, room.d / 2 + 6], fov: 50 }}>
       <color attach="background" args={['#0b1210']} /><hemisphereLight args={['#ffffff', '#555566', 1.1]} /><directionalLight position={[4, 9, 5]} intensity={1.6} castShadow />
@@ -242,30 +244,28 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
     <div className="inCam"><button aria-label="Rotate left" onClick={() => { cam.current.yaw -= .6; }}>⟲</button><button aria-label="Reset camera" onClick={() => { cam.current.yaw = 0; cam.current.pitch = .85; cam.current.dist = 10.5; }}>🧭</button><button aria-label="Rotate right" onClick={() => { cam.current.yaw += .6; }}>⟳</button><button aria-label="Zoom in" onClick={() => { cam.current.dist = Math.max(5, cam.current.dist - 1.5); }}>＋</button><button aria-label="Zoom out" onClick={() => { cam.current.dist = Math.min(17, cam.current.dist + 1.5); }}>－</button></div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
-    {menu && <div className="inMenu"><button className="x" onClick={() => setMenu(null)}>×</button><h3>{menu.e} {menu.label}</h3>
+    {menu && <div className={'inMenu k-' + (menu.id.startsWith('npc') ? 'npc' : menu.id)} style={{ ['--e' as string]: `"${menu.e}"` }}><button className="x" aria-label="Close" onClick={() => setMenu(null)}>✕</button><h3><span>{menu.e} {menu.label}</span></h3><div className="inBody">
       {menu.opts.map((o, i) => o.t === 'info' ? <p key={i}>{o.text}</p> : o.t === 'mgmt' ? mgmtMenu(i) : <button key={i} onClick={() => run(o)}>
         {o.t === 'shift' && <><span className="tx"><b>{o.label}</b><small>+{naira(o.pay)} · 45–60 min · task assigned{o.senior ? ' · needs rank 2' : ''}</small></span><em className="pill">Apply</em></>}
         {o.t === 'store' && <><span className="tx"><b>🛍️ Browse the store</b><small>{o.count} items · household, kitchen, furniture, tech, style &amp; more</small></span><em className="pill">Open</em></>}
         {o.t === 'shop' && <><span className="tx"><b>{o.label}</b><small>{naira(o.cost)}</small></span><em className="pill">Buy</em></>}
         {o.t === 'quest' && <><span className="tx"><b>{qName(o.id).title}</b><small>{qName(o.id).blurb} · +{naira(qName(o.id).reward)} · {qName(o.id).secs}s{qName(o.id).legal ? '' : ' · 🔥 illegal'}</small></span><em className="pill">Start</em></>}
-        {o.t === 'crime' && <><span className="tx"><b>{CRIMES[o.id].label}</b><small>{naira(CRIMES[o.id].loot[0])}–{naira(CRIMES[o.id].loot[1])} · +{CRIMES[o.id].heat} heat · officers inside make it riskier</small></span><em className="pill">Try</em></>}</button>)}</div>}
+        {o.t === 'crime' && <><span className="tx"><b>{CRIMES[o.id].label}</b><small>{naira(CRIMES[o.id].loot[0])}–{naira(CRIMES[o.id].loot[1])} · +{CRIMES[o.id].heat} heat · officers inside make it riskier</small></span><em className="pill">Try</em></>}</button>)}</div></div>}
     {net.enabled && <div className="inChat">{net.log.slice(-3).map(m => <div key={m.id}><b>{m.u}</b> {m.t}</div>)}<input placeholder="Say something…" maxLength={120} value={txt} onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && net.send(txt)) setTxt(''); }} /></div>}
     <div className="inStick" ref={stick} onPointerDown={e => { (e.target as Element).setPointerCapture(e.pointerId); joy(e, true); }} onPointerMove={e => (e.buttons || e.pointerType === 'touch') && joy(e, true)} onPointerUp={e => joy(e, false)} onPointerCancel={e => joy(e, false)}><i ref={knob as React.RefObject<HTMLElement>} /></div>
     <style>{`.inWrap{position:absolute;inset:0;z-index:8;background:#0b1210}.inWrap canvas{display:block}.inTop{position:absolute;left:12px;top:56px;display:flex;gap:10px;align-items:center;background:#10201ae6;border:1px solid #ffffff20;border-radius:12px;padding:8px 12px;color:#fff;font-size:12px}.inTop span{color:#a8bbb2}.inTop button{background:#d99a42;border:0;border-radius:8px;padding:6px 10px;font-weight:800}
 .inToast{position:absolute;left:50%;transform:translateX(-50%);top:110px;background:#000c;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;max-width:90vw;text-align:center}
 .inAct{position:absolute;left:50%;transform:translateX(-50%);bottom:150px;background:#d99a42;color:#111;border:0;border-radius:14px;padding:12px 18px;font-weight:900;font-size:14px}.inAct.cop{bottom:100px;background:#2563eb;color:#fff}
-.inMenu{position:absolute;left:50%;transform:translateX(-50%);bottom:90px;width:min(380px,calc(100vw - 24px));max-height:55vh;overflow:auto;background:#09130ff7;border:1px solid #ffffff22;border-radius:16px;padding:14px;color:#fff;display:flex;flex-direction:column;gap:7px}.inMenu h3{margin:0}.inMenu .x{position:absolute;right:8px;top:2px;background:none;border:0;color:#fff;font-size:24px}.inMenu button:not(.x){text-align:left;background:#13231d;color:#fff;border:1px solid #ffffff18;border-radius:10px;padding:9px}.inMenu small{display:block;color:#9fb5aa;margin-top:2px}.inMenu p{margin:0;color:#9fb5aa;font-size:12px}
-.inChat{position:absolute;left:12px;bottom:14px;width:min(260px,50vw);font-size:11px;color:#fff;display:flex;flex-direction:column;gap:3px}.inChat div{background:#000a;border-radius:8px;padding:3px 7px}.inChat input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:12px}
-.inStick{position:absolute;right:calc(18px + env(safe-area-inset-right,0px));bottom:18px;width:110px;height:110px;border-radius:50%;background:#0005;border:2px solid #ffffff33;touch-action:none;z-index:9;display:none}.inStick i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:#ffffffaa;transform:translate(-50%,-50%)}
+.inChat{position:absolute;left:12px;bottom:14px;width:min(260px,50vw);z-index:12;font-size:11px;color:#fff;display:flex;flex-direction:column;gap:3px}.inChat div{background:#000a;border-radius:8px;padding:3px 7px}.inChat input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:12px}
+.inStick{position:absolute;left:calc(20px + env(safe-area-inset-left,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));width:116px;height:116px;border-radius:50%;background:#0005;border:2px solid #ffffff33;touch-action:none;z-index:12;display:none}.inStick i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:#ffffffaa;transform:translate(-50%,-50%)}
 .inLbl{background:#09130fe8;color:#fff;border:1px solid #ffffff22;border-radius:8px;padding:3px 7px;font-size:10px;white-space:nowrap}.inTag{display:flex;flex-direction:column;align-items:center;gap:3px}.inTag span{background:#09130fe8;color:#fff;border-radius:8px;padding:2px 6px;font-size:10px}.inStaff{border:1px solid #d99a4288}.inSay{background:#fff;color:#111;border-radius:10px;padding:4px 8px;font-size:11px;max-width:160px;text-align:center}
 .inCanvas{position:absolute;inset:0;touch-action:none}
 .inLbl{cursor:pointer;font:inherit}.inStaff{cursor:pointer;font:inherit}
-.inMenu button{display:flex!important;flex-direction:row!important;align-items:center;gap:10px;text-align:left}.inMenu button .tx{flex:1;display:block}
-.pill{flex:none;font-style:normal;background:#d99a42;color:#111;border-radius:999px;padding:7px 14px;font-weight:900;font-size:12px}
 .inDock{position:absolute;right:calc(12px + env(safe-area-inset-right,0px));top:56px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;z-index:9}.inDock i{font-style:normal;font-size:10px;color:#a8bbb2}
 .inDock button{background:#10201af0;border:1px solid #ffffff2a;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700}.inDock button.on{background:#d99a42;color:#111;border-color:#d99a42}
 .inCam{position:absolute;left:12px;top:104px;display:flex;gap:6px;z-index:9}.inCam button{width:38px;height:38px;border-radius:50%;background:#10201af0;border:1px solid #ffffff2a;color:#fff;font-size:17px}
-@media (pointer:coarse),(max-width:900px){.inStick{display:block}}`}</style>
+@media (pointer:coarse),(max-width:900px){.inStick{display:block}.inChat{left:calc(152px + env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));width:min(250px,30vw)}}`}</style>
     <style>{GAME_LABEL_CSS}</style>
+    <style>{INTERIOR_UI_CSS}</style>
   </div>;
 }

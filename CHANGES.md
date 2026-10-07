@@ -21,3 +21,7 @@
 - app/clean.css (new, imported last in app/layout.tsx): controls cheat-sheet fades after 9 s, touch buttons hidden on desktop, small install button in the corner, compact near-building card
 - components/CityWorld.tsx: removed the floating building-name tag (the sign and the card already show it) and your own name tag
 - components/City.tsx: removed the "ABUJA REAL LIFE / 100 buildings" bar
+
+## Music + indoor UI pass
+- **Music**: real tracks in `public/audio/` now play as the soundtrack (crossfaded, remembers where you were). Streets: `sim-city-groove`, `simbas-groove`. Indoors/home: `virtual-village`, `simbas-virtual-safari`. Edit `PLAYLISTS` in `lib/audio.ts` to reassign. The old generated loop remains as a fallback if files fail to load. Master/Music sliders and mute still control it.
+- **Indoors**: joystick moved to the left (chat sits beside it); the "What can I do here?" sheet is now a game-style side panel (so it never covers your character); in-world spot labels are compact icon badges that hide when you stand on them; name plates fade when you walk up to them; all screen UI now layers above 3D labels. Styles live in `INTERIOR_UI_CSS` (`lib/gameLabels.ts`).

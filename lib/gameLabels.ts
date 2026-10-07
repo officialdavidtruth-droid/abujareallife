@@ -72,3 +72,69 @@ html[data-hints="0"] .cwHint,html[data-hints="0"] .cwTip,html[data-hints="0"] .h
 .inLbl,.glPlate,.glName,.cityNameTag,.inSay,.cwSay,.cityBizTag{zoom:var(--gl-scale,1)}
 @media (prefers-reduced-motion:reduce){.inLbl,.glPlate i,.glPlate.vacant em,.inDock button.on,.inAct,.inSay,.cwSay{animation:none!important}}
 `;
+
+// Inside buildings (components/Interior.tsx): layering, compact in-world badges, and the "what can I do here" side sheet.
+// Injected AFTER GAME_LABEL_CSS so it wins on equal specificity.
+export const INTERIOR_UI_CSS = `
+/* ---------- layering: screen UI always sits above the floating 3D labels ---------- */
+.inTop,.inDock,.inCam,.inAct,.inChat,.inStick{z-index:12}
+.inToast{z-index:13}
+.inTag{transition:opacity .18s}.inTag.near{opacity:0;pointer-events:none}
+/* a menu is open: the world labels get out of the way completely */
+.inWrap.menuOpen .inTag,.inWrap.menuOpen .inLbl{opacity:0!important;pointer-events:none!important}
+.inWrap.menuOpen .inDock{display:none}
+
+/* ---------- top-left banner: smaller, never wider than it needs to be ---------- */
+.inTop{max-width:min(440px,50vw);gap:8px!important;padding:6px 8px 6px 12px!important}
+.inTop b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inTop span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.inTop button{flex:none;white-space:nowrap}
+@media (max-height:480px){.inTop{top:calc(44px + env(safe-area-inset-top,0px))!important}.inCam{top:calc(104px + env(safe-area-inset-top,0px))!important}.inDock{top:calc(44px + env(safe-area-inset-top,0px))!important}.inMenu{top:calc(44px + env(safe-area-inset-top,0px))!important}}
+
+/* ---------- in-world action spots: small icon badges (names live in the right-hand list and on hover) ---------- */
+.inLbl{padding:3px!important;gap:0!important;transition:opacity .18s,transform .12s}
+.inLbl .glIco{width:34px;height:34px;font-size:18px}
+.inLbl .glTx{display:none}
+.inLbl:hover{padding:3px 14px 3px 3px!important;gap:7px!important}.inLbl:hover .glTx{display:inline}
+.inLbl.on{opacity:0;pointer-events:none;animation:none}   /* you are standing on it: the button at the bottom takes over */
+
+/* ---------- name plates: a little smaller, so they cover less of the room ---------- */
+.glPlate b{font-size:13px}.glPlate em{font-size:11px}
+
+/* ---------- the "what can I do here" sheet (jobs, buy, quests, management...) ---------- */
+.inMenu{--c:var(--gold);position:absolute;z-index:14;left:auto;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));transform:none;
+  width:min(340px,39vw);max-height:none;padding:0;gap:0;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--plum);color:var(--cream);border:4px solid var(--ink);border-radius:22px;box-shadow:0 6px 0 var(--ink),0 18px 34px #000a;
+  font-family:var(--gf);animation:inSlide .24s cubic-bezier(.3,1.4,.5,1)}
+.inMenu.k-work,.inMenu.k-npc{--c:var(--blue)}.inMenu.k-shop{--c:var(--green)}.inMenu.k-quest{--c:var(--gold)}.inMenu.k-crime{--c:var(--red)}.inMenu.k-mgmt{--c:var(--purple)}.inMenu.k-board{--c:#6f87a8}
+.inMenu h3{flex:none;margin:0;padding:10px 54px 8px 16px;background:var(--c);border-bottom:4px solid var(--ink);font-weight:400;font-size:22px;line-height:1.1;letter-spacing:.04em;color:#fff;
+  background-image:repeating-linear-gradient(135deg,#ffffff1c 0 10px,#0000 10px 20px)}
+.inMenu h3 span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill}
+.inMenu .x{all:unset;box-sizing:border-box;position:absolute;z-index:2;right:10px;top:8px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;cursor:pointer;
+  background:var(--red);border:3px solid var(--ink);box-shadow:0 3px 0 var(--ink);color:#fff;font-size:15px;line-height:1}
+.inMenu .x:active{transform:translateY(3px);box-shadow:none}
+.inBody{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px 12px 14px;display:flex;flex-direction:column;gap:11px;scrollbar-width:thin;scrollbar-color:var(--gold) transparent}
+.inBody>div{display:flex;flex-direction:column;gap:11px}
+
+/* speech-bubble style info text */
+.inBody p{margin:0;padding:7px 12px;background:var(--cream);color:var(--ink);border:3px solid var(--ink);border-radius:14px;box-shadow:0 3px 0 var(--ink);font-size:13px;line-height:1.28;letter-spacing:.01em}
+.inBody p b{font-weight:400;color:#7a3fd0}
+
+/* each option is a chunky game card: round icon badge, title, small print, big action button */
+.inBody button:not(.x){all:unset;box-sizing:border-box;position:relative;display:flex;align-items:center;gap:10px;cursor:pointer;width:100%;padding:9px 9px 9px 10px;
+  background:var(--plum2);color:var(--cream);border:3px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 var(--ink);font-family:var(--gf);transition:transform .1s,filter .1s}
+.inBody button:not(.x)::before{content:var(--e,'⭐');flex:none;width:40px;height:40px;display:grid;place-items:center;border-radius:50%;background:var(--cream);border:3px solid var(--ink);box-shadow:inset 0 -4px 0 #0002;font-size:20px;line-height:1}
+.inBody button:not(.x):hover{filter:brightness(1.12);transform:translateY(-1px)}
+.inBody button:not(.x):active{transform:translateY(4px);box-shadow:0 0 0 var(--ink)}
+.inBody .tx{flex:1;min-width:0;display:block}
+.inBody .tx b{display:block;font-weight:400;font-size:16px;line-height:1.15;letter-spacing:.03em;color:#fff}
+.inBody .tx small{display:block;margin-top:3px;font-size:12px;line-height:1.25;letter-spacing:.02em;color:#cdbfe6}
+.inBody .pill{flex:none;font-style:normal;padding:6px 14px 5px;background:var(--green);color:#fff;border:3px solid var(--ink);border-radius:12px;box-shadow:0 3px 0 var(--ink),inset 0 3px 0 #ffffff55;
+  font-family:var(--gf);font-weight:400;font-size:15px;letter-spacing:.04em;-webkit-text-stroke:4px var(--ink);paint-order:stroke fill}
+.inMenu.k-crime .pill{background:var(--red)}.inMenu.k-mgmt .pill{background:var(--purple)}.inMenu.k-quest .pill{background:var(--gold)}.inMenu.k-shop .pill{background:var(--blue)}
+
+@keyframes inSlide{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}
+html[data-reduce-motion="1"] .inMenu{animation:none}
+
+/* portrait / very narrow screens: bottom sheet instead of a side sheet */
+@media (max-width:620px) and (orientation:portrait){.inMenu{left:10px;right:10px;top:auto;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto;max-height:46vh}}
+`;

@@ -1,7 +1,8 @@
 'use client';
 import { getSettings, subscribeSettings } from './settings';
 
-/* Everything you hear in Abuja Real Life is generated here with the Web Audio API: no audio files to download.
+/* Sound effects are generated here with the Web Audio API (no files). Background music is a playlist of real tracks in /public/audio
+   (street tracks outside, calmer tracks indoors); the old generated loop stays as a fallback if the files can't load.
    Buses:  music ─┐
            sfx  ──┼─> master ─> speakers          (volumes + mutes come from lib/settings.ts)
    Browsers only start audio after a tap/keypress, so <AudioRoot/> calls unlockAudio() on the first gesture. */
@@ -36,7 +37,7 @@ function applyVolumes() {
   P.music.gain.setTargetAtTime(s.musicOn ? s.music * 0.55 : 0, t, 0.08);
   P.sfx.gain.setTargetAtTime(s.sfxOn ? s.sfx : 0, t, 0.04);
 }
-export function unlockAudio() { if (!ensureAudio()) return; syncMusic(); }
+export function unlockAudio() { if (!ensureAudio()) return; unlockDecks(); syncMusic(); }
 
 /* ───────── tiny synth helpers ───────── */
 const hz = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
@@ -130,14 +131,61 @@ function loop() {
   if (nextT < c.currentTime - 0.3) nextT = c.currentTime + 0.05; // tab was asleep: don't replay a burst of notes
   while (nextT < c.currentTime + 0.16) { playStep(T, step, nextT + (step % 2 ? T.swing * sd : 0)); nextT += sd; step++; }
 }
+/* ───────── background music: real tracks, one playlist per mood, crossfaded ─────────
+   Two persistent <audio> decks (iOS only lets a deck play without a tap once it has been "unlocked" by one) routed through Web Audio,
+   so the Music / Master sliders work on iPhone too (iOS ignores element.volume).
+   Each mood remembers which song and where you were, so stepping into a shop and back out carries on instead of restarting. */
+const PLAYLISTS: Record<Mood, string[]> = {
+  city: ['/audio/sim-city-groove.mp3', '/audio/simbas-groove.mp3'],                    // streets: upbeat grooves
+  chill: ['/audio/virtual-village.mp3', '/audio/simbas-virtual-safari.mp3'],           // indoors / home: laid-back
+};
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+type Deck = { el: HTMLAudioElement; g: GainNode };
+let decks: Deck[] = [], active = -1, playingMood: Mood | null = null, fileMusic = true, decksUnlocked = false;
+const memo: Record<Mood, { i: number; t: number }> = { city: { i: Math.floor(Math.random() * 2), t: 0 }, chill: { i: Math.floor(Math.random() * 2), t: 0 } };
+
+function makeDecks() {
+  if (!P || decks.length) return;
+  try {
+    for (let k = 0; k < 2; k++) {
+      const el = new Audio(); el.preload = 'auto'; (el as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
+      const g = P.ctx.createGain(); g.gain.value = 0; P.ctx.createMediaElementSource(el).connect(g); g.connect(P.trackGain);
+      el.addEventListener('ended', () => { if (decks[active]?.el === el) advance(); });
+      el.addEventListener('error', () => { if (el.getAttribute('src') && !el.src.startsWith('data:') && decks[active]?.el === el) { fileMusic = false; playingMood = null; syncMusic(); } });
+      decks.push({ el, g });
+    }
+  } catch { fileMusic = false; }
+}
+function unlockDecks() { // run inside a tap: lets the second deck start later without another tap
+  if (decksUnlocked || !P) return; makeDecks(); if (decks.length < 2) return;
+  decksUnlocked = true; const d = decks[1].el; d.src = SILENT; d.play().then(() => d.pause()).catch(() => { decksUnlocked = false; });
+}
+function startTrack(m: Mood) {
+  if (!P || decks.length < 2) return; const t = P.ctx.currentTime, old = decks[active];
+  if (old && playingMood) { memo[playingMood].t = old.el.currentTime; old.g.gain.cancelScheduledValues(t); old.g.gain.setTargetAtTime(0, t, 0.3); setTimeout(() => { if (decks[active] !== old) old.el.pause(); }, 1500); }
+  const n = (active + 1) % 2, d = decks[n], list = PLAYLISTS[m], mm = memo[m], seek = mm.t;
+  d.el.onloadedmetadata = () => { d.el.onloadedmetadata = null; if (seek > 1 && isFinite(d.el.duration) && seek < d.el.duration - 4) d.el.currentTime = seek; };
+  d.el.src = list[mm.i % list.length]; d.g.gain.cancelScheduledValues(t); d.g.gain.setValueAtTime(0.0001, t);
+  active = n; playingMood = m;
+  d.el.play().then(() => { const c = P!.ctx.currentTime; d.g.gain.cancelScheduledValues(c); d.g.gain.setTargetAtTime(1, c, 0.6); }).catch(() => { if (decks[active] === d) playingMood = null; }); // blocked until the next tap: syncMusic retries
+}
+function advance() { if (!playingMood) return; const m = playingMood, mm = memo[m]; mm.i = (mm.i + 1) % PLAYLISTS[m].length; mm.t = 0; startTrack(m); }
+function playFiles(on: boolean) {
+  makeDecks(); const cur = decks[active];
+  if (!on) { if (cur && !cur.el.paused) { if (playingMood) memo[playingMood].t = cur.el.currentTime; cur.el.pause(); } return; }
+  if (cur && playingMood === mood) { if (cur.el.paused && !cur.el.ended) cur.el.play().then(() => { const c = P!.ctx.currentTime; cur.g.gain.setTargetAtTime(1, c, 0.4); }).catch(() => undefined); return; }
+  startTrack(mood);
+}
 function syncMusic() {
   if (!P) return; const s = getSettings(), on = s.musicOn && !s.muteAll && s.music > 0 && !document.hidden;
+  if (fileMusic) { if (timer) { clearInterval(timer); timer = null; } playFiles(on); return; }
   if (on && !timer) { nextT = P.ctx.currentTime + 0.08; timer = setInterval(loop, 30); fadeIn(); }
   else if (!on && timer) { clearInterval(timer); timer = null; }
 }
 function fadeIn() { if (!P) return; const g = P.trackGain.gain, t = P.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); g.linearRampToValueAtTime(1, t + 1.6); }
 export function setMusicMood(m: Mood) {
   if (m === mood) return; mood = m; step = 0; seed = 7 + (m === 'city' ? 1 : 2); bar = [];
-  if (P && timer) fadeIn();
+  if (!P) return;
+  if (fileMusic) syncMusic(); else if (timer) fadeIn();
 }
 export const getMusicMood = () => mood;

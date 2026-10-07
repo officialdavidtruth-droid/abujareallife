@@ -12,13 +12,14 @@ export default function AudioRoot() {
   useEffect(() => {
     getSettings();
     const unlock = () => unlockAudio();
-    window.addEventListener('pointerdown', unlock, { passive: true }); window.addEventListener('keydown', unlock);
+    const gestures = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const; // iOS Safari only counts touchend/click as a "tap" for audio, so listen to all of them
+    gestures.forEach(g => window.addEventListener(g, unlock, { passive: true }));
     const btn = (e: Event) => (e.target as HTMLElement | null)?.closest?.('button,[role=button],a[href],summary') as HTMLButtonElement | null;
     let lastHover: Element | null = null;
     const down = (e: PointerEvent) => { const b = btn(e); if (b && !b.disabled && !b.closest('[data-nosound]')) sfx('click', { ui: true }); };
     const over = (e: PointerEvent) => { if (e.pointerType !== 'mouse') return; const b = btn(e); if (b && b !== lastHover && !b.disabled && !b.closest('[data-nosound]')) sfx('hover', { ui: true }); lastHover = b; };
     document.addEventListener('pointerdown', down, true); document.addEventListener('pointerover', over, true);
-    return () => { window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); document.removeEventListener('pointerdown', down, true); document.removeEventListener('pointerover', over, true); };
+    return () => { gestures.forEach(g => window.removeEventListener(g, unlock)); document.removeEventListener('pointerdown', down, true); document.removeEventListener('pointerover', over, true); };
   }, []);
   useEffect(() => {
     if (!open) return; sfx('open');

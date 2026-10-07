@@ -5,12 +5,12 @@ export type P = [number, number];
 
 export const R = 0.24; // body radius used when planning routes
 export const HARD = 0.18; // body radius used for the hard "you cannot enter this" check every frame
-export const BOUNDS = { x: 5.85, z: 4.3 }; // walkable area inside the walls
+export const BOUNDS = { x0: -5.85, x1: 10.95, z0: -4.3, z1: 4.3 }; // walkable area inside the walls: main flat + the kids' wing to the east
 const G = 0.15; // grid cell size for path-finding
 
 export const inside = (p: P, k: Box, r = 0) => p[0] > k[0] - r && p[0] < k[1] + r && p[1] > k[2] - r && p[1] < k[3] + r;
 export const blocked = (blks: Blk[], p: P, own?: string, r = R) =>
-  Math.abs(p[0]) > BOUNDS.x || Math.abs(p[1]) > BOUNDS.z || blks.some(k => k.id !== own && inside(p, k.b, r));
+  p[0] < BOUNDS.x0 || p[0] > BOUNDS.x1 || p[1] < BOUNDS.z0 || p[1] > BOUNDS.z1 || blks.some(k => k.id !== own && inside(p, k.b, r));
 
 function clear(blks: Blk[], a: P, b: P, own?: string) { // is the straight line a→b free?
   const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(d / 0.07));
@@ -18,9 +18,9 @@ function clear(blks: Blk[], a: P, b: P, own?: string) { // is the straight line 
   return true;
 }
 
-const NX = Math.ceil((BOUNDS.x * 2) / G) + 1, NZ = Math.ceil((BOUNDS.z * 2) / G) + 1;
-const cell = (p: P): [number, number] => [Math.round((p[0] + BOUNDS.x) / G), Math.round((p[1] + BOUNDS.z) / G)];
-const pos = (i: number, j: number): P => [i * G - BOUNDS.x, j * G - BOUNDS.z];
+const NX = Math.ceil((BOUNDS.x1 - BOUNDS.x0) / G) + 1, NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
+const cell = (p: P): [number, number] => [Math.round((p[0] - BOUNDS.x0) / G), Math.round((p[1] - BOUNDS.z0) / G)];
+const pos = (i: number, j: number): P => [i * G + BOUNDS.x0, j * G + BOUNDS.z0];
 
 /** Nearest walkable point to p (p itself if it is already free). */
 export function nearestFree(blks: Blk[], p: P, own?: string): P {

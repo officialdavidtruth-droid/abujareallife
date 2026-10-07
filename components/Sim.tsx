@@ -22,8 +22,8 @@ import { findPath, blocked, inside, HARD, type Blk, type Box, type P } from '../
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
 type Pose = 'stand' | 'sit' | 'sleep';
-type Act = { k: string; label: string; e: string; dur: number; fx: Partial<Record<N, number>>; pose: Pose; cost?: number; pay?: number; pow?: boolean; anim?: string };
-type Obj = { id: string; name: string; p: [number, number]; rot: number; spot: [number, number]; face: number; acts: Act[]; boxes?: Box[]; appr?: [number, number] }; // boxes = solid footprint, appr = free spot in front of a seat/bed/shower where the walk starts and ends
+type Act = { k: string; label: string; e: string; dur: number; fx: Partial<Record<N, number>>; pose: Pose; cost?: number; pay?: number; pow?: boolean; anim?: string; bond?: number; all?: 'dinner' | 'kids' };
+type Obj = { id: string; name: string; p: [number, number]; rot: number; spot: [number, number]; face: number; acts: Act[]; boxes?: Box[]; appr?: [number, number]; fam?: string }; // boxes = solid footprint, appr = free spot in front of a seat/bed/shower where the walk starts and ends
 type Task = { t: 'walk'; x: number; z: number; own?: string } | { t: 'act'; a: Act; o: Obj };
 
 const NEEDS: [N, string, string][] = [['hunger', 'Hunger', '🍲'], ['energy', 'Energy', '😴'], ['hygiene', 'Hygiene', '🚿'], ['bladder', 'Bladder', '🚽'], ['fun', 'Fun', '🎮'], ['social', 'Social', '💬']];
@@ -42,8 +42,9 @@ const OBJ: Obj[] = [
     { k: 'cook', label: 'Cook jollof', e: '🍛', dur: 30, fx: { hunger: 60, fun: 6 }, pose: 'stand', cost: 1500, anim: 'cook' },
     { k: 'snack', label: 'Snack', e: '🥜', dur: 10, fx: { hunger: 25 }, pose: 'stand', cost: 500, anim: 'eat' },
     { k: 'water', label: 'Drink water', e: '💧', dur: 5, fx: { hunger: 3, bladder: -6 }, pose: 'stand', anim: 'eat' }] },
-  { id: 'dining', name: 'Dining table', p: [-.3, -2.3], rot: 0, spot: [-.3, -1.5], face: Math.PI, boxes: [[-1.05, .45, -2.725, -1.875], [-.55, -.05, -1.75, -1.25], [-1.55, -1.05, -2.55, -2.05], [.45, .95, -2.55, -2.05]], appr: [-.3, -.8], acts: [
-    { k: 'meal', label: 'Sit down & eat', e: '🍽️', dur: 25, fx: { hunger: 55, fun: 8, social: 3 }, pose: 'sit', cost: 1000, anim: 'eatsit' }] },
+  { id: 'dining', name: 'Dining table', p: [-.3, -2.3], rot: 0, spot: [-.3, -1.5], face: Math.PI, boxes: [[-1.05, .45, -2.725, -1.875], [-.55, -.05, -1.75, -1.25], [-1.55, -1.05, -2.55, -2.05], [.45, .95, -2.55, -2.05], [-1.02, -.58, -1.75, -1.25]], appr: [-.3, -.8], acts: [
+    { k: 'meal', label: 'Sit down & eat', e: '🍽️', dur: 25, fx: { hunger: 55, fun: 8, social: 3 }, pose: 'sit', cost: 1000, anim: 'eatsit' },
+    { k: 'famdinner', label: 'Family dinner', e: '👨‍👩‍👧‍👦', dur: 40, fx: { hunger: 60, fun: 12, social: 28 }, pose: 'sit', cost: 3000, anim: 'eatsit', bond: 6, all: 'dinner' }] },
   { id: 'shower', name: 'Shower', p: [5.3, -3.7], rot: 0, spot: [5.3, -3.75], face: Math.PI, boxes: [[4.65, 5.95, -4.6, -3.2]], appr: [5.3, -2.7], acts: [
     { k: 'shower', label: 'Take a shower', e: '🚿', dur: 25, fx: { hygiene: 100, fun: 5 }, pose: 'stand', anim: 'wash' }] },
   { id: 'toilet', name: 'Toilet', p: [3.2, -4.1], rot: 0, spot: [3.2, -4.1], face: 0, boxes: [[2.95, 3.45, -4.6, -3.78], [3.8, 4.3, -4.6, -4.15]], appr: [3.2, -3.2], acts: [
@@ -57,7 +58,7 @@ const OBJ: Obj[] = [
     { k: 'hustle', label: 'Side hustle', e: '🧾', dur: 150, fx: { energy: -18, fun: -8, hunger: -7 }, pose: 'sit', pay: 3500, pow: true, anim: 'work' },
     { k: 'browse', label: 'Scroll social media', e: '📱', dur: 40, fx: { fun: 25, social: 10, energy: -4 }, pose: 'sit', pow: true, anim: 'browse' }] },
   { id: 'phone', name: 'Phone', p: [-1.2, 3.2], rot: 0, spot: [-1.2, 2.4], face: 0, boxes: [[-1.5, -.9, 2.9, 3.5]], acts: [
-    { k: 'call', label: 'Call Ada', e: '📞', dur: 40, fx: { social: 45, fun: 10 }, pose: 'stand', anim: 'phone' },
+    { k: 'call', label: 'Call a friend', e: '📞', dur: 40, fx: { social: 45, fun: 10 }, pose: 'stand', anim: 'phone' },
     { k: 'chat', label: 'Chat on WhatsApp', e: '💬', dur: 20, fx: { social: 22 }, pose: 'stand', anim: 'chat' },
     { k: 'order', label: 'Order food delivery', e: '🛵', dur: 25, fx: { hunger: 45, fun: 5 }, pose: 'stand', cost: 2500, anim: 'phone' }] },
   { id: 'mat', name: 'Workout mat', p: [1.4, -.9], rot: 0, spot: [1.4, -.9], face: 0, acts: [
@@ -74,6 +75,10 @@ const OBJ: Obj[] = [
     { k: 'door', label: 'Go outside', e: '🚪', dur: 4, fx: {}, pose: 'stand', anim: 'door' }] },
   { id: 'gen', name: 'Generator', p: [5.3, .4], rot: 0, spot: [4.4, .4], face: Math.PI / 2, boxes: [[4.85, 5.75, .1, .7]], acts: [
     { k: 'gen', label: 'Fuel generator', e: '⛽', dur: 15, fx: {}, pose: 'stand', cost: 2000, anim: 'fuel' }] },
+  { id: 'toybox', name: 'Toy box', p: [7.3, 3.95], rot: 0, spot: [7.3, 3.0], face: 0, boxes: [[6.78, 7.82, 3.62, 4.28]], acts: [
+    { k: 'toys', label: 'Build blocks with the kids', e: '🧱', dur: 30, fx: { fun: 30, social: 8 }, pose: 'stand', anim: 'squat', bond: 4, all: 'kids' }] },
+  { id: 'kdesk', name: "Kids' desk", p: [10.9, .5], rot: -Math.PI / 2, spot: [10.05, .5], face: Math.PI / 2, boxes: [[10.45, 11.3, -.35, 1.35], [9.8, 10.3, .25, .75]], appr: [9.2, .5], acts: [
+    { k: 'kread', label: 'Read a storybook', e: '📖', dur: 25, fx: { fun: 12, social: 6 }, pose: 'sit', anim: 'read', bond: 4, all: 'kids' }] },
 ];
 const EMOTES: Act[] = [
   { k: 'wave', label: 'Wave', e: '👋', dur: 6, fx: { social: 8 }, pose: 'stand', anim: 'wave' },
@@ -85,10 +90,16 @@ const EMOTES: Act[] = [
 const DECOR: { id: string; p: [number, number]; rot: number; boxes: Box[]; vis: string }[] = [
   { id: 'coffee', p: [-4.75, 1.2], rot: 0, boxes: [[-5, -4.5, .75, 1.65]], vis: 'coffee' },
   { id: 'fan', p: [5.5, -1.8], rot: -Math.PI / 2, boxes: [[5.3, 5.7, -2, -1.6]], vis: 'fan' },
+  { id: 'kbedA', p: [7.5, -3.4], rot: 0, boxes: [[6.85, 8.15, -4.4, -2.4]], vis: 'kbedA' },
+  { id: 'kbedB', p: [10.2, -3.4], rot: 0, boxes: [[9.55, 10.85, -4.4, -2.4]], vis: 'kbedB' },
+  { id: 'nstand', p: [8.85, -4.15], rot: 0, boxes: [[8.6, 9.1, -4.4, -3.9]], vis: 'nstand' },
+  { id: 'kwar', p: [11.0, -1.4], rot: -Math.PI / 2, boxes: [[10.7, 11.3, -2.1, -.7]], vis: 'kwar' },
 ];
+// Half-height wall between the flat and the kids' wing, with a doorway at z 1.0 to 2.6.
+const WALLS: Blk[] = [{ id: 'wall', b: [6.1, 6.3, -4.6, 1.0] }, { id: 'wall', b: [6.1, 6.3, 2.6, 4.6] }];
 
 // Every solid footprint in the flat. Walking is planned around these (see lib/collision.ts) and re-checked every frame.
-const BL: Blk[] = [...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b })))];
+const BL: Blk[] = [...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
 const dist = (a: P, b: P) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const W = (p: P, own?: string): Task => ({ t: 'walk', x: p[0], z: p[1], own });
 const within = (p: P) => OBJ.find(o => o.appr && o.boxes?.some(b => inside(p, b)));
@@ -115,6 +126,149 @@ const enq = (o: Obj, a: Act) => { if (S.q.length > 12) return; S.q.push(...route
 const emote = (a: Act) => { S.q = []; S.prog = 0; S.cur = { t: 'act', a, o: { id: 'self', name: 'You', p: [0, 0], rot: 0, spot: [S.pos[0], S.pos[1]], face: S.rot, acts: [] } }; };
 const turn = (r: number, t: number, f: number) => r + ((((t - r + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * f;
 
+// ---- Family: a spouse and two kids who live in the house and follow their own daily routine (see plan()). ----
+type WP = { x: number; z: number; own?: string };
+type Dest = { key: string; label: string; e: string; spot: P; face: number; pose: Pose; anim?: string; appr?: P; own?: string; lie?: { x: number; y: number; z: number } };
+type Mem = { id: string; name: string; kid: boolean; h: number; pos: P; rot: number; pose: Pose; anim?: string; q: WP[]; cur: WP | null; dest: Dest | null; at: Dest | null; away: boolean; bond: number; hold: { key: string; until: number } | null; stuck: number; init: boolean };
+const dst = (key: string, label: string, e: string, spot: P, face: number, pose: Pose, anim?: string, x: Partial<Dest> = {}): Dest => ({ key, label, e, spot, face, pose, anim, ...x });
+const PI = Math.PI;
+// Every place a family member can be. `appr` = free spot beside a seat/bed where they step in/out, `own` = furniture they are allowed to overlap there.
+const DEST: Record<string, Dest> = {
+  'bed.spouse': dst('bed.spouse', 'Sleeping', '💤', [-3.3, -1.9], 0, 'sleep', undefined, { lie: { x: -4.25, y: .86, z: -2.45 } }),
+  'bed.chidi': dst('bed.chidi', 'Sleeping', '💤', [10.2, -1.95], PI, 'sleep', undefined, { lie: { x: 10.2, y: .64, z: -2.95 } }),
+  'bed.amara': dst('bed.amara', 'Sleeping', '💤', [7.5, -1.95], PI, 'sleep', undefined, { lie: { x: 7.5, y: .61, z: -2.95 } }),
+  'eat.spouse': dst('eat.spouse', 'Eating', '🍽️', [.7, -2.3], -PI / 2, 'sit', 'eatsit', { appr: [.9, -1.55], own: 'dining' }),
+  'eat.chidi': dst('eat.chidi', 'Eating', '🍽️', [-1.3, -2.3], PI / 2, 'sit', 'eatsit', { appr: [-1.45, -1.55], own: 'dining' }),
+  'eat.amara': dst('eat.amara', 'Eating', '🍽️', [-.8, -1.5], PI, 'sit', 'eatsit', { appr: [-1.0, -.85], own: 'dining' }),
+  cook: dst('cook', 'Cooking', '🍛', [-.7, -3.3], PI, 'stand', 'cook'),
+  'tv.spouse': dst('tv.spouse', 'Watching TV', '📺', [-3, .6], -PI / 2, 'sit', 'tv', { appr: [-4, .55], own: 'tv' }),
+  'tv.chidi': dst('tv.chidi', 'Watching TV', '📺', [-3, 1.85], -PI / 2, 'sit', 'tv', { appr: [-4, 1.9], own: 'tv' }),
+  'desk.chidi': dst('desk.chidi', 'Homework', '📚', [10.05, .5], PI / 2, 'sit', 'read', { appr: [9.2, .5], own: 'kdesk' }),
+  'rug.chidi': dst('rug.chidi', 'Playing', '🧸', [8.4, 1.1], 2.2, 'stand', 'cheer'),
+  'rug.amara': dst('rug.amara', 'Playing', '🧸', [9.3, 2.0], -.8, 'stand', 'dance'),
+  'toy.chidi': dst('toy.chidi', 'Playing', '🧸', [7.0, 3.0], 0, 'stand', 'squat'),
+  'toy.amara': dst('toy.amara', 'Playing', '🧸', [7.7, 3.0], 0, 'stand', 'squat'),
+  shelf: dst('shelf', 'Reading', '📖', [-5.2, -.5], -PI / 2, 'stand', 'read'),
+  phone: dst('phone', 'On the phone', '📞', [-1.2, 2.4], 0, 'stand', 'chat'),
+  yoga: dst('yoga', 'Doing yoga', '🧘', [1.4, -.9], 0, 'stand', 'yoga'),
+  water: dst('water', 'Watering the plant', '🌿', [4.6, 3.4], PI / 2, 'stand', 'water'),
+  groom: dst('groom', 'Getting ready', '🪞', [-1.9, -3.4], PI, 'stand', 'groom'),
+  away: dst('away', 'Heading out', '🚪', [-5.3, 3.5], -PI / 2, 'stand'),
+};
+const mkMem = (id: string, name: string, kid: boolean, h: number): Mem => ({ id, name, kid, h, pos: [0, 0], rot: 0, pose: 'stand', q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false });
+const F = {
+  last: 0,
+  mem: [mkMem('spouse', 'Ada', false, 1), mkMem('chidi', 'Chidi', true, .62), mkMem('amara', 'Amara', true, .48)],
+  reset() { this.last = 0; this.mem.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false })); },
+  load(b: unknown) { const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>; this.mem.forEach(m => { const v = o[m.id]; m.bond = typeof v === 'number' && isFinite(v) ? cl(v) : 30; }); },
+  bonds() { return Object.fromEntries(this.mem.map(m => [m.id, Math.round(m.bond * 10) / 10])); },
+  hold(id: string, key: string, mins: number) { const m = this.mem.find(x => x.id === id); if (m) m.hold = { key, until: S.min + mins }; },
+  bump(id: string, n: number) { const m = this.mem.find(x => x.id === id); if (m) m.bond = cl(m.bond + n); },
+};
+const famAvg = () => F.mem.reduce((a, m) => a + m.bond, 0) / F.mem.length;
+const famSnap = () => F.mem.map(m => ({ id: m.id, name: m.name, bond: Math.round(m.bond), away: m.away, e: m.away ? (m.kid ? '🏫' : '🛍️') : m.dest?.e ?? '🏠', label: m.away ? (m.kid ? 'At school' : 'Out shopping') : m.dest?.label ?? 'At home' }));
+
+// What each person wants to be doing at hour h. Kids go to school Mon-Fri (a week = 7 days, days 6-7 are the weekend).
+function plan(m: Mem, h: number, wd: boolean, slot: number): string {
+  const pick = (a: string[]) => a[(slot + (m.id === 'chidi' ? 1 : m.id === 'amara' ? 2 : 0)) % a.length];
+  if (!m.kid) {
+    if (h >= 22.5 || h < 6.5) return 'bed';
+    if (h < 7.4) return 'cook'; if (h < 8.3) return 'eat';
+    if (h < 10) return pick(['water', 'groom', 'shelf']);
+    if (h < 12.5) return wd ? 'away' : pick(['yoga', 'phone']);
+    if (h < 13.2) return 'cook'; if (h < 14.2) return 'eat';
+    if (h < 17) return pick(['shelf', 'phone', 'tv', 'water']);
+    if (h < 18.4) return 'cook'; if (h < 19.4) return 'eat';
+    return 'tv';
+  }
+  const bed = m.id === 'amara' ? 20.5 : 21.5;
+  if (h >= bed || h < 6.8) return 'bed';
+  if (h < 7.8) return 'eat';
+  if (wd && h < 14.2) return 'away';
+  if (h >= 18.6 && h < 19.5) return 'eat';
+  if (!wd && h >= 12.3 && h < 13.2) return 'eat';
+  if (m.id === 'chidi' && h >= 15 && h < 16.5) return 'desk';
+  if (m.id === 'chidi' && h >= 19.5) return 'tv';
+  return pick(['rug', 'toy']);
+}
+function goTo(m: Mem, d: Dest) {
+  const out = m.at?.appr && m.at.key !== d.key ? m.at : null; // step out of the seat first
+  m.dest = d; m.cur = null; m.q = []; m.at = null; m.pose = 'stand'; m.anim = undefined;
+  if (m.away) { m.away = false; m.pos = [-5.3, 3.5]; }
+  let a: P = [m.pos[0], m.pos[1]];
+  if (out?.appr) { m.q.push({ x: out.appr[0], z: out.appr[1], own: out.own }); a = out.appr; }
+  const target = d.appr || d.spot;
+  findPath(BL, a, target).forEach(p => m.q.push({ x: p[0], z: p[1] }));
+  if (d.appr) m.q.push({ x: d.spot[0], z: d.spot[1], own: d.own });
+}
+function famTick(dt: number) {
+  const hh = (S.min / 60) % 24, wd = Math.floor(S.min / 1440) % 7 < 5, slot = Math.floor(S.min / 70);
+  if (Math.abs(S.min - F.last) > 45) F.mem.forEach(m => { m.init = false; m.hold = null; m.q = []; m.cur = null; }); // big time jump (back from the city): everyone is simply where they should be
+  F.last = S.min;
+  for (const m of F.mem) {
+    m.bond = cl(m.bond - .0012 * dt * 6 * S.speed);
+    if (m.hold && m.hold.until <= S.min) m.hold = null;
+    const key = m.hold ? m.hold.key : plan(m, hh, wd, slot);
+    const d = key === 'stay' ? (m.at || m.dest) : (DEST[key + '.' + m.id] || DEST[key]);
+    if (!d) continue;
+    if (!m.init) { m.init = true; m.dest = m.at = d; m.away = d.key === 'away'; if (!m.away) { m.pos = [d.spot[0], d.spot[1]]; m.rot = d.face; m.pose = d.pose; m.anim = d.anim; } continue; }
+    if (d !== m.dest) goTo(m, d);
+    if (m.away) continue;
+    if (!m.cur) m.cur = m.q.shift() || null;
+    if (m.cur) {
+      m.pose = 'stand'; m.anim = undefined;
+      const dx = m.cur.x - m.pos[0], dz = m.cur.z - m.pos[1], dd = Math.hypot(dx, dz);
+      if (dd < .1) { m.cur = null; continue; }
+      const st = Math.min(dd, (m.kid ? 1.8 : 2.2) * dt * S.speed);
+      let nx = m.pos[0] + dx / dd * st, nz = m.pos[1] + dz / dd * st;
+      if (blocked(BL, [nx, nz], m.cur.own, HARD)) { // same rule as the player: never step into furniture
+        if (!blocked(BL, [nx, m.pos[1]], m.cur.own, HARD)) nz = m.pos[1]; else if (!blocked(BL, [m.pos[0], nz], m.cur.own, HARD)) nx = m.pos[0]; else { nx = m.pos[0]; nz = m.pos[1]; }
+      }
+      m.stuck = Math.hypot(nx - m.pos[0], nz - m.pos[1]) < st * .3 ? m.stuck + dt : 0;
+      if (m.stuck > 1.2) { m.stuck = 0; m.q = []; m.cur = null; if (m.dest) m.pos = [m.dest.spot[0], m.dest.spot[1]]; continue; } // wedged: just place them at their spot
+      m.pos = [nx, nz]; m.rot = turn(m.rot, Math.atan2(dx, dz), Math.min(1, dt * 10));
+    } else if (m.dest) {
+      m.at = m.dest;
+      if (m.dest.key === 'away') m.away = true;
+      else { m.pose = m.dest.pose; m.anim = m.dest.anim; m.rot = turn(m.rot, m.dest.face, Math.min(1, dt * 8)); }
+    }
+  }
+}
+// Things you can do with them. Bonds are saved with the game; a happy home slows how fast your Social need drops.
+const FA: Record<string, Act> = {
+  talk: { k: 'ftalk', label: 'Have a chat', e: '💬', dur: 15, fx: { social: 18 }, pose: 'stand', anim: 'chat', bond: 3 },
+  hug: { k: 'fhug', label: 'Give a hug', e: '🤗', dur: 6, fx: { social: 8, fun: 4 }, pose: 'stand', anim: 'cheer', bond: 4 },
+  play: { k: 'fplay', label: 'Play together', e: '🧸', dur: 40, fx: { fun: 35, social: 12, energy: -6 }, pose: 'stand', anim: 'dance', bond: 7 },
+  hw: { k: 'fhw', label: 'Help with homework', e: '📚', dur: 35, fx: { social: 8, fun: 3 }, pose: 'stand', anim: 'read', bond: 6 },
+  story: { k: 'fstory', label: 'Read a story', e: '📖', dur: 20, fx: { social: 10, fun: 6 }, pose: 'stand', anim: 'read', bond: 5 },
+  date: { k: 'datenight', label: 'Date night', e: '🌹', dur: 60, fx: { fun: 30, social: 35, hunger: 25 }, pose: 'stand', cost: 8000, anim: 'chat', bond: 10 },
+  kiss: { k: 'fkiss', label: 'Kiss goodnight', e: '😘', dur: 4, fx: { social: 5 }, pose: 'stand', anim: 'wave', bond: 3 },
+};
+function famObj(id: string): Obj {
+  const m = F.mem.find(x => x.id === id)!, asleep = m.pose === 'sleep', base: P = asleep && m.at?.lie ? [m.at.lie.x, m.at.lie.z] : [m.pos[0], m.pos[1]];
+  const sp: P = [m.pos[0] + .6, m.pos[1] + .15], acts = asleep ? [FA.kiss] : !m.kid ? [FA.talk, FA.hug, FA.date] : m.id === 'chidi' ? [FA.talk, FA.hug, FA.play, FA.hw] : [FA.talk, FA.hug, FA.play, FA.story];
+  return { id: 'fam:' + id, name: m.name + (asleep ? ' 💤' : ''), p: base, rot: 0, spot: sp, face: Math.atan2(m.pos[0] - sp[0], m.pos[1] - sp[1]), acts, fam: id };
+}
+function famStart(o: Obj, a: Act) {
+  if (a.all === 'dinner') F.mem.forEach(m => { if (!m.away) m.hold = { key: 'eat', until: S.min + a.dur + 6 }; });
+  else if (o.fam) F.hold(o.fam, 'stay', a.dur + 3);
+}
+function famDone(o: Obj, a: Act) {
+  const n = a.bond || 0; if (!n) return;
+  if (a.all) F.mem.forEach(m => { if (!m.away && (a.all === 'dinner' || m.kid)) m.bond = cl(m.bond + n); });
+  else if (o.fam) F.bump(o.fam, n); else return;
+  say('💞 Family bond +' + n);
+}
+function famLooks(look: Look): Look[] {
+  const man = look.gender === 'm', base = { model: 'citizen', outfitModel: 'tee' };
+  F.mem[0].name = man ? 'Ada' : 'Emeka';
+  return [
+    { ...base, name: F.mem[0].name, gender: man ? 'f' : 'm', hair: man ? 'braids' : 'short', hairColor: '#0d0907', skin: look.skin, outfit: man ? '#e07aa1' : '#3d5a80', pants: man ? '#2b3a55' : '#222831', height: 1 },
+    { ...base, name: 'Chidi', gender: 'm', hair: 'short', hairColor: '#0d0907', skin: look.skin, outfit: '#d18a22', pants: '#3a5a40', height: .62 },
+    { ...base, name: 'Amara', gender: 'f', hair: 'bun', hairColor: '#0d0907', skin: look.skin, outfit: '#b43c35', pants: '#6b5a48', height: .5 },
+  ];
+}
+
 function auto() {
   if (Date.now() < S.cool) return; S.cool = Date.now() + 2500;
   const [k, v] = (Object.entries(S.needs) as [N, number][]).sort((a, b) => a[1] - b[1])[0];
@@ -126,14 +280,16 @@ function auto() {
 function tick(dt: number) {
   if (!S.speed) return;
   const gm = dt * 6 * S.speed; S.min += gm;
-  (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm); });
+  (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
+  famTick(dt);
   if (S.power && Math.random() < gm / 2200) say('⚡ NEPA took light! Fuel the generator.'), S.power = false;
   if (!S.cur) {
     const t = S.q.shift();
     if (t?.t === 'act') {
       if (t.a.pow && !S.power) { say('No light — fuel the generator first.'); S.q = []; }
+      else if (t.a.all === 'dinner' && F.mem.every(m => m.away)) { say("Nobody's home right now."); S.q = []; }
       else if ((t.a.cost || 0) > S.cash) { say("You can't afford that."); S.q = []; }
-      else { S.cash -= t.a.cost || 0; S.cur = t; S.prog = 0; if (t.a.cost || t.a.pay) econ('start', t.a); }
+      else { S.cash -= t.a.cost || 0; S.cur = t; S.prog = 0; if (t.a.cost || t.a.pay) econ('start', t.a); famStart(t.o, t.a); }
     } else if (t) S.cur = t; else if (S.free) auto();
   }
   const c = S.cur;
@@ -157,6 +313,7 @@ function tick(dt: number) {
     if (S.prog >= c.a.dur) {
       if (c.a.pay) econ('finish', c.a);
       if (c.a.k === 'gen') { S.power = true; say('💡 Light is back!'); }
+      famDone(c.o, c.a);
       if (c.a.k === 'door') H.door?.();
       if (c.a.k === 'outfit') H.outfit?.();
       S.cur = null;
@@ -171,11 +328,11 @@ const econ = async (kind: 'start' | 'finish', a: Act) => {
     else if (kind === 'finish' && d.paid) say(`Gig done: +${naira(d.paid)}`);
   } catch { say('Offline — payment not recorded.'); }
 };
-const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min } }) }).catch(() => {});
+const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min, bonds: F.bonds() } }) }).catch(() => {});
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
 const snap = () => ({ needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
-  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood() });
+  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap() });
 type UI = ReturnType<typeof snap>;
 
 type V3 = [number, number, number];
@@ -244,7 +401,7 @@ function Avatar({ bubble, look }: { bubble: string; look: Look }) {
   const g = useRef<THREE.Group>(null!), inner = useRef<THREE.Group>(null!), plumb = useRef<THREE.Mesh>(null!), pg = useRef<THREE.Group>(null!);
   useFrame(({ clock }) => {
     const sleep = S.pose === 'sleep', sit = S.pose === 'sit';
-    g.current.position.set(sleep ? -4.6 : S.pos[0], sleep ? .86 : 0, sleep ? -2.45 : S.pos[1]); g.current.rotation.y = sleep ? 0 : S.rot;
+    g.current.position.set(sleep ? -4.95 : S.pos[0], sleep ? .86 : 0, sleep ? -2.45 : S.pos[1]); g.current.rotation.y = sleep ? 0 : S.rot;
     inner.current.rotation.x = sleep ? -Math.PI / 2 : 0; inner.current.position.y = 0; void sit;
     pg.current.position.set(0, sleep ? 1.1 : 2.45 * look.height + Math.sin(clock.elapsedTime * 2) * .06, sleep ? -1.7 : 0); plumb.current.rotation.y = clock.elapsedTime * 1.6;
     const m = mood(), col = m > 60 ? '#35e07a' : m > 35 ? '#f2c230' : '#ef4b4b';
@@ -298,7 +455,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
   dining: () => <>
     <B p={[0, .75, 0]} s={[1.5, .06, .85]} c="#8a6240" ro={.45} r={.02} /><B p={[0, .68, 0]} s={[1.3, .08, .66]} c="#6b4a30" />
     {[[-.65, -.35], [.65, -.35], [-.65, .35], [.65, .35]].map(([x, z]) => <B key={x + '' + z} p={[x, .36, z]} s={[.07, .72, .07]} c="#6b4a30" r={.015} />)}
-    <Chair p={[0, 0, .8]} ry={0} /><Chair p={[-1.0, 0, 0]} ry={-Math.PI / 2} /><Chair p={[1.0, 0, 0]} ry={Math.PI / 2} />
+    <Chair p={[0, 0, .8]} ry={0} /><group position={[-.5, 0, .8]} scale={.82}><Chair p={[0, 0, 0]} c="#c0622d" pad="#2f6bb0" /></group><Chair p={[-1.0, 0, 0]} ry={-Math.PI / 2} /><Chair p={[1.0, 0, 0]} ry={Math.PI / 2} />
     <B p={[0, .785, .2]} s={[.5, .006, .36]} c="#c0392b" ro={1} r={.002} /><C p={[0, .8, .2]} r={.115} h={.015} c="#f6f4ee" ro={.2} /><C p={[0, .815, .2]} r={.07} rt={.085} h={.03} c="#f6f4ee" ro={.2} /><C p={[0, .82, .2]} r={.07} h={.012} c="#e0742a" ro={.9} />
     <C p={[.38, .83, .15]} r={.03} h={.08} c="#cfe6f2" ro={.1} /><B p={[-.45, .8, -.05]} s={[.3, .03, .2]} c="#f6f4ee" /><C p={[-.45, .87, -.05]} r={.1} rt={.13} h={.1} c="#e9e2d2" ro={.3} />
     <Sp p={[-.5, .95, -.05]} r={.045} c="#d9452b" /><Sp p={[-.4, .95, -.02]} r={.045} c="#f0b53a" /></>,
@@ -388,6 +545,31 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <mesh position={[0, 1.05, .14]} castShadow><torusGeometry args={[.21, .01, 8, 32]} /><meshStandardMaterial color="#9aa3a8" metalness={.8} roughness={.3} /></mesh>
     <mesh position={[0, 1.05, .16]}><circleGeometry args={[.21, 24]} /><meshStandardMaterial color="#cfe3ee" transparent opacity={.12} side={THREE.DoubleSide} /></mesh>
     <group position={[0, 1.05, .15]}><FanHead on={ui.power} /></group></>,
+  kbedA: () => kbed('#e07aa1', '#d99a42'),
+  kbedB: () => kbed('#3d7fc4', '#8a5a3a'),
+  nstand: ui => <>
+    <B p={[0, .25, 0]} s={[.5, .5, .4]} c="#c79a63" ro={.55} r={.02} /><B p={[0, .36, .205]} s={[.42, .2, .01]} c="#b8864f" /><B p={[0, .14, .205]} s={[.42, .2, .01]} c="#b8864f" />
+    <C p={[0, .365, .215]} r={.014} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} /><C p={[0, .145, .215]} r={.014} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} />
+    <C p={[0, .52, 0]} r={.07} h={.03} c="#333" /><C p={[0, .64, 0]} r={.012} h={.22} c="#333" /><C p={[0, .8, 0]} r={.11} rt={.07} h={.16} c="#f2e6c9" ro={1} e={ui.power ? '#ffd9a0' : undefined} ei={.45} /></>,
+  kwar: () => <>
+    <B p={[0, .75, 0]} s={[1.4, 1.5, .55]} c="#c79a63" ro={.55} r={.03} /><B p={[0, 1.53, 0]} s={[1.46, .06, .6]} c="#b8864f" />
+    <B p={[-.35, .75, .285]} s={[.66, 1.38, .02]} c="#d9b07a" ro={.5} /><B p={[.35, .75, .285]} s={[.66, 1.38, .02]} c="#d9b07a" ro={.5} />
+    <B p={[-.05, .75, .305]} s={[.025, .2, .025]} c="#d9a22b" m={.8} ro={.3} /><B p={[.05, .75, .305]} s={[.025, .2, .025]} c="#d9a22b" m={.8} ro={.3} />
+    {[['#d9452b', -.55], ['#f0b53a', -.3]].map(([c, x]) => <Sp key={c as string} p={[x as number, 1.0, .3]} r={.05} c={c as string} sc={[1, 1, .3]} />)}</>,
+  toybox: () => <>
+    <B p={[0, .26, 0]} s={[1.0, .5, .6]} c="#d9772b" ro={.6} r={.04} /><B p={[0, .52, 0]} s={[1.04, .05, .64]} c="#f0b53a" ro={.6} r={.02} /><B p={[0, .3, .31]} s={[.9, .06, .01]} c="#2f6bb0" />
+    <B p={[-.28, .62, -.05]} s={[.16, .16, .16]} c="#d9452b" ro={.6} rot={[0, .4, 0]} /><B p={[-.1, .6, .12]} s={[.14, .14, .14]} c="#3fa84b" ro={.6} rot={[0, .2, 0]} /><B p={[-.2, .76, -.02]} s={[.14, .14, .14]} c="#2f6bb0" ro={.6} rot={[0, .7, 0]} />
+    <Sp p={[.25, .64, .05]} r={.1} c="#f0b53a" /><Sp p={[.4, .6, -.15]} r={.07} c="#d9452b" />
+    <Sp p={[.62, .12, .5]} r={.14} c="#8a5a3a" /><Sp p={[.62, .3, .5]} r={.1} c="#8a5a3a" /><Sp p={[.55, .38, .5]} r={.035} c="#8a5a3a" /><Sp p={[.69, .38, .5]} r={.035} c="#8a5a3a" />
+    <B p={[-.7, .08, .55]} s={[.4, .1, .16]} c="#d9452b" ro={.5} r={.03} /><B p={[-.78, .17, .55]} s={[.16, .1, .14]} c="#3d5a80" r={.03} /><C p={[-.6, .03, .64]} r={.03} h={.03} c="#222" rot={[0, 0, Math.PI / 2]} /><C p={[-.8, .03, .64]} r={.03} h={.03} c="#222" rot={[0, 0, Math.PI / 2]} /></>,
+  kdesk: () => <>
+    <B p={[0, .6, 0]} s={[1.7, .04, .75]} c="#e8c98f" ro={.5} r={.015} />
+    {[[-.78, -.32], [.78, -.32], [-.78, .32], [.78, .32]].map(([x, z]) => <B key={x + '' + z} p={[x, .29, z]} s={[.05, .58, .05]} c="#b8864f" r={.01} />)}
+    <B p={[.55, .4, 0]} s={[.5, .3, .62]} c="#c79a63" ro={.6} /><B p={[.55, .4, .32]} s={[.44, .24, .01]} c="#b8864f" /><C p={[.55, .4, .335]} r={.014} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} />
+    <B p={[-.5, .635, -.15]} s={[.3, .03, .22]} c="#2f6bb0" ro={.9} /><B p={[-.5, .66, -.15]} s={[.28, .025, .2]} c="#d9452b" ro={.9} rot={[0, .2, 0]} /><B p={[-.2, .625, .12]} s={[.3, .008, .22]} c="#f6f4ee" rot={[0, -.15, 0]} />
+    <C p={[.2, .68, -.2]} r={.04} h={.09} c="#2f6bb0" ro={.5} />{['#d9452b', '#f0b53a', '#3fa84b'].map((c, i) => <C key={c} p={[.19 + i * .015, .76, -.2]} r={.005} h={.12} c={c} rot={[0, 0, (i - 1) * .18]} />)}
+    <C p={[-.75, .63, -.28]} r={.06} h={.02} c="#333" /><C p={[-.75, .78, -.28]} r={.01} h={.28} c="#333" /><C p={[-.75, .95, -.28]} r={.1} rt={.06} h={.14} c="#f2e6c9" ro={1} />
+    <group position={[0, 0, .85]} scale={.8}><Chair p={[0, 0, 0]} c="#c0622d" pad="#2f6bb0" /></group></>,
 };
 
 // Static shell of the flat: tiles, rugs, walls, windows, wall decor.
@@ -401,44 +583,97 @@ function Room() {
     <Win p={[.75, 1.6, -4.59]} w={1.4} h={1.2} /><Win p={[-6.19, 1.6, -2.9]} ry={Math.PI / 2} w={1.8} h={1.2} />
     <group position={[-4.6, 1.95, -4.57]}><B p={[0, 0, 0]} s={[1.0, .66, .04]} c="#2a1b10" ro={.5} /><B p={[0, 0, .02]} s={[.88, .54, .02]} c="#f1e3c0" ro={1} /><B p={[0, .12, .035]} s={[.88, .26, .005]} c="#e0742a" ro={1} /><B p={[0, -.06, .035]} s={[.88, .12, .005]} c="#d9a22b" ro={1} /><B p={[0, -.17, .035]} s={[.88, .2, .005]} c="#1d7654" ro={1} /><Sp p={[0, .1, .045]} r={.08} c="#f6d36b" sc={[1, 1, .1]} /></group>
     <group position={[2.0, 2.0, -4.57]}><C p={[0, 0, .02]} r={.2} h={.04} c="#2b2b2e" rot={[Math.PI / 2, 0, 0]} /><C p={[0, 0, .045]} r={.17} h={.01} c="#f6f2e6" ro={.4} rot={[Math.PI / 2, 0, 0]} /><B p={[0, .05, .06]} s={[.012, .1, .006]} c="#222" /><B p={[.04, 0, .06]} s={[.08, .012, .006]} c="#222" /></group>
+    {[.6, 1.2, 1.8].map((z, i) => <Frame key={z} p={[-6.17, 1.95 + (i === 1 ? .08 : 0), z]} ry={Math.PI / 2} w={i === 1 ? .46 : .36} h={i === 1 ? .56 : .46} />)}
     <B p={[-5.75, .02, 3.5]} s={[.55, .02, .85]} c="#5a4a38" ro={1} r={.008} /><B p={[-5.75, .032, 3.5]} s={[.45, .006, .75]} c="#7a6650" ro={1} r={.003} />
   </>;
 }
 
+// Kids' bed (shared model; blanket and plush toy colour tell the two apart).
+const kbed = (blanket: string, toy: string): ReactNode => <>
+  <B p={[0, .17, 0]} s={[1.2, .18, 1.95]} c="#c79a63" ro={.55} />
+  <B p={[0, .56, -.95]} s={[1.26, .95, .07]} c="#b8864f" ro={.55} r={.03} /><B p={[0, .34, .95]} s={[1.26, .5, .07]} c="#b8864f" ro={.55} r={.03} />
+  {[[-.58, -.95], [.58, -.95], [-.58, .95], [.58, .95]].map(([x, z]) => <B key={x + '' + z} p={[x, .05, z]} s={[.07, .1, .07]} c="#8a5f33" />)}
+  <B p={[0, .38, .02]} s={[1.12, .22, 1.84]} c="#f4f0e6" ro={.95} r={.06} />
+  <B p={[0, .5, .35]} s={[1.14, .1, 1.22]} c={blanket} ro={1} r={.05} />
+  <B p={[0, .52, -.66]} s={[.72, .12, .38]} c="#fbfaf6" ro={1} r={.06} rot={[-.05, 0, 0]} />
+  <Sp p={[.35, .6, -.25]} r={.1} c={toy} /><Sp p={[.35, .72, -.25]} r={.065} c={toy} /><Sp p={[.3, .78, -.25]} r={.025} c={toy} /><Sp p={[.4, .78, -.25]} r={.025} c={toy} /></>;
+const Frame = ({ p, ry = 0, w = .4, h = .5 }: { p: V3; ry?: number; w?: number; h?: number }) => <group position={p} rotation-y={ry}>
+  <B p={[0, 0, 0]} s={[w + .06, h + .06, .03]} c="#2a1b10" ro={.5} r={.01} /><B p={[0, 0, .018]} s={[w, h, .01]} c="#e8dcc2" ro={1} r={.002} />
+  {([[-.2, '#3d5a80', 1], [.0, '#b43c35', 1], [.22, '#e07aa1', .65], [.34, '#d18a22', .5]] as [number, string, number][]).map(([x, c, k]) => <group key={x} position={[x * w, -h * .08, .028]}>
+    <Sp p={[0, h * .2 * k, 0]} r={w * .07 * k} c="#5e3a22" sc={[1, 1.1, .3]} /><B p={[0, h * .02 * k, 0]} s={[w * .15 * k, h * .3 * k, .01]} c={c} ro={1} r={.005} /></group>)}
+</group>;
+
+// The kids' wing east of the flat: walls (half-height cutaway, like the rest of the house), window, play rug, wall decor.
+function Wing() {
+  return <>
+    <B p={[8.9, 1.3, -4.7]} s={[5.2, 2.6, .2]} c="#dce6f0" ro={.95} r={.01} />
+    <B p={[8.9, .07, -4.58]} s={[5, .14, .04]} c="#f4f0e6" ro={.5} r={.01} /><B p={[8.9, 2.57, -4.58]} s={[5, .06, .05]} c="#f4f0e6" ro={.5} r={.01} />
+    <B p={[11.4, .5, 0]} s={[.2, 1, 9.4]} c="#d3dde8" ro={.95} r={.01} /><B p={[11.4, 1.02, 0]} s={[.26, .04, 9.46]} c="#f4f0e6" ro={.5} r={.01} />
+    <B p={[6.2, .65, -1.8]} s={[.2, 1.3, 5.6]} c="#ddd2bf" ro={.95} r={.01} /><B p={[6.2, .65, 3.6]} s={[.2, 1.3, 2]} c="#ddd2bf" ro={.95} r={.01} />
+    <B p={[6.2, 1.32, -1.8]} s={[.26, .04, 5.66]} c="#f4f0e6" ro={.5} r={.01} /><B p={[6.2, 1.32, 3.6]} s={[.26, .04, 2.06]} c="#f4f0e6" ro={.5} r={.01} />
+    <Win p={[8.9, 1.6, -4.59]} w={1.4} h={1.2} />
+    <Rug x={8.9} z={1.5} w={3.6} d={2.4} c1="#2f6bb0" c2="#6fb4e8" />
+    <group position={[7.5, 2.0, -4.57]}>{['#d9452b', '#f0b53a', '#3fa84b'].map((c, i) => <B key={c} p={[i * .3 - .3, 0, 0]} s={[.24, .24, .03]} c={c} ro={.6} r={.01} />)}</group>
+    <group position={[10.2, 1.9, -4.57]}><B p={[0, 0, 0]} s={[.8, .95, .03]} c="#2f6bb0" ro={.7} r={.01} /><Sp p={[0, .05, .03]} r={.22} c="#f6f4ee" sc={[1, 1, .15]} /><Sp p={[0, .05, .045]} r={.08} c="#222" sc={[1, 1, .15]} /></group>
+  </>;
+}
+
+// Spouse + kids in the 3D scene. Position/pose come from the engine (module state), rendered every frame.
+function Member({ m, look, ui, onPick }: { m: Mem; look: Look; ui: UI; onPick: (id: string) => void }) {
+  const g = useRef<THREE.Group>(null!), inner = useRef<THREE.Group>(null!), [hov, setHov] = useState(false);
+  useFrame(() => {
+    const lie = m.pose === 'sleep' ? m.at?.lie : undefined;
+    g.current.visible = !m.away;
+    if (lie) { g.current.position.set(lie.x, lie.y, lie.z); g.current.rotation.y = 0; inner.current.rotation.x = -Math.PI / 2; }
+    else { g.current.position.set(m.pos[0], m.pose === 'sit' ? .5 * (1 - m.h) : 0, m.pos[1]); g.current.rotation.y = m.rot; inner.current.rotation.x = 0; }
+  });
+  const f = ui.fam.find(x => x.id === m.id);
+  return <group ref={g} onClick={e => { if (e.delta > 4) return; e.stopPropagation(); onPick(m.id); }}
+    onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(true); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(false); }}>
+    <group ref={inner}><Human look={look} getState={() => m.pose !== 'stand' ? m.pose : m.cur ? 'walk' : 'idle'} getAnim={() => (S.speed ? m.anim : undefined)} getSpeed={() => S.speed} /></group>
+    {f && !f.away && <Html position={[0, 1.75 * m.h + .55, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}><div className="bubble sm">{f.e}</div></Html>}
+    {hov && !f?.away && <Html position={[0, 1.75 * m.h + .95, 0]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{m.name}</div></Html>}
+  </group>;
+}
+function Family({ looks, ui, onPick }: { looks: Look[]; ui: UI; onPick: (id: string) => void }) {
+  return <>{F.mem.map((m, i) => <Member key={m.id} m={m} look={looks[i]} ui={ui} onPick={onPick} />)}</>;
+}
+
 function Lights() {
-  const sun = useRef<THREE.DirectionalLight>(null!), amb = useRef<THREE.HemisphereLight>(null!), lamp = useRef<THREE.PointLight>(null!);
+  const sun = useRef<THREE.DirectionalLight>(null!), amb = useRef<THREE.HemisphereLight>(null!), lamp = useRef<THREE.PointLight>(null!), lamp2 = useRef<THREE.PointLight>(null!);
   const day = new THREE.Color('#bfdcf2'), night = new THREE.Color('#0b1124');
   useFrame(({ scene }) => {
     const h = (S.min / 60) % 24, s = Math.max(0, Math.sin((h - 6) / 12 * Math.PI));
     sun.current.intensity = .15 + 2.4 * s; amb.current.intensity = .25 + 1 * s;
     sun.current.color.set(h < 8 || h > 17 ? '#ffb27a' : '#fff4e0');
-    lamp.current.intensity = S.power ? (1 - s) * 70 : 0;
+    lamp.current.intensity = S.power ? (1 - s) * 70 : 0; lamp2.current.intensity = S.power ? (1 - s) * 55 : 0;
     (scene.background as THREE.Color).copy(night).lerp(day, s);
   });
   return <><color attach="background" args={['#bfdcf2']} /><hemisphereLight ref={amb} args={['#cfe6ff', '#6b5a48', 1]} />
-    <directionalLight ref={sun} position={[7, 12, 8]} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-9} shadow-camera-right={9} shadow-camera-top={9} shadow-camera-bottom={-9} shadow-camera-far={40} />
-    <pointLight ref={lamp} position={[0, 3.2, 0]} color="#ffd9a0" /></>;
+    <directionalLight ref={sun} position={[7, 12, 8]} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={11} shadow-camera-bottom={-11} shadow-camera-far={45} />
+    <pointLight ref={lamp} position={[0, 3.2, 0]} color="#ffd9a0" /><pointLight ref={lamp2} position={[8.9, 3.2, 0]} color="#ffe3b8" /></>;
 }
 
 function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void; look: Look }) {
-  const [hov, setHov] = useState<string | null>(null), floorTex = useMemo(() => woodTex(6.2, 4.6), []);
+  const [hov, setHov] = useState<string | null>(null), floorTex = useMemo(() => woodTex(8.8, 4.6), []), flooks = useMemo(() => famLooks(look), [look.gender, look.skin]); // eslint-disable-line react-hooks/exhaustive-deps
   useFrame((_, dt) => tick(Math.min(dt, .1)));
   return <>
     <Lights />
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
-    <mesh rotation-x={-Math.PI / 2} position={[0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); walk(e.point.x, e.point.z); }}>
-      <planeGeometry args={[12.4, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
+    <mesh rotation-x={-Math.PI / 2} position={[2.6, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); walk(e.point.x, e.point.z); }}>
+      <planeGeometry args={[17.6, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
     <Room />
-    <group position={[9, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
+    <Wing />
+    <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
     {OBJ.map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
       onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(o); }}
       onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(o.id); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(h => (h === o.id ? null : h)); }}>{VIS[o.id](ui)}</group>)}
     {DECOR.map(d => <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot}>{VIS[d.vis](ui)}</group>)}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
-    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /></Suspense>
+    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]}><div className="pie"><b>{sel.name}</b>
-      {sel.acts.map(a => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash} onClick={() => { enq(sel, a); setSel(null); }}>{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : `${a.dur} min`}</small></button>)}</div></Html>}
-    <OrbitControls enablePan={false} target={[0, 0, 0]} minDistance={7} maxDistance={20} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
+      {sel.acts.map(a => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : `${a.dur} min`}</small></button>)}</div></Html>}
+    <OrbitControls enablePan={false} target={[2.6, 0, 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
   </>;
 }
 
@@ -447,18 +682,18 @@ export default function Sim() {
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); F.load(r.save.state.bonds); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {
-    setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); setLook(null); setEditing(false); setUser(null); }
+    setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); F.reset(); setLook(null); setEditing(false); setUser(null); }
   useEffect(() => {
     H.door = () => { setSel(null); setOutside(true); };
     H.outfit = () => setLook(l => { if (!l) return l; const i = OUTFITS.indexOf(l.outfit), n = { ...l, outfit: OUTFITS[(i + 1) % OUTFITS.length] }; saveNow(n); say('👕 New look!'); return n; });
     return () => { H.door = undefined; H.outfit = undefined; };
   }, []);
   useEffect(() => {
-    Object.assign(S, NEW());
+    Object.assign(S, NEW()); F.reset();
     (async () => { try { const me = await (await fetch('/api/auth/me')).json(); if (me.user) await enter(me.user); } catch { /* offline */ } setReady(true); })();
     const a = setInterval(() => setUi(snap()), 200), b = setInterval(() => { if (lookRef.current) saveNow(lookRef.current); }, 5000);
     return () => { clearInterval(a); clearInterval(b); };
@@ -473,7 +708,7 @@ export default function Sim() {
     {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} username={user.username} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = { x: b.x, z: b.z + b.d / 2 + 2.5 }; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
-    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 11, 13], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
+    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
     <div className={'top' + (menu ? ' open' : '')}><div className="pill">Day {Math.floor(ui.min / 1440) + 1} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
       <div className="pill gold">{naira(ui.cash)}</div>
@@ -487,10 +722,11 @@ export default function Sim() {
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button></div></div>
     <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
       {NEEDS.map(([k, l, e]) => <div key={k} className={'nrow' + (ui.needs[k] < 25 ? ' low' : '')}><span>{e}<em> {l}</em></span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
+    {user && look && !outside && <div className="fam"><b>👨‍👩‍👧‍👦 Family</b>{ui.fam.map(f => <div key={f.id} className="frow"><span>{f.e}</span><em>{f.name}</em><small>{f.label}</small><div className="bar"><i style={{ width: f.bond + '%', background: '#e8638a' }} /></div></div>)}</div>}
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
-    {!outside && <div className="hint">Tap the floor to walk · Tap any object for actions · Drag to rotate · Scroll to zoom</div>}
+    {!outside && <div className="hint">Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom</div>}
     <style>{CSS}</style>
   </div>;
 }
@@ -512,4 +748,5 @@ const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:cent
 .bubble{background:#fff;color:#000;border-radius:14px;padding:3px 9px;font-size:20px;box-shadow:0 2px 8px #0005}
 .pie{background:#10201af5;border:1px solid #ffffff33;border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:5px;min-width:170px}.pie b{font-size:11px;color:#f0b94a;text-transform:uppercase;letter-spacing:.1em;padding:0 4px}
 .pie button{display:flex;justify-content:space-between;gap:12px;background:#1b3329;border:1px solid #2f5143;color:#fff;border-radius:9px;padding:8px 10px;font-size:12px;cursor:pointer;text-align:left}.pie button:hover:not(:disabled){background:#27503f}.pie button:disabled{opacity:.4;cursor:not-allowed}.pie small{color:#9fb5aa}
-@media(max-width:620px){.needs{width:170px;padding:8px}.hint{display:none}.nrow>span{width:70px}}`;
+@media(max-width:620px){.needs{width:170px;padding:8px}.hint{display:none}.nrow>span{width:70px}.fam{display:none}}
+.fam{position:absolute;left:10px;top:64px;width:190px;background:#10201ae6;border:1px solid #ffffff2a;border-radius:14px;padding:9px 11px;backdrop-filter:blur(8px);font-size:11px}.fam>b{display:block;font-size:11px;color:#f0b94a;margin-bottom:4px}.frow{display:grid;grid-template-columns:22px 1fr;align-items:center;margin:6px 0}.frow em{font-style:normal;font-weight:700}.frow small{grid-column:2;color:#9fb5aa;font-size:10px}.frow .bar{grid-column:1/-1;height:5px;margin-top:3px}.bubble.sm{font-size:15px;padding:2px 7px}`;

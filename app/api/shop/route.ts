@@ -5,6 +5,7 @@ import { currentUser, err } from '../../../lib/auth';
 import { addSkillXp, insideBiz, loadState } from '../../../lib/game';
 import { SHOP } from '../../../lib/interiors';
 import { MAX_STACK, storeItem } from '../../../lib/catalog';
+import { VEHICLE_CATALOG } from '../../../lib/vehicles';
 // Prices live on the server. You can only buy what the building you are inside sells.
 // Two kinds of goods: the building's own services (food, courses, the car dealer) and the big store catalog (lib/catalog.ts).
 export async function POST(req: Request) {
@@ -34,6 +35,10 @@ export async function POST(req: Request) {
   if (item.grant === 'car' && st.save.hasCar) return err('You already own a car.', 409);
   const r = await prisma.save.updateMany({ where: { userId: u.id, cash: { gte: item.cost }, ...(item.grant === 'car' ? { hasCar: false } : {}) }, data: { cash: { decrement: item.cost }, ...(item.grant === 'car' ? { hasCar: true } : {}), ...(item.xp ? { profile: addSkillXp(st.profile, item.xp.skill, item.xp.amt) } : {}) } });
   if (!r.count) return err("You can't afford that.", 402);
+  if (item.grant === 'car') {
+    const base = VEHICLE_CATALOG[0];
+    await prisma.vehicle.create({ data: { userId: u.id, name: `${base.brand} ${base.model}`, type: base.type, price: base.price } });
+  }
   await prisma.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -item.cost, description: `shop:${biz.type}:${item.id}` } });
   const n = await loadState(u.id);
   return NextResponse.json({ ok: true, hasCar: n!.save.hasCar, cash: n!.save.cash, fx: item.fx || {}, profile: n!.profile });

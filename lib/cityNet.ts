@@ -32,6 +32,7 @@ const ACTS: Record<string, { text: string; reply: string; ms: number }> = {
   wave: { text: 'waved at you', reply: 'Wave back', ms: 3200 },
   cheer: { text: 'wants a high-five', reply: 'High-five!', ms: 3200 },
   dance: { text: 'invited you to dance', reply: 'Dance too', ms: 7000 },
+  phone: { text: 'is using their phone', reply: 'Okay', ms: 8000 },
 };
 export type Notice = { id: number; from: string; k: string; text: string; reply: string };
 export type RtcMsg = { u: string; to: string; t: string; d?: any };
@@ -177,6 +178,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     ch.current?.send({ type: 'broadcast', event: 'act', payload: { u: name, to: to || '', k } });
     socialRef.current?.(to ? 3 : 1); return true;
   }, [name]);
+  useEffect(() => { const f = () => { const a = ACTS.phone, now = Date.now(); NET.me.anim = 'phone'; NET.me.animUntil = now + a.ms; ch.current?.send({ type: 'broadcast', event: 'act', payload: { u: name, to: '', k: 'phone' } }); }; window.addEventListener('arl-phone-use', f); return () => window.removeEventListener('arl-phone-use', f); }, [name]);
   const dismissNotice = useCallback((id: number) => setNotices(l => l.filter(n => n.id !== id)), []);
   return { name, status, room, roster, ver, log, bub, unread, clearUnread, send, muted: mutedList, toggleMute, enabled: !!supabase, signal, subscribeRtc, act, notices, dismissNotice };
 }

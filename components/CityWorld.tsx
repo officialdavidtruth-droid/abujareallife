@@ -15,6 +15,7 @@ import { JAIL_CELL_POS } from '../lib/profile';
 import { useCityVoice } from '../lib/cityVoice';
 import CityPeople from './CityPeople';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
+import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 
 /* ───────────── types & helpers ───────────── */
 type Ctl = { joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
@@ -305,17 +306,24 @@ function carKit(): Kit {
 }
 const BODYMATS = new Map<string, THREE.MeshStandardMaterial>();
 const bodyMat = (c: string) => { let m = BODYMATS.get(c); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, metalness: .55, roughness: .32 }); BODYMATS.set(c, m); } return m; };
-function CarModel({ kit, color, kind }: { kit: Kit; color: string; kind: number }) {
-  const mat = bodyMat(color), sc: [number, number, number] = kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.88, 1, .97] : [1, 1, 1];
+function CarModel({ kit, color, kind, model }: { kit: Kit; color: string; kind: number; model?: string }) {
+  const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
+  const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
+  const premium = /mercedes|bmw|lexus/i.test(spec.brand);
+  const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
+  const grille = premium ? '#c7ccd1' : '#20252a';
   return <group scale={sc}>
-    <mesh geometry={kit.body} material={mat} castShadow />
+    <mesh geometry={kit.body} material={bodyMat(color)} castShadow />
     <mesh geometry={kit.cabin} material={kit.glass} />
-    <mesh position={[-.17, 1.38, 0]} material={mat}><boxGeometry args={[1.32, .07, 1.5]} /></mesh>
+    <mesh position={[-.17, suv ? 1.43 : 1.38, 0]} material={bodyMat(color)}><boxGeometry args={[suv ? 1.48 : 1.32, .07, suv ? 1.56 : 1.5]} /></mesh>
+    <mesh position={[2.14, .62, 0]} material={new THREE.MeshStandardMaterial({ color: grille, metalness: .75, roughness: .2 })}><boxGeometry args={[.08, .28, suv ? .95 : .78]} /></mesh>
+    <mesh position={[1.8, .55, 0]} material={new THREE.MeshStandardMaterial({ color: '#111820', metalness: .3, roughness: .4 })}><boxGeometry args={[.18, .08, suv ? 1.05 : .9]} /></mesh>
     <mesh geometry={kit.wheels} material={kit.tire} />
     <mesh geometry={kit.head} material={kit.headM} /><mesh geometry={kit.tail} material={kit.tailM} />
+    <mesh position={[-1.55, .58, .91]} material={new THREE.MeshStandardMaterial({ color: '#111', metalness: .25, roughness: .55 })}><boxGeometry args={[.5, .05, .05]} /></mesh>
   </group>;
 }
-type SimCar = { s: number; color: string; kind: number };
+type SimCar = { s: number; color: string; kind: number; model: string };
 type Lane = { axis: 'x' | 'z'; dir: 1 | -1; fixed: number; speed: number; rot: number; cars: SimCar[] };
 const COLORS = ['#c0392b', '#e8e8ea', '#1f2933', '#2c5aa0', '#8e949a', '#b7791f', '#0f766e', '#7c2d12', '#d9d9dc', '#1e9e55'];
 function makeLanes(): Lane[] {
@@ -325,7 +333,7 @@ function makeLanes(): Lane[] {
     for (const axis of ['x', 'z'] as const) for (const dir of [1, -1] as const) {
       const fixed = axis === 'x' ? i * GRID + (dir === 1 ? off : -off) : i * GRID + (dir === 1 ? -off : off); // drive on the right
       const rot = axis === 'x' ? (dir === 1 ? 0 : Math.PI) : (dir === 1 ? -Math.PI / 2 : Math.PI / 2);
-      const cars = Array.from({ length: major ? 2 : 1 }, (_, k) => ({ s: -100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4 }));
+      const cars = Array.from({ length: major ? 2 : 1 }, (_, k) => ({ s: -100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id }));
       lanes.push({ axis, dir, fixed, speed: major ? 9 : 6.5, rot, cars });
     }
   }
@@ -350,7 +358,7 @@ function Traffic() {
       const g = refs.current[i]; if (g) { if (l.axis === 'x') g.position.set(c.s, 0, l.fixed); else g.position.set(l.fixed, 0, c.s); g.rotation.y = l.rot; }
     });
   });
-  return <>{flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}><CarModel kit={kit} color={c.color} kind={c.kind} /></group>)}</>;
+  return <>{flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}><CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} /></group>)}</>;
 }
 
 /* ───────────── railway + airport on the city edge ───────────── */
@@ -466,11 +474,11 @@ function Pedestrians() {
 
 /* ───────────── the player's car ───────────── */
 const CAR_COLOR = '#ff6a00';
-function PlayerCar({ carRef, tagRef, spotRef }: { carRef: React.MutableRefObject<THREE.Group>; tagRef: React.MutableRefObject<HTMLDivElement | null>; spotRef: React.MutableRefObject<THREE.SpotLight> }) {
+function PlayerCar({ carRef, tagRef, spotRef, model }: { carRef: React.MutableRefObject<THREE.Group>; tagRef: React.MutableRefObject<HTMLDivElement | null>; spotRef: React.MutableRefObject<THREE.SpotLight>; model: string }) {
   const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []);
   useLayoutEffect(() => { spotRef.current.target = tgt; }, [tgt, spotRef]);
   return <group ref={carRef} visible={false}>
-    <CarModel kit={kit} color={CAR_COLOR} kind={0} />
+    <CarModel kit={kit} color={vehicleByName(model).color || CAR_COLOR} kind={0} model={model} />
     <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
     <primitive object={tgt} position={[16, .2, 0]} />
     <Html position={[0, 2.4, 0]} center><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
@@ -619,7 +627,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
-export const GAME = { jailed: false, hasCar: false, notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z } }; // set by the game layer; while true the player is locked inside the cell
+export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z } }; // set by the game layer; while true the player is locked inside the cell
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
@@ -644,6 +652,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
   const nav = useRef<{ key: string; points: [number, number][]; i: number } | null>(null);
   const [near, setN] = useState<any>(null);
   const [touchDevice, setTouchDevice] = useState(false);
+  const [vehicleModel, setVehicleModel] = useState(GAME.vehicleModel);
+  useEffect(() => { let dead = false; const load = async () => { try { const r = await fetch('/api/vehicles'); if (!r.ok) return; const d = await r.json(); const m = d.active || GAME.vehicleModel; if (!dead) { GAME.vehicleModel = m; setVehicleModel(m); } } catch {} }; load(); const id = setInterval(load, 8000); return () => { dead = true; clearInterval(id); }; }, []);
   useEffect(() => { const m = window.matchMedia('(pointer: coarse), (max-width: 700px)'); const sync = () => setTouchDevice(m.matches); sync(); m.addEventListener?.('change', sync); return () => m.removeEventListener?.('change', sync); }, []);
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
   useEffect(() => { sun.current.target = sunTarget; }, [sunTarget]);
@@ -845,7 +855,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       {BUILDS.map(b => <Building key={b.id} b={b} />)}
       <Traffic />
       <Pedestrians />
-      <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} />
+      <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} />
       <TrainLine />
       <Airport />
       <JailCell />
@@ -863,7 +873,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
 const rWalk = (n: string) => { const q = NET.peers[n]; return !!q && q.mv > 0 && Math.hypot(q.tx - q.x, q.tz - q.z) > .08; };
 function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n: string) => void }) {
   const body = useRef<THREE.Group>(null!), car = useRef<THREE.Group>(null!), hum = useRef<THREE.Group>(null!), tag = useRef<HTMLDivElement | null>(null);
-  const kit = pkit(), colour = useMemo(() => COLORS[Math.floor(hs(name) * COLORS.length)], [name]);
+  const kit = pkit(), remoteModel = VEHICLE_CATALOG[Math.floor(hs(name) * VEHICLE_CATALOG.length)].id, colour = useMemo(() => vehicleById(remoteModel).color, [remoteModel]);
   useFrame((_, dtRaw) => {
     const q = NET.peers[name]; if (!q || !body.current) return;
     const dt = Math.min(dtRaw, .1), k = 1 - Math.exp(-dt * 9);
@@ -880,7 +890,7 @@ function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n:
       <Human look={p.look} getState={() => (rWalk(name) ? 'walk' : 'idle')} getAnim={() => { const q = NET.peers[name]; if (!q || rWalk(name)) return undefined; return q.anim && Date.now() < q.animUntil ? q.anim : q.call ? 'phone' : undefined; }} getSpeed={() => ((NET.peers[name]?.mv || 0) === 2 ? 2.4 : 1.1)} />
       <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} ref={el => { tag.current = el; }}>{bub && <div className="cwSay">{bub}</div>}<div className="cityNameTag cwTapTag" onClick={() => onPick(name)}>{name}</div></div></Html>
     </group>
-    <group ref={car} visible={false}><CarModel kit={kit} color={colour} kind={0} /></group>
+    <group ref={car} visible={false}><CarModel kit={kit} color={colour} kind={0} model={remoteModel} /></group>
   </>;
 }
 function RemotePlayers({ roster, ver, bub, onPick }: { roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {

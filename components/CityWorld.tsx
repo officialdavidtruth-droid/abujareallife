@@ -18,6 +18,8 @@ import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio }
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 
 import RuntimeStyle from './RuntimeStyle';
+import { createPortal } from 'react-dom';
+import { GRID, halfW, curbSpot, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
@@ -30,8 +32,6 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /* ───────────── city layout: wide boulevards (22 m grid) ───────────── */
 const FH = 3; // metres per floor
-const GRID = 22; // distance between road centre lines
-const halfW = (i: number) => (((i % 2) + 2) % 2 === 0 ? 3.5 : 2.5); // even roads = 7 m boulevards, odd = 5 m streets
 const LIM = 135; // walkable limit
 const ev = (n: number) => ((n % 2) + 2) % 2 === 0;
 const BUILDS: CityBuilding[] = CITY.buildings.map((b: CityBuilding) => {
@@ -258,7 +258,7 @@ function StreetLamps() {
 
 /* ───────────── shared world state (cars, pedestrians and the player talk through these) ───────────── */
 const TPOS: { x: number; z: number; r: number }[] = []; // live position of every AI car
-const OBS = [{ x: 0, z: 0, on: false, sp: 4.5 }, { x: 0, z: 0, on: false, sp: 7 }]; // things AI cars must stop for: [0] player on foot, [1] player's car
+const OBS = [{ x: 0, z: 0, on: false, sp: 4.5 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }]; // things AI cars must stop for: [0] player on foot, [1] player's car, [2] the taxi/bike carrying the player
 const VEH = { x: 0, z: 0, r: 0, v: 0, placed: false, drv: false, brake: false }; // the player's own car
 const NIGHT = { n: 0 }; // 0 = full day, 1 = full night
 let PKIT: Kit | null = null;
@@ -364,118 +364,137 @@ function Traffic() {
 
 
 /* ───────────── player transport stands: taxis + hire bikes ───────────── */
+// Parked on the sidewalk strip beside the road (curbSpot), never in the traffic lanes. They face the way traffic flows on that side.
 const TRANSPORT_STOPS = [
-  // Park transport on the sidewalk/curb, never in the traffic lanes.
-  { kind: 'taxi' as const, x: 0, z: 5.6, r: 0, label: 'Taxi Stand' },
-  { kind: 'taxi' as const, x: 22, z: 5.6, r: 0, label: 'Taxi Stand' },
-  { kind: 'taxi' as const, x: -22, z: -5.6, r: Math.PI, label: 'Taxi Stand' },
-  { kind: 'bike' as const, x: 5.6, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
-  { kind: 'bike' as const, x: -5.6, z: -22, r: Math.PI / 2, label: 'Bike Hire' },
-  { kind: 'bike' as const, x: 27.6, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
+  { kind: 'taxi' as const, label: 'Taxi Stand', ...curbSpot('x', 0, 11, 1) },
+  { kind: 'taxi' as const, label: 'Taxi Stand', ...curbSpot('x', 0, -11, -1) },
+  { kind: 'taxi' as const, label: 'Taxi Stand', ...curbSpot('z', 0, -11, 1) },
+  { kind: 'bike' as const, label: 'Bike Hire', ...curbSpot('x', 1, 11, -1) },
+  { kind: 'bike' as const, label: 'Bike Hire', ...curbSpot('z', 1, 11, -1) },
+  { kind: 'bike' as const, label: 'Bike Hire', ...curbSpot('x', -1, -11, 1) },
 ];
+type Stand = typeof TRANSPORT_STOPS[number];
 const DESTS = CITY.districts.slice(0, 8).map(d => ({ name: d.name, x: d.x, z: d.z }));
 
-// Solid footprints for parked taxis/bikes so players cannot walk through them.
-const TRANSPORT_SOLIDS = TRANSPORT_STOPS.map(t => ({ x: t.x, z: t.z, r: t.kind === 'taxi' ? 2.15 : 1.05 }));
+/* ───────────── roadside advertising billboards ───────────── */
+// On the sidewalk strip, front face towards the road, up on tall posts so they read above the traffic. (They used to sit mid-block, inside the buildings.)
+const BILLBOARD_COLORS = ['#1d7654', '#c9831f', '#2c5aa0', '#7a2fb0', '#b3261e', '#0f766e'];
+const BILLBOARDS = ([
+  ['x', 0, -11, 1, 'ABUJA REAL LIFE', 'Your city. Your story.'],
+  ['x', 0, 11, -1, 'BIZNEST', 'Build your business.'],
+  ['z', 0, 11, 1, 'NOW HIRING', 'Find a job near you'],
+  ['z', 0, -11, -1, 'ABUJA NIGHTS', 'Work · Meet · Connect'],
+  ['x', 0, 33, 1, 'YOUR AD HERE', 'Reach Abuja players'],
+  ['z', 0, 33, -1, 'DRIVE & EXPLORE', 'Taxis · Bikes · Cars'],
+] as const).map(([axis, road, along, side, title, sub], i) => ({ ...billboardSpot(axis, road, along, side), ax: axis === 'x' ? 1 : 0, az: axis === 'x' ? 0 : 1, title, sub, i }));
 
-// Drop riders on the nearest curb/sidewalk instead of the middle of a road.
-function transitDrop(x: number, z: number) {
-  const gx = Math.round(x / GRID) * GRID, gz = Math.round(z / GRID) * GRID;
-  const dx = Math.abs(x - gx), dz = Math.abs(z - gz);
-  if (dx < dz) {
-    const side = x >= gx ? 1 : -1;
-    return { x: gx + side * (halfW(Math.round(gx / GRID)) + 2.0), z };
-  }
-  const side = z >= gz ? 1 : -1;
-  return { x, z: gz + side * (halfW(Math.round(gz / GRID)) + 2.0) };
+// Solid footprints so players cannot walk through parked taxis / bikes / billboard posts.
+const TRANSPORT_SOLIDS = [
+  ...TRANSPORT_STOPS.flatMap(t => { const fx = Math.cos(t.r), fz = -Math.sin(t.r); return t.kind === 'taxi' ? [-1.2, 1.2].map(o => ({ x: t.x + fx * o, z: t.z + fz * o, r: 1.0 })) : [{ x: t.x, z: t.z, r: .8 }]; }),
+  ...BILLBOARDS.flatMap(b => [-1.7, 1.7].map(o => ({ x: b.x + b.ax * o, z: b.z + b.az * o, r: .1 }))),
+];
+
+function TaxiBody({ kit, driver }: { kit: Kit; driver?: boolean }) {
+  return <group>
+    <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" />
+    <group position={[-.05, 1.56, 0]}> {/* roof sign: real 3D text on both sides, so no floating label to clutter the view */}
+      <mesh><boxGeometry args={[.9, .2, .5]} /><meshStandardMaterial color="#111" /></mesh>
+      {[1, -1].map(sd => <Text key={sd} position={[0, .01, sd * .26]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.15} color="#ffd23f" anchorX="center" anchorY="middle">TAXI</Text>)}
+    </group>
+    {driver && <group position={[.12, .3, -.4]} rotation-y={Math.PI / 2} scale={.6}><Human look={{ ...DEFAULT_LOOK, name: 'Taxi Driver', outfit: '#d99a42' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
+  </group>;
+}
+function BikeBody({ scale = 1, rider }: { scale?: number; rider?: boolean }) { // faces +x like every vehicle
+  return <group scale={[scale, scale, scale]}>
+    {[-.55, .55].map(x => <mesh key={x} position={[x, .4, 0]}><torusGeometry args={[.36, .05, 8, 18]} /><meshStandardMaterial color="#15181b" /></mesh>)}
+    <mesh position={[0, .62, 0]}><boxGeometry args={[1.05, .07, .07]} /><meshStandardMaterial color="#2d8f62" /></mesh>
+    <mesh position={[.5, .66, 0]} rotation-z={-.25}><boxGeometry args={[.06, .62, .06]} /><meshStandardMaterial color="#2d8f62" /></mesh>
+    <mesh position={[.58, .98, 0]}><boxGeometry args={[.06, .06, .5]} /><meshStandardMaterial color="#20252a" /></mesh>
+    <mesh position={[-.3, .84, 0]}><boxGeometry args={[.34, .06, .2]} /><meshStandardMaterial color="#20252a" /></mesh>
+    {rider && <group position={[-.18, .6, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
+  </group>;
+}
+/* One small label per stand: nothing when you are far, "🚕 Taxi" in the middle distance, "Tap to ride" when you are next to it. Never stacked on the vehicle. */
+function StandLabel({ t }: { t: Stand }) {
+  const el = useRef<HTMLDivElement>(null), mode = useRef('');
+  useFrame(() => {
+    const d = Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z), m = GAME.ride ? 'off' : d < 5 ? 'near' : d < 16 ? 'mid' : 'off';
+    if (m !== mode.current && el.current) { mode.current = m; el.current.className = 'trTag ' + m; el.current.textContent = m === 'near' ? (t.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire') : (t.kind === 'taxi' ? '🚕 Taxi' : '🚲 Bikes'); }
+  });
+  return <Html position={[0, t.kind === 'taxi' ? 2.45 : 1.9, 0]} center zIndexRange={[4, 0]}><div ref={el} className="trTag off" /></Html>;
+}
+function TransportSheet({ kind, onPick, onClose }: { kind: 'taxi' | 'bike'; onPick: (d: { name: string; x: number; z: number }) => void; onClose: () => void }) {
+  return createPortal(<div className="trSheet">
+    <button className="trX" aria-label="Close" onClick={onClose}>✕</button>
+    <h3><span>{kind === 'taxi' ? '🚕 Taxi' : '🚲 Bike taxi'}</span></h3>
+    <div className="trBody"><p>Where to? An NPC driver takes you there along the road.</p>
+      {DESTS.map(d => <button key={d.name} onClick={() => onPick(d)}><span className="tx"><b>{d.name}</b></span><em>Go</em></button>)}</div>
+  </div>, document.body);
 }
 function TransportVehicles() {
-  const kit = useMemo(carKit, []), [open, setOpen] = useState<{ kind: 'taxi' | 'bike'; label: string } | null>(null), [near, setNear] = useState<{ kind: 'taxi' | 'bike'; label: string; x: number; z: number } | null>(null);
-  const [rideVersion, setRideVersion] = useState(0);
-  const activeRef = useRef<THREE.Group | null>(null);
-  useEffect(() => { const id = setInterval(() => { const p = GAME.player; let best: typeof near = null, bd = 4.5; if (!GAME.ride) { for (const t of TRANSPORT_STOPS) { const d = Math.hypot(p.x - t.x, p.z - t.z); if (d < bd) { bd = d; best = t; } } } setNear(best); }, 180); return () => clearInterval(id); }, []);
+  const kit = useMemo(carKit, []);
+  const [open, setOpen] = useState<number | null>(null), [near, setNear] = useState<number | null>(null), [, setTick] = useState(0);
+  const activeRef = useRef<THREE.Group>(null!), rs = useRef<RideState | null>(null), route = useRef<Route | null>(null);
+  useEffect(() => { const id = setInterval(() => { let best: number | null = null, bd = 6; if (!GAME.ride) TRANSPORT_STOPS.forEach((t, i) => { const d = Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z); if (d < bd) { bd = d; best = i; } }); setNear(best); }, 180); return () => clearInterval(id); }, []);
+  useEffect(() => { if (open !== null && near !== open) setOpen(null); }, [near, open]); // walk away (or start a ride) and the menu closes
 
-  useFrame((_, dtRaw) => {
-    const ride = GAME.ride;
-    const g = activeRef.current;
-    if (!ride || !g) { if (g) g.visible = false; return; }
-    g.visible = true;
-    const pts = ride.path;
-    const target = pts[Math.min(ride.i, pts.length - 1)] || [ride.x, ride.z];
-    const dx = target[0] - ride.x, dz = target[1] - ride.z, d = Math.hypot(dx, dz), dt = Math.min(dtRaw, .05);
-    if (d < .7) {
-      if (ride.i < pts.length - 1) ride.i++;
-      else {
-        const drop = transitDrop(target[0], target[1]);
-        GAME.ride = null;
-        GAME.player.x = drop.x; GAME.player.z = drop.z;
-        GAME.tp = { x: drop.x, z: drop.z };
-        GAME.notice = `📍 Arrived at ${ride.name}`;
-        setRideVersion(v => v + 1);
-        return;
-      }
-    } else {
-      const step = Math.min(d, ride.speed * dt);
-      ride.r = Math.atan2(-dx, dz);
-      ride.x += dx / d * step; ride.z += dz / d * step;
+  useFrame((st, dtRaw) => {
+    const ride = GAME.ride, g = activeRef.current;
+    OBS[2].on = !!ride && !!rs.current;
+    if (!ride || !g || !rs.current || !route.current) { if (g) g.visible = false; return; }
+    const r = rs.current, rt = route.current;
+    stepRide(r, rt, Math.min(dtRaw, .05), { vmax: ride.kind === 'taxi' ? 11 : 7.5, t: st.clock.elapsedTime, light: lightState, cars: TPOS });
+    ride.x = r.x; ride.z = r.z; ride.r = r.r;
+    g.visible = true; g.position.set(r.x, 0, r.z); g.rotation.y = r.r;
+    OBS[2].x = r.x; OBS[2].z = r.z; GAME.player.x = r.x; GAME.player.z = r.z;
+    if (r.done) { // arrived: the rider steps out onto the sidewalk
+      GAME.ride = null; rs.current = null; route.current = null; OBS[2].on = false;
+      GAME.player.x = rt.drop[0]; GAME.player.z = rt.drop[1]; GAME.tp = { x: rt.drop[0], z: rt.drop[1] };
+      GAME.notice = `📍 Arrived at ${ride.name}`; g.visible = false; setTick(v => v + 1);
     }
-    g.position.set(ride.x, 0, ride.z); g.rotation.y = ride.r;
-    GAME.player.x = ride.x; GAME.player.z = ride.z;
   });
 
-  const ride = async (kind: 'taxi' | 'bike', d: { name: string; x: number; z: number }) => {
-    const r = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) { GAME.notice = data.error || 'Transport unavailable.'; return; }
-    const start = GAME.player;
-    const startPoint: [number, number] = [start.x, start.z];
-    const goal = transitDrop(d.x, d.z);
-    const planned = findPath(BL, startPoint, [goal.x, goal.z]);
-    const path = planned.length ? planned : [[goal.x, goal.z] as [number, number]];
-    GAME.ride = { kind, x: start.x, z: start.z, r: 0, name: d.name, path, i: 0, speed: kind === 'taxi' ? 11 : 8 };
-    GAME.notice = `${kind === 'taxi' ? '🚕 Taxi driver' : '🚲 Bike driver'} is taking you to ${d.name}`;
-    setOpen(null); setRideVersion(v => v + 1);
+  const go = async (idx: number, d: { name: string; x: number; z: number }) => {
+    const stand = TRANSPORT_STOPS[idx], rt = planRide(stand, [d.x, d.z]);
+    if (!rt) { GAME.notice = 'No route to that place from here.'; return; }
+    const res = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: stand.kind }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { GAME.notice = data.error || 'Transport unavailable.'; return; }
+    route.current = rt; rs.current = newRide(rt, stand.r);
+    GAME.ride = { kind: stand.kind, x: stand.x, z: stand.z, r: stand.r, name: d.name, path: rt.pts, i: 0, speed: stand.kind === 'taxi' ? 11 : 7.5, stand: idx };
+    GAME.notice = `${stand.kind === 'taxi' ? '🚕 Your driver' : '🚲 Your rider'} is taking you to ${d.name}`;
+    setOpen(null); setTick(v => v + 1);
   };
-  void rideVersion;
+  const busy = GAME.ride?.stand;
   return <>
-    {TRANSPORT_STOPS.map((t, i) => <group key={i} position={[t.x, 0, t.z]} rotation-y={t.r} onClick={e => { e.stopPropagation(); if (!GAME.ride) setOpen({ kind: t.kind, label: t.label }); }}>
-      <mesh position={[0, .015, 0]} rotation-x={-Math.PI / 2}><planeGeometry args={[t.kind === 'taxi' ? 5.4 : 2.6, t.kind === 'taxi' ? 2.8 : 1.8]} /><meshStandardMaterial color="#3b4a43" roughness={1} /></mesh>
-      {t.kind === 'taxi' ? <group><CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" /><mesh position={[0, 1.52, 0]}><boxGeometry args={[.9, .18, .58]} /><meshStandardMaterial color="#111" /></mesh><Html position={[0, 1.72, 0]} center><div className="taxiRoof">TAXI</div></Html></group> : <group scale={[.65,.65,.65]}><mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh><mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh></group>}
-      <Html position={[0, 2.2, 0]} center><div className="transportTag">{t.kind === 'taxi' ? '🚕' : '🚲'} {t.label}</div></Html>
+    {TRANSPORT_STOPS.map((t, i) => <group key={i} position={[t.x, 0, t.z]} rotation-y={t.r} onClick={e => { e.stopPropagation(); if (GAME.ride) return; if (Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z) > 8) { GAME.notice = `Walk up to the ${t.kind === 'taxi' ? 'taxi' : 'bike'} first.`; return; } setOpen(i); }}>
+      <mesh position={[0, .02, 0]} rotation-x={-Math.PI / 2}><planeGeometry args={[t.kind === 'taxi' ? 5.4 : 2.6, t.kind === 'taxi' ? 2.5 : 1.5]} /><meshStandardMaterial color="#3b4a43" roughness={1} /></mesh>
+      {busy !== i && (t.kind === 'taxi' ? <TaxiBody kit={kit} /> : <BikeBody scale={.9} />)}
+      <group rotation-y={-t.r}><StandLabel t={t} /></group>
     </group>)}
-    <group ref={activeRef} visible={false}>
-      {GAME.ride?.kind === 'taxi' ? <group>
-        <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" />
-        <group position={[0, .22, .35]} scale={.68}>
-          <Human look={{ ...DEFAULT_LOOK, name: 'Taxi Driver', outfit: '#d99a42' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} />
-        </group>
-        <mesh position={[0, 1.52, 0]}><boxGeometry args={[.9, .18, .58]} /><meshStandardMaterial color="#111" /></mesh>
-        <Html position={[0, 1.72, 0]} center><div className="taxiRoof">TAXI</div></Html>
-      </group> : <group scale={[.82,.82,.82]}>
-        <mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh>
-        <mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh>
-        <mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh>
-        <mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh>
-        <mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh>
-        <group position={[0,.12,.12]} scale={.56}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>
-      </group>}
-      <Html position={[0, 2.05, 0]} center><div className="transportTag">{GAME.ride?.kind === 'taxi' ? '🚕 NPC TAXI DRIVER · AUTOMATIC' : '🚲 NPC BIKE DRIVER · AUTOMATIC'}</div></Html>
-    </group>
-    {open && near && <Html position={[near.x, 2.8, near.z]} center><div className="transportMenu"><b>{open.kind === 'taxi' ? '🚕 Choose destination' : '🚲 Bike taxi'}</b><small>NPC driver · automatic trip</small>{DESTS.map(d => <button key={d.name} onClick={() => ride(open.kind, d)}>{d.name}</button>)}<button className="transportClose" onClick={() => setOpen(null)}>Cancel</button></div></Html>}
-    {near && !open && !GAME.ride && <Html position={[near.x, 2.1, near.z]} center><div className="transportPrompt">{near.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire'}</div></Html>}
-    {GAME.ride && <Html position={[GAME.ride.x, 2.25, GAME.ride.z]} center><div className="transportPrompt">{GAME.ride.kind === 'taxi' ? '🚕 Automatic taxi ride' : '🚲 Automatic bike ride'}</div></Html>}
-    <RuntimeStyle css={`.taxiRoof{background:#111;color:#ffd23f;border-radius:5px;padding:2px 7px;font:900 9px Inter,system-ui;letter-spacing:.12em;border:1px solid #ffd23f88}.transportTag,.transportPrompt{background:#09130fe8;color:#fff;border:1px solid #ffffff2a;border-radius:999px;padding:5px 9px;font:800 10px Inter,system-ui;white-space:nowrap;box-shadow:0 5px 14px #0006}.transportPrompt{background:#d99a42;color:#111}.transportMenu{width:170px;display:flex;flex-direction:column;gap:5px;padding:9px;background:#09130ff5;border:2px solid #111;border-radius:14px;box-shadow:0 12px 30px #0008}.transportMenu b{font-size:12px}.transportMenu small{color:#9fb5aa;font-size:9px}.transportMenu button{border:0;border-radius:8px;background:#18352a;color:#fff;padding:6px 7px;font-weight:800;font-size:10px;cursor:pointer}.transportMenu button:hover{background:#d99a42;color:#111}.transportMenu .transportClose{background:#4a2525}`} />
+    <group ref={activeRef} visible={false}>{GAME.ride?.kind === 'bike' ? <BikeBody scale={1} rider /> : <TaxiBody kit={kit} driver />}</group>
+    {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={TRANSPORT_STOPS[open].kind} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
+    <RuntimeStyle css={`.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
+.trSheet{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(320px,40vw);display:flex;flex-direction:column;overflow:hidden;background:var(--plum,#261a36);color:var(--cream,#fff3d6);border:4px solid var(--ink,#1a1410);border-radius:22px;box-shadow:0 6px 0 var(--ink,#1a1410),0 18px 34px #000a;font-family:var(--gf,system-ui);animation:trIn .24s cubic-bezier(.3,1.4,.5,1)}
+.trSheet h3{flex:none;margin:0;padding:10px 54px 8px 16px;background:var(--gold,#ffb81c);border-bottom:4px solid var(--ink,#1a1410);font-weight:400;font-size:22px;line-height:1.1;letter-spacing:.04em;color:#fff;background-image:repeating-linear-gradient(135deg,#ffffff1c 0 10px,#0000 10px 20px)}.trSheet h3 span{display:block;-webkit-text-stroke:6px var(--ink,#1a1410);paint-order:stroke fill}
+.trX{all:unset;box-sizing:border-box;position:absolute;z-index:2;right:10px;top:8px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;cursor:pointer;background:var(--red,#ff5147);border:3px solid var(--ink,#1a1410);box-shadow:0 3px 0 var(--ink,#1a1410);color:#fff;font-size:15px}.trX:active{transform:translateY(3px);box-shadow:none}
+.trBody{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:var(--gold,#ffb81c) transparent}
+.trBody p{margin:0;padding:7px 12px;background:var(--cream,#fff3d6);color:var(--ink,#1a1410);border:3px solid var(--ink,#1a1410);border-radius:14px;box-shadow:0 3px 0 var(--ink,#1a1410);font-size:13px;line-height:1.28}
+.trBody button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;cursor:pointer;width:100%;padding:8px 9px 8px 12px;background:var(--plum2,#34244a);color:var(--cream,#fff3d6);border:3px solid var(--ink,#1a1410);border-radius:16px;box-shadow:0 4px 0 var(--ink,#1a1410);font-family:var(--gf,system-ui);transition:transform .1s,filter .1s}.trBody button:hover{filter:brightness(1.12)}.trBody button:active{transform:translateY(4px);box-shadow:none}
+.trBody .tx{flex:1;min-width:0}.trBody b{font-weight:400;font-size:16px;letter-spacing:.03em;color:#fff}.trBody em{flex:none;font-style:normal;padding:5px 14px 4px;background:var(--green,#2fc66b);color:#fff;border:3px solid var(--ink,#1a1410);border-radius:12px;box-shadow:0 3px 0 var(--ink,#1a1410),inset 0 3px 0 #ffffff55;font-size:15px;-webkit-text-stroke:4px var(--ink,#1a1410);paint-order:stroke fill}
+@keyframes trIn{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}@media (max-width:620px) and (orientation:portrait){.trSheet{left:10px;right:10px;top:auto;width:auto;max-height:46vh}}`} />
   </>;
 }
-/* ───────────── roadside advertising billboards ───────────── */
-const BILLBOARDS = [
-  { x: -11, z: 8, r: 0, title: 'ABUJA REAL LIFE', sub: 'Your city. Your story.' },
-  { x: 11, z: -8, r: Math.PI, title: 'BIZNEST', sub: 'Build your business.' },
-  { x: -33, z: 8, r: 0, title: 'YOUR AD HERE', sub: 'Reach Abuja players' },
-  { x: 33, z: -8, r: Math.PI, title: 'ABUJA NIGHTS', sub: 'Work • Meet • Connect' },
-  { x: 8, z: 33, r: -Math.PI / 2, title: 'NOW HIRING', sub: 'Find a job near you' },
-];
-function Billboards() { return <>{BILLBOARDS.map((b, i) => <group key={i} position={[b.x, 0, b.z]} rotation-y={b.r}><mesh position={[0, 2.8, 0]} castShadow><boxGeometry args={[5.2, 2.2, .16]} /><meshStandardMaterial color="#18251f" roughness={.65} /></mesh><mesh position={[0, 2.8, -.1]}><boxGeometry args={[4.85, 1.85, .05]} /><meshStandardMaterial color={i % 2 ? '#d99a42' : '#1d7654'} /></mesh><Text position={[0, 3.15, -.16]} fontSize={.34} color="#fff" anchorX="center" anchorY="middle" maxWidth={4.5}>{b.title}</Text><Text position={[0, 2.62, -.16]} fontSize={.17} color="#fff" anchorX="center" anchorY="middle" maxWidth={4.5}>{b.sub}</Text><mesh position={[-1.7, 1.05, 0]}><boxGeometry args={[.12, 2.3, .12]} /><meshStandardMaterial color="#333" /></mesh><mesh position={[1.7, 1.05, 0]}><boxGeometry args={[.12, 2.3, .12]} /><meshStandardMaterial color="#333" /></mesh></group>)}</>;
+function Billboards() {
+  return <>{BILLBOARDS.map(b => <group key={b.i} position={[b.x, 0, b.z]} rotation-y={b.ry}>
+    {[-1.7, 1.7].map(o => <mesh key={o} position={[o, 1.8, 0]} castShadow><boxGeometry args={[.16, 3.6, .16]} /><meshStandardMaterial color="#2f343a" metalness={.3} roughness={.6} /></mesh>)}
+    <mesh position={[0, 4.5, 0]} castShadow><boxGeometry args={[5.6, 2.7, .22]} /><meshStandardMaterial color="#14201b" roughness={.6} /></mesh>
+    <mesh position={[0, 4.5, -.12]}><boxGeometry args={[5.2, 2.3, .04]} /><meshStandardMaterial color={BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]} emissive={BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]} emissiveIntensity={.45} roughness={.5} /></mesh>
+    {/* the front of the board faces -z (towards the road); drei Text faces +z, so it is turned round */}
+    <Text position={[0, 4.85, -.16]} rotation-y={Math.PI} fontSize={.46} color="#fff" outlineWidth={.02} outlineColor="#0b0b0b" anchorX="center" anchorY="middle" maxWidth={4.9}>{b.title}</Text>
+    <Text position={[0, 4.12, -.16]} rotation-y={Math.PI} fontSize={.22} color="#fff7e0" anchorX="center" anchorY="middle" maxWidth={4.9}>{b.sub}</Text>
+    {[-1.8, 0, 1.8].map(x => <mesh key={x} position={[x, 6.0, -.35]}><boxGeometry args={[.5, .1, .3]} /><meshStandardMaterial color="#fff2c4" emissive="#ffe29a" emissiveIntensity={.9} /></mesh>)}
+  </group>)}</>;
 }
 
 /* ───────────── railway + airport on the city edge ───────────── */
@@ -744,7 +763,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
-export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z }, ride: null as null | { kind: 'taxi' | 'bike'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number } }; // set by the game layer
+export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z }, ride: null as null | { kind: 'taxi' | 'bike'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };

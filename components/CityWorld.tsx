@@ -17,7 +17,7 @@ import CityPeople from './CityPeople';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
 
 /* ───────────── types & helpers ───────────── */
-type Ctl = { joy: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
+type Ctl = { joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
 type Kind = 'glass' | 'concrete' | 'brick' | 'plaster';
 type Prof = { kind: Kind; f: [number, number]; sign: string; wall?: string; balc?: boolean };
@@ -536,6 +536,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
   const moving = useRef(false), running = useRef(false), nearId = useRef<string | null>(null);
   const drag = useRef({ on: false, end: 0 }), lastN = useRef(-1), fov = useRef(52), hitCool = useRef(0), shown = useRef({ drv: false, placed: false });
   const [near, setN] = useState<any>(null);
+  const [touchDevice, setTouchDevice] = useState(false);
+  useEffect(() => { const m = window.matchMedia('(pointer: coarse), (max-width: 700px)'); const sync = () => setTouchDevice(m.matches); sync(); m.addEventListener?.('change', sync); return () => m.removeEventListener?.('change', sync); }, []);
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
   useEffect(() => { sun.current.target = sunTarget; }, [sunTarget]);
   useEffect(() => {
@@ -549,6 +551,15 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), c = ctl.current, k = c.keys, p = P.current, oc = controls.current;
     if (!oc) return;
+
+    // Camera look is driven by the dedicated right-side look pad on touch devices.
+    // This keeps movement and camera input completely separate, so walking never
+    // accidentally spins the camera.
+    if (c.look.x || c.look.y) {
+      oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - c.look.x * 0.006);
+      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + c.look.y * 0.004, .34, Math.PI / 2.05));
+      c.look = { x: 0, y: 0 };
+    }
 
     /* ── time of day (follows the in-game clock) ── */
     const hrs = ((((getMinute ? getMinute() : 12 * 60) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
@@ -569,7 +580,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     if (gp) {
       const dz = (v: number) => (Math.abs(v) > .15 ? v : 0), cx = dz(gp.axes[2] || 0), cy = dz(gp.axes[3] || 0);
       ix += dz(gp.axes[0] || 0); iy -= dz(gp.axes[1] || 0);
-      if (cx || cy) { oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - cx * dt * 2.6); oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + cy * dt * 1.6, .25, Math.PI / 2.15)); }
+      if (cx || cy) { oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - cx * dt * 1.8); oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + cy * dt * 1.15, .34, Math.PI / 2.05)); }
       if (gp.buttons[0]?.pressed) wantJump = true;
       if (gp.buttons[7]?.pressed || gp.buttons[10]?.pressed || gp.buttons[1]?.pressed) wantRun = true;
     }
@@ -720,7 +731,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
         <Html position={[0, 2.8, 0]} center><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
-      <OrbitControls ref={controls} makeDefault enablePan={false} enableDamping dampingFactor={.12} rotateSpeed={.7} minDistance={3.5} maxDistance={24} minPolarAngle={.25} maxPolarAngle={Math.PI / 2.15} target={[START.x, 1.5, START.z]} />
+      <OrbitControls ref={controls} makeDefault enableRotate={!touchDevice} enablePan={false} enableDamping dampingFactor={.12} rotateSpeed={.38} minDistance={4.5} maxDistance={18} minPolarAngle={.34} maxPolarAngle={Math.PI / 2.05} target={[START.x, 1.5, START.z]} />
     </>
   );
 }
@@ -765,6 +776,16 @@ function Stick({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
   const end = () => { pid.current = null; ctl.current.joy = { x: 0, y: 0 }; if (knob.current) knob.current.style.transform = 'translate(-50%,-50%)'; };
   return <div className="cwStick" ref={base} onPointerDown={e => { pid.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); set(e); }} onPointerMove={e => { if (pid.current === e.pointerId) set(e); }} onPointerUp={end} onPointerCancel={end}><div ref={knob} className="cwKnob" /></div>;
 }
+function LookPad({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
+  const active = useRef<number | null>(null);
+  const last = useRef({ x: 0, y: 0 });
+  return <div className="cwLookPad" aria-label="Camera look area"
+    onPointerDown={e => { active.current = e.pointerId; last.current = { x: e.clientX, y: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId); }}
+    onPointerMove={e => { if (active.current !== e.pointerId) return; ctl.current.look = { x: e.clientX - last.current.x, y: e.clientY - last.current.y }; last.current = { x: e.clientX, y: e.clientY }; }}
+    onPointerUp={() => { active.current = null; ctl.current.look = { x: 0, y: 0 }; }}
+    onPointerCancel={() => { active.current = null; ctl.current.look = { x: 0, y: 0 }; }}
+  ><span>DRAG TO LOOK</span></div>;
+}
 function Minimap({ hud }: { hud: React.MutableRefObject<Hud> }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -804,9 +825,9 @@ function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; i
 const CSS = `
 .cwTapTag{pointer-events:auto;cursor:pointer;padding:6px 10px;font-size:12px}
 .cwSay{background:#fff;color:#111;border-radius:12px;padding:5px 10px;font-size:12px;max-width:190px;text-align:center;box-shadow:0 2px 8px #0006;white-space:normal;line-height:1.25}
-.cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
+.cwLookPad{display:none;position:absolute;right:12px;top:30%;width:38%;height:38%;z-index:8;touch-action:none;border-radius:24px;background:linear-gradient(180deg,#07100d08,#07100d18);pointer-events:auto}.cwLookPad span{position:absolute;right:12px;top:12px;color:#ffffff55;font-size:9px;letter-spacing:.12em;font-weight:800}.cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
 .cwKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:#ffffffcc;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0006;pointer-events:none}
-.cwBtns{position:absolute;right:18px;bottom:22px;z-index:10;display:flex;gap:12px;align-items:flex-end}
+.cwBtns{position:absolute;right:18px;bottom:22px;z-index:12;display:grid;grid-template-columns:repeat(3,64px);gap:10px;align-items:end;justify-items:end}.cwBtns .big{grid-column:3;grid-row:1 / span 2}.cwBtns>.cam:not(.cwTouch){grid-column:1;grid-row:1}.cwBtns>.cam.cwTouch{grid-column:2;grid-row:1}.cwBtns>.cwTouch:not(.cam){grid-column:1;grid-row:2}.cwBtns>.cwBtn:not(.cam):not(.cwTouch):not(.big){grid-column:2;grid-row:2}
 .cwBtn{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
 .cwBtn span{font-size:22px;line-height:1}.cwBtn small{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .cwBtn:active{background:#d99a42;color:#111}.cwBtn.big{width:78px;height:78px}.cwBtn.cam{width:50px;height:50px}.cwBtn.cam small{display:none}
@@ -820,14 +841,14 @@ const CSS = `
 .cwGear{top:268px}
 .cwMute{position:absolute;left:12px;top:222px;z-index:7;width:38px;height:38px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;font-size:17px;cursor:pointer}
 .cwTouch{display:none}
-@media (pointer:coarse),(max-width:700px){.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:26px;flex-wrap:wrap;justify-content:flex-end;max-width:270px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}.cwGear{top:246px!important}}
+@media (pointer:coarse),(max-width:700px){.cwLookPad{display:block}.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:20px;right:14px;grid-template-columns:repeat(3,56px);gap:8px}.cwBtn{width:58px;height:58px}.cwBtn.big{width:70px;height:70px}.cwBtn.cam{width:48px;height:48px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}.cwGear{top:246px!important}}
 `;
 
 export default function CityWorld({ look, onNear, getMinute, onSocial }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void }) {
   const net = useCityNet(look, onSocial);
   const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: n => net.muted.includes(n), onSocial });
   const [sel, setSel] = useState<string | null>(null);
-  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false });
+  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: 0, fz: -1, r: Math.PI, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
@@ -855,6 +876,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial }: { look:
       </Canvas>
       <Minimap hud={hud} />
       <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
+      <LookPad ctl={ctl} />
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMuted(!cfg.muteAll); }}>{cfg.muteAll ? '🔇' : '🔊'}</button>

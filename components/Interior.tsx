@@ -156,7 +156,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
   const dist2 = () => { const a = [...pts.current.values()]; return a.length < 2 ? 1 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1; };
   const gDown = (e: React.PointerEvent) => { pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.current.size === 2) pinch.current = dist2(); };
   const gMove = (e: React.PointerEvent) => { const q = pts.current.get(e.pointerId); if (!q) return; const dx = e.clientX - q.x, dy = e.clientY - q.y; q.x = e.clientX; q.y = e.clientY; const c = cam.current;
-    if (pts.current.size === 1) { c.yaw -= dx * .008; c.pitch = Math.min(1.3, Math.max(.35, c.pitch + dy * .005)); } else if (pts.current.size === 2) { const d = dist2(); c.dist = Math.min(17, Math.max(5, c.dist * pinch.current / d)); pinch.current = d; } };
+    if (pts.current.size === 1) { c.yaw -= dx * .0045; c.pitch = Math.min(1.3, Math.max(.35, c.pitch + dy * .003)); } else if (pts.current.size === 2) { const d = dist2(); c.dist = Math.min(17, Math.max(5, c.dist * pinch.current / d)); pinch.current = d; } };
   const gUp = (e: React.PointerEvent) => { pts.current.delete(e.pointerId); };
   const stand = (po: { x: number; z: number; r: number; stand?: [number, number] }) => ({ x: po.stand?.[0] ?? po.x, z: po.stand?.[1] ?? po.z, r: po.r });
   useEffect(() => { lock.current = !!job && job.kind !== 'quest'; }, [job]); // shifts and management tasks keep you inside until they end

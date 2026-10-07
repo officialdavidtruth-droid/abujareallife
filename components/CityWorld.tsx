@@ -513,7 +513,7 @@ const distTo = (s: { x0: number; x1: number; z0: number; z1: number }, x: number
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
-export const GAME = { jailed: false, hasCar: false, notice: '', tp: null as { x: number; z: number } | null }; // set by the game layer; while true the player is locked inside the cell
+export const GAME = { jailed: false, hasCar: false, notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z } }; // set by the game layer; while true the player is locked inside the cell
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
@@ -535,6 +535,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
   const sunTarget = useMemo(() => new THREE.Object3D(), []);
   const moving = useRef(false), running = useRef(false), nearId = useRef<string | null>(null);
   const drag = useRef({ on: false, end: 0 }), lastN = useRef(-1), fov = useRef(52), hitCool = useRef(0), shown = useRef({ drv: false, placed: false });
+  const nav = useRef<{ key: string; points: [number, number][]; i: number } | null>(null);
   const [near, setN] = useState<any>(null);
   const [touchDevice, setTouchDevice] = useState(false);
   useEffect(() => { const m = window.matchMedia('(pointer: coarse), (max-width: 700px)'); const sync = () => setTouchDevice(m.matches); sync(); m.addEventListener?.('change', sync); return () => m.removeEventListener?.('change', sync); }, []);
@@ -573,8 +574,23 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     if (Math.abs(n - lastN.current) > .01) { lastN.current = n; MATS.forEach(m => { m.emissiveIntensity = n * 1.2; }); if (stars.current) stars.current.visible = n > .4; }
 
     /* ── input ── */
+    if (GAME.nav && (!nav.current || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
+      const pts = findPath(BL, [p.x, p.z], [GAME.nav.x, GAME.nav.z]);
+      nav.current = { key: `${GAME.nav.x}:${GAME.nav.z}`, points: pts.length ? pts : [[GAME.nav.x, GAME.nav.z]], i: 0 };
+    } else if (!GAME.nav) nav.current = null;
     let ix = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0) + c.joy.x;
     let iy = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0) - c.joy.y;
+    if (nav.current && !VEH.drv && !ix && !iy && GAME.nav) {
+      while (nav.current.i < nav.current.points.length - 1 && Math.hypot(p.x - nav.current.points[nav.current.i][0], p.z - nav.current.points[nav.current.i][1]) < 1.25) nav.current.i++;
+      const [nx, nz] = nav.current.points[nav.current.i] || [GAME.nav.x, GAME.nav.z];
+      const dx = nx - p.x, dz = nz - p.z, len = Math.hypot(dx, dz) || 1;
+      const wx = dx / len, wz = dz / len;
+      ix = wx * fx + wz * fz;
+      iy = wx * -fz + wz * fx;
+      if (Math.hypot(p.x - GAME.nav.x, p.z - GAME.nav.z) < 1.6 || nav.current.i >= nav.current.points.length - 1 && Math.hypot(p.x - nx, p.z - nz) < 1.2) {
+        const arrived = GAME.nav.name; GAME.nav = null; nav.current = null; GAME.notice = `📍 Arrived at ${arrived}`; ix = 0; iy = 0;
+      }
+    }
     let wantJump = c.jump || k.has(' '), wantRun = c.run || k.has('shift');
     const gp = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads()[0] : null;
     if (gp) {
@@ -658,6 +674,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) VEH.placed = false; // car you walked away from goes back to the garage
     }
     c.jump = false;
+    GAME.player.x = p.x; GAME.player.z = p.z;
     group.current.position.set(p.x, p.y, p.z); group.current.rotation.y = p.r;
     group.current.visible = !VEH.drv;
     if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';

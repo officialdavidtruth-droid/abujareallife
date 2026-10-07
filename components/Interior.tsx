@@ -17,6 +17,7 @@ import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profil
 import type { Look } from '../lib/characterModels';
 import { businessStatus } from '../lib/businessHours';
 
+import RuntimeStyle from './RuntimeStyle';
 type Go = { path: [number, number][]; i: number; stuck: number; open?: { kind: 'spot'; id: string } | { kind: 'npc'; idx: number } };
 type Cam = { yaw: number; pitch: number; dist: number };
 const STAFF_POS: Record<number, { x: number; z: number }> = {}; // where each NPC is right now, so you can walk up to them
@@ -255,7 +256,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
         {o.t === 'crime' && <><span className="tx"><b>{CRIMES[o.id].label}</b><small>{naira(CRIMES[o.id].loot[0])}–{naira(CRIMES[o.id].loot[1])} · +{CRIMES[o.id].heat} heat · officers inside make it riskier</small></span><em className="pill">Try</em></>}</button>)}</div></div>}
     {net.enabled && <div className="inChat">{net.log.slice(-3).map(m => <div key={m.id}><b>{m.u}</b> {m.t}</div>)}<input placeholder="Say something…" maxLength={120} value={txt} onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && net.send(txt)) setTxt(''); }} /></div>}
     <div className="inStick" ref={stick} onPointerDown={e => { (e.target as Element).setPointerCapture(e.pointerId); joy(e, true); }} onPointerMove={e => (e.buttons || e.pointerType === 'touch') && joy(e, true)} onPointerUp={e => joy(e, false)} onPointerCancel={e => joy(e, false)}><i ref={knob as React.RefObject<HTMLElement>} /></div>
-    <style>{`.inWrap{position:absolute;inset:0;z-index:8;background:#0b1210}.inWrap canvas{display:block}.inTop{position:absolute;left:12px;top:56px;display:flex;gap:10px;align-items:center;background:#10201ae6;border:1px solid #ffffff20;border-radius:12px;padding:8px 12px;color:#fff;font-size:12px}.inTop span{color:#a8bbb2}.inTop button{background:#d99a42;border:0;border-radius:8px;padding:6px 10px;font-weight:800}
+    <RuntimeStyle css={`.inWrap{position:absolute;inset:0;z-index:8;background:#0b1210}.inWrap canvas{display:block}.inTop{position:absolute;left:12px;top:56px;display:flex;gap:10px;align-items:center;background:#10201ae6;border:1px solid #ffffff20;border-radius:12px;padding:8px 12px;color:#fff;font-size:12px}.inTop span{color:#a8bbb2}.inTop button{background:#d99a42;border:0;border-radius:8px;padding:6px 10px;font-weight:800}
 .inToast{position:absolute;left:50%;transform:translateX(-50%);top:110px;background:#000c;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;max-width:90vw;text-align:center}
 .inAct{position:absolute;left:auto;right:calc(168px + env(safe-area-inset-right,0px));transform:none;bottom:calc(14px + env(safe-area-inset-bottom,0px));background:#d99a42;color:#111;border:0;border-radius:14px;padding:12px 18px;font-weight:900;font-size:14px}.inAct.cop{bottom:calc(62px + env(safe-area-inset-bottom,0px));background:#2563eb;color:#fff}
 .inChat{position:absolute;left:12px;bottom:14px;width:min(260px,50vw);z-index:12;font-size:11px;color:#fff;display:flex;flex-direction:column;gap:3px}.inChat div{background:#000a;border-radius:8px;padding:3px 7px}.inChat input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:12px}
@@ -266,8 +267,8 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
 .inDock{position:absolute;right:calc(12px + env(safe-area-inset-right,0px));top:56px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;z-index:9}.inDock i{font-style:normal;font-size:10px;color:#a8bbb2}
 .inDock button{background:#10201af0;border:1px solid #ffffff2a;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700}.inDock button.on{background:#d99a42;color:#111;border-color:#d99a42}
 .inCam{position:absolute;left:12px;top:104px;display:flex;gap:6px;z-index:9}.inCam button{width:38px;height:38px;border-radius:50%;background:#10201af0;border:1px solid #ffffff2a;color:#fff;font-size:17px}
-@media (pointer:coarse),(max-width:900px){.inStick{display:block}.inChat{left:calc(152px + env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));width:min(250px,30vw)}}`}</style>
-    <style>{GAME_LABEL_CSS}</style>
-    <style>{INTERIOR_UI_CSS}</style>
+@media (pointer:coarse),(max-width:900px){.inStick{display:block}.inChat{left:calc(152px + env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));width:min(250px,30vw)}}`} />
+    <RuntimeStyle css={GAME_LABEL_CSS} />
+    <RuntimeStyle css={INTERIOR_UI_CSS} />
   </div>;
 }

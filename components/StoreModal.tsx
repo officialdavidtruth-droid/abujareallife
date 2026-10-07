@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CATS, storeCats, storeItems, itemById, type CatId, type Item } from '../lib/catalog';
 import { sfx } from '../lib/audio';
 
+import RuntimeStyle from './RuntimeStyle';
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
 const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kitchen: '#ff5a4d', furniture: '#a96bff', decor: '#2fc66b', tech: '#28c7d9', style: '#ffb81c', kids: '#ff7eb6' };
 
@@ -67,7 +68,7 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
           </div>; })}
       </div>
     </div>
-    <style>{CSS}</style>
+    <RuntimeStyle css={CSS} />
   </div>;
 }
 

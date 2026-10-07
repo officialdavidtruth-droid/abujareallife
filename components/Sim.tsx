@@ -1,3 +1,4 @@
+import RuntimeStyle from './RuntimeStyle';
  'use client';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, RoundedBox, Html } from '@react-three/drei';
@@ -744,7 +745,7 @@ export default function Sim() {
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
     {!outside && <div className="hint">Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom</div>}
-    <style>{CSS}</style>
+    <RuntimeStyle css={CSS} />
   </div>;
 }
 

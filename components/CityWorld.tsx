@@ -17,6 +17,7 @@ import CityPeople from './CityPeople';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 
+import RuntimeStyle from './RuntimeStyle';
 /* ───────────── types & helpers ───────────── */
 type Ctl = { joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
@@ -390,7 +391,7 @@ function TransportVehicles() {
     </group>)}
     {open && near && <Html position={[near.x, 2.8, near.z]} center><div className="transportMenu"><b>{open.kind === 'taxi' ? '🚕 Choose destination' : '🚲 Hire bike'}</b>{open.kind === 'bike' && <small>Fast travel · low cost</small>}{DESTS.map(d => <button key={d.name} onClick={() => ride(open.kind, d)}>{d.name}</button>)}<button className="transportClose" onClick={() => setOpen(null)}>Cancel</button></div></Html>}
     {near && !open && <Html position={[near.x, 2.1, near.z]} center><div className="transportPrompt">{near.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire'}</div></Html>}
-    <style>{`.transportTag,.transportPrompt{background:#09130fe8;color:#fff;border:1px solid #ffffff2a;border-radius:999px;padding:5px 9px;font:800 10px Inter,system-ui;white-space:nowrap;box-shadow:0 5px 14px #0006}.transportPrompt{background:#d99a42;color:#111}.transportMenu{width:170px;display:flex;flex-direction:column;gap:5px;padding:9px;background:#09130ff5;border:2px solid #111;border-radius:14px;box-shadow:0 12px 30px #0008}.transportMenu b{font-size:12px}.transportMenu small{color:#9fb5aa;font-size:9px}.transportMenu button{border:0;border-radius:8px;background:#18352a;color:#fff;padding:6px 7px;font-weight:800;font-size:10px;cursor:pointer}.transportMenu button:hover{background:#d99a42;color:#111}.transportMenu .transportClose{background:#4a2525}`}</style>
+    <RuntimeStyle css={`.transportTag,.transportPrompt{background:#09130fe8;color:#fff;border:1px solid #ffffff2a;border-radius:999px;padding:5px 9px;font:800 10px Inter,system-ui;white-space:nowrap;box-shadow:0 5px 14px #0006}.transportPrompt{background:#d99a42;color:#111}.transportMenu{width:170px;display:flex;flex-direction:column;gap:5px;padding:9px;background:#09130ff5;border:2px solid #111;border-radius:14px;box-shadow:0 12px 30px #0008}.transportMenu b{font-size:12px}.transportMenu small{color:#9fb5aa;font-size:9px}.transportMenu button{border:0;border-radius:8px;background:#18352a;color:#fff;padding:6px 7px;font-weight:800;font-size:10px;cursor:pointer}.transportMenu button:hover{background:#d99a42;color:#111}.transportMenu .transportClose{background:#4a2525}`} />
   </>;
 }
 
@@ -1048,8 +1049,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   }, []);
   return (
     <div className="cityWorld">
-      <style>{CSS}</style>
-      <style>{GAME_LABEL_CSS}</style>
+      <RuntimeStyle css={CSS} />
+      <RuntimeStyle css={GAME_LABEL_CSS} />
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x, 4.2, START.z + 8], fov: 52, far: 600 }}>
         <Scene look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>

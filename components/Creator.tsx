@@ -6,6 +6,7 @@ import Human from './Human';
 import { DEFAULT_LOOK, HAIRS, HAIR_COLORS, OUTFITS, PANTS, SKIN_TONES, applyOutfitModel, type Look } from '../lib/characterModels';
 import { DEFAULT_PROFILE, OUTFIT_MODELS, PROFESSIONS, SKILLS, STYLES, skillLevel, type Profile } from '../lib/profile';
 
+import RuntimeStyle from './RuntimeStyle';
 function Turntable({ look }: { look: Look }) {
   const g = useRef<THREE.Group>(null!);
   useFrame((_, dt) => { g.current.rotation.y += dt * .5; });
@@ -39,11 +40,11 @@ export default function Creator({ initial, initialProfile, onDone }: { initial: 
       <label>Trousers</label><Swatches list={PANTS} value={l.pants} on={c => set('pants', c)} />
       <label>Height<input type="range" min=".92" max="1.08" step=".01" value={l.height} onChange={e => set('height', +e.target.value)} /></label>
       <button className="go" onClick={() => onDone(l, pf)}>{first ? 'Enter Abuja →' : 'Save profile'}</button></div>
-    <style>{`.cr{position:fixed;inset:0;z-index:50;display:grid;grid-template-columns:1fr 340px;background:radial-gradient(circle at 40% 30%,#1c4a39,#07100d);color:#fff;font-family:Inter,system-ui,sans-serif}
+    <RuntimeStyle css={`.cr{position:fixed;inset:0;z-index:50;display:grid;grid-template-columns:1fr 340px;background:radial-gradient(circle at 40% 30%,#1c4a39,#07100d);color:#fff;font-family:Inter,system-ui,sans-serif}
 .crView{min-height:0}.crPanel{padding:28px 24px;background:#0c1713f2;border-left:1px solid #ffffff22;display:flex;flex-direction:column;gap:12px;overflow:auto}.crPanel h2{margin:0 0 6px;font-size:20px}
 .crPanel label{font-size:11px;color:#9fb5aa;display:flex;flex-direction:column;gap:6px;letter-spacing:.06em;text-transform:uppercase}.crPanel input[type=text],.crPanel input:not([type]),.crPanel select{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:10px;color:#fff;font-size:14px}
 .sw{display:flex;gap:8px;flex-wrap:wrap}.sw button{width:34px;height:34px;border-radius:50%;border:2px solid #ffffff33;cursor:pointer}.sw button.sel{border-color:#f0b94a;transform:scale(1.15)}
 .seg{display:flex;gap:6px}.seg.wrap{flex-wrap:wrap}.seg button{flex:1;background:#14261f;border:1px solid #2a4337;color:#cfe;border-radius:9px;padding:8px 10px;cursor:pointer;font-size:12px;transition:background .2s,transform .15s}.seg button:hover{transform:translateY(-1px)}.seg button.sel{background:#1d7654;border-color:#3fb98a;color:#fff}
 .who{margin:0;font-size:14px;color:#cfe}.go{margin-top:auto;background:#d99a42;color:#1a1208;border:0;border-radius:12px;padding:14px;font-weight:800;font-size:15px;cursor:pointer}.go:disabled{opacity:.4}
-@media(max-width:700px){.cr{grid-template-columns:1fr;grid-template-rows:45% 1fr}.crPanel{border-left:0;border-top:1px solid #ffffff22}}`}</style></div>;
+@media(max-width:700px){.cr{grid-template-columns:1fr;grid-template-rows:45% 1fr}.crPanel{border-left:0;border-top:1px solid #ffffff22}}`} /></div>;
 }

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ACT_LIST, INTERACT_RANGE, NET, type useCityNet } from '../lib/cityNet';
 import { VOICE_REQ_RANGE, type VoiceApi } from '../lib/cityVoice';
 
+import RuntimeStyle from './RuntimeStyle';
 type Net = ReturnType<typeof useCityNet>;
 const dist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(p.x - NET.me.x, p.z - NET.me.z) : Infinity; };
 const ACT_EMOJI: Record<string, string> = { wave: '👋', cheer: '🙌', dance: '💃' };
@@ -22,7 +23,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   const busy = voice.phase !== 'idle';
 
   return <>
-    <style>{CSS}</style>
+    <RuntimeStyle css={CSS} />
     <button className="cpOnline" onClick={() => setOpen(o => !o)} aria-label="Players and chat"><span>🌍</span><em>{label}</em><b>{net.enabled ? count : '–'}</b>{net.unread > 0 && !open && <i>{net.unread > 9 ? '9+' : net.unread}</i>}</button>
 
     <div className="cpStack">

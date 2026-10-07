@@ -8,6 +8,7 @@ import Human from './Human';
 import { supabase } from '../lib/supabaseClient';
 import { sanitizeLook, type Look } from '../lib/characterModels';
 
+import RuntimeStyle from './RuntimeStyle';
 type Peer = { look: Look; x: number; z: number; tx: number; tz: number; walk: boolean; r: number; init: boolean };
 type Peers = MutableRefObject<Record<string, Peer>>;
 type Me = MutableRefObject<{ x: number; z: number; tx: number; tz: number; r: number; walk: boolean }>;
@@ -107,10 +108,10 @@ export default function Neighborhood({ look, onNear }: { look: Look; onNear: (dt
     <div className="nChat"><div className="nLog">{log.slice(-6).map((m, i) => <div key={i}><b>{m.u}:</b> {m.t}</div>)}</div>
       <div className="nIn"><input value={txt} maxLength={120} placeholder="Say something…" onChange={e => setTxt(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} /><button onClick={send}>Send</button></div></div>
     <div className="nHint">Click the ground to walk · Stand near others to fill Social · Tap a name to mute</div>
-    <style>{`.nWrap{position:absolute;inset:0}.nWrap canvas{display:block}.nOff{position:absolute;inset:0;display:grid;place-content:center;gap:8px;text-align:center;background:#07100d;padding:24px}.nOff span{color:#9fb5aa;font-size:13px}
+    <RuntimeStyle css={`.nWrap{position:absolute;inset:0}.nWrap canvas{display:block}.nOff{position:absolute;inset:0;display:grid;place-content:center;gap:8px;text-align:center;background:#07100d;padding:24px}.nOff span{color:#9fb5aa;font-size:13px}
 .nTag{display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none}.nTag span{background:#07100dcc;border:1px solid #ffffff33;border-radius:6px;padding:2px 7px;font-size:11px;color:#fff;white-space:nowrap}.nSay{background:#fff;color:#000;border-radius:12px;padding:5px 10px;font-size:12px;max-width:180px;text-align:center;box-shadow:0 2px 8px #0005}
 .nRoster{position:absolute;right:10px;top:56px;width:190px;background:#10201ae6;border:1px solid #ffffff2a;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:5px;font-size:11px;max-height:40vh;overflow:auto}.nRoster span{color:#9fb5aa}.nRoster button{background:#14261f;border:1px solid #2a4337;color:#cfe;border-radius:8px;padding:6px;text-align:left;cursor:pointer;font-size:11px}
 .nChat{position:absolute;right:10px;bottom:10px;width:min(320px,60vw);display:flex;flex-direction:column;gap:6px}.nLog{background:#10201acc;border-radius:12px;padding:8px 10px;font-size:12px;min-height:30px;display:flex;flex-direction:column;gap:3px}.nIn{display:flex;gap:6px}.nIn input{flex:1;background:#0a1511;border:1px solid #2a4337;border-radius:10px;padding:10px;color:#fff;font-size:13px}.nIn button{background:#d99a42;color:#1a1208;border:0;border-radius:10px;padding:0 14px;font-weight:800;cursor:pointer}
-.nHint{position:absolute;left:12px;bottom:12px;font-size:10px;color:#fffc;text-shadow:0 1px 3px #000;max-width:210px}@media(max-width:620px){.nRoster{display:none}.nHint{display:none}}`}</style>
+.nHint{position:absolute;left:12px;bottom:12px;font-size:10px;color:#fffc;text-shadow:0 1px 3px #000;max-width:210px}@media(max-width:620px){.nRoster{display:none}.nHint{display:none}}`} />
   </div>;
 }

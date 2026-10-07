@@ -72,7 +72,7 @@ function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: n
         else { const st = Math.min(d, 1.15 * dt); q.x += dx / d * st; q.z += dz / d * st; q.mv = true; let dr = Math.atan2(dx, dz) - q.r; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); q.r += dr * Math.min(1, dt * 8); } }
     }
     g.current.position.set(q.x, post.y ?? 0, q.z); g.current.rotation.y = q.r; STAFF_POS[post.idx] = { x: q.x, z: q.z };
-    const nr = Math.hypot(ROOM.me.x - q.x, ROOM.me.z - q.z) < 1.9; if (nr !== hid.current && tag.current) { hid.current = nr; tag.current.classList.toggle('near', nr); } // name plate steps out of the way when you are close
+    const dd = Math.hypot(ROOM.me.x - q.x, ROOM.me.z - q.z), nr = dd < 1.9 || dd > 6.5; if (nr !== hid.current && tag.current) { hid.current = nr; tag.current.classList.toggle('near', nr); } // name plate steps out of the way when you are close
   });
   if (occ) return null;
   const anim = () => { const near = Math.hypot(ROOM.me.x - s.current.x, ROOM.me.z - s.current.z) < 2.4; return post.anim === 'work' && near && (performance.now() / 1000) % 8 < 3 ? 'wave' : post.anim; };
@@ -86,7 +86,7 @@ type Mgr = { seat: boolean; title: string; needed: number; daily: number; tasks:
 // The manager's desk. Vacant until someone applies. If the manager is not in the room right now, their character still sits at the desk.
 function ManagerSeat({ office, mgr, meName, onTap }: { office: Office; mgr: Mgr | null; meName: string; onTap: () => void }) {
   const [absent, setAbsent] = useState(true), h = mgr?.holder || null, tag = useRef<HTMLDivElement>(null), hid = useRef(false);
-  useFrame(() => { const nr = Math.hypot(ROOM.me.x - office.x, ROOM.me.z - office.z) < 2.3; if (nr !== hid.current && tag.current) { hid.current = nr; tag.current.classList.toggle('near', nr); } });
+  useFrame(() => { const dd = Math.hypot(ROOM.me.x - office.x, ROOM.me.z - office.z), nr = dd < 2.3 || dd > 6.5; if (nr !== hid.current && tag.current) { hid.current = nr; tag.current.classList.toggle('near', nr); } });
   useEffect(() => { const i = setInterval(() => setAbsent(!h || !(h.name === meName || mgr?.me.isHolder || ROOM.peers[h.name])), 500); return () => clearInterval(i); }, [h, meName, mgr]);
   if (!mgr?.seat) return null; const sitting = !!h && absent;
   return <group>
@@ -96,8 +96,10 @@ function ManagerSeat({ office, mgr, meName, onTap }: { office: Office; mgr: Mgr 
   </group>;
 }
 function SpotMark({ s, active, onTap }: { s: Spot; active: boolean; onTap: (s: Spot) => void }) {
+  const lbl = useRef<HTMLButtonElement>(null), far = useRef(false);
+  useFrame(() => { const f = Math.hypot(ROOM.me.x - s.x, ROOM.me.z - s.z) > 7; if (f !== far.current && lbl.current) { far.current = f; lbl.current.classList.toggle('far', f); } }); // only labels near you show
   return <group position={[s.x, 0, s.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTap(s); }}><mesh position={[0, .6, 0]}><cylinderGeometry args={[1.1, 1.1, 1.2, 16]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh><mesh rotation-x={-Math.PI / 2} position={[0, .03, 0]}><ringGeometry args={[.7, .95, 32]} /><meshBasicMaterial color={active ? '#ffd166' : '#3fb98a'} /></mesh>
-    <Html position={[0, 2.05, 0]} center zIndexRange={[5, 0]}><button className={'inLbl gl-' + s.id + (active ? ' on' : '')} aria-label={s.label} onClick={() => onTap(s)}><span className="glIco">{s.e}</span><span className="glTx">{s.label}</span></button></Html></group>;
+    <Html position={[0, 2.05, 0]} center zIndexRange={[5, 0]}><button ref={lbl} className={'inLbl gl-' + s.id + (active ? ' on' : '')} aria-label={s.label} onClick={() => onTap(s)}><span className="glIco">{s.e}</span><span className="glTx">{s.label}</span></button></Html></group>;
 }
 function Remote({ name, bub }: { name: string; bub?: string }) {
   const g = useRef<THREE.Group>(null!), p = ROOM.peers[name]; if (!p) return null;
@@ -255,7 +257,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash }:
     <div className="inStick" ref={stick} onPointerDown={e => { (e.target as Element).setPointerCapture(e.pointerId); joy(e, true); }} onPointerMove={e => (e.buttons || e.pointerType === 'touch') && joy(e, true)} onPointerUp={e => joy(e, false)} onPointerCancel={e => joy(e, false)}><i ref={knob as React.RefObject<HTMLElement>} /></div>
     <style>{`.inWrap{position:absolute;inset:0;z-index:8;background:#0b1210}.inWrap canvas{display:block}.inTop{position:absolute;left:12px;top:56px;display:flex;gap:10px;align-items:center;background:#10201ae6;border:1px solid #ffffff20;border-radius:12px;padding:8px 12px;color:#fff;font-size:12px}.inTop span{color:#a8bbb2}.inTop button{background:#d99a42;border:0;border-radius:8px;padding:6px 10px;font-weight:800}
 .inToast{position:absolute;left:50%;transform:translateX(-50%);top:110px;background:#000c;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;max-width:90vw;text-align:center}
-.inAct{position:absolute;left:50%;transform:translateX(-50%);bottom:150px;background:#d99a42;color:#111;border:0;border-radius:14px;padding:12px 18px;font-weight:900;font-size:14px}.inAct.cop{bottom:100px;background:#2563eb;color:#fff}
+.inAct{position:absolute;left:auto;right:calc(168px + env(safe-area-inset-right,0px));transform:none;bottom:calc(14px + env(safe-area-inset-bottom,0px));background:#d99a42;color:#111;border:0;border-radius:14px;padding:12px 18px;font-weight:900;font-size:14px}.inAct.cop{bottom:calc(62px + env(safe-area-inset-bottom,0px));background:#2563eb;color:#fff}
 .inChat{position:absolute;left:12px;bottom:14px;width:min(260px,50vw);z-index:12;font-size:11px;color:#fff;display:flex;flex-direction:column;gap:3px}.inChat div{background:#000a;border-radius:8px;padding:3px 7px}.inChat input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:12px}
 .inStick{position:absolute;left:calc(20px + env(safe-area-inset-left,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));width:116px;height:116px;border-radius:50%;background:#0005;border:2px solid #ffffff33;touch-action:none;z-index:12;display:none}.inStick i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:#ffffffaa;transform:translate(-50%,-50%)}
 .inLbl{background:#09130fe8;color:#fff;border:1px solid #ffffff22;border-radius:8px;padding:3px 7px;font-size:10px;white-space:nowrap}.inTag{display:flex;flex-direction:column;align-items:center;gap:3px}.inTag span{background:#09130fe8;color:#fff;border-radius:8px;padding:2px 6px;font-size:10px}.inStaff{border:1px solid #d99a4288}.inSay{background:#fff;color:#111;border-radius:10px;padding:4px 8px;font-size:11px;max-width:160px;text-align:center}

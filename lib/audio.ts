@@ -21,23 +21,39 @@ export function ensureAudio(): Parts | null {
       const dl = ctx.createDelay(1), fb = ctx.createGain(), lp = ctx.createBiquadFilter();
       dl.delayTime.value = 0.3; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2400; wet.gain.value = 0.35;
       wet.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(trackGain);
-      trackGain.connect(music); music.connect(master); sfx.connect(master); master.connect(ctx.destination);
+      const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -10; comp.ratio.value = 4; // keeps louder effects from clipping
+      trackGain.connect(music); music.connect(master); sfx.connect(master); master.connect(comp); comp.connect(ctx.destination);
+      playbackSession();
       P = { ctx, master, music, sfx, trackGain, wet };
       applyVolumes(); subscribeSettings(() => { applyVolumes(); syncMusic(); });
       document.addEventListener('visibilitychange', syncMusic);
     }
-    if (P.ctx.state === 'suspended') void P.ctx.resume();
+    if (P.ctx.state !== 'running') void P.ctx.resume().catch(() => undefined); // also covers iOS 'interrupted' (phone call, Siri, app switch)
     return P;
   } catch { return null; }
+}
+/* iPhones mute Web Audio when the side (ring/silent) switch is on, unless the page asks for a "playback" audio session.
+   1) Safari 16.4+: navigator.audioSession.type = 'playback'   2) older iOS: a looping silent <audio> element does the same. */
+let keep: HTMLAudioElement | null = null;
+function silentWav(): string { const n = 8000, b = new Uint8Array(44 + n), v = new DataView(b.buffer), w = (o: number, t: string) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); }
+function playbackSession() { try { const a = (navigator as Navigator & { audioSession?: { type: string } }).audioSession; if (a) a.type = 'playback'; } catch { /* not supported */ } }
+function startKeepAlive() { try { if (!keep) { keep = new Audio(silentWav()); keep.loop = true; keep.volume = 0.01; (keep as HTMLAudioElement & { playsInline?: boolean }).playsInline = true; } if (keep.paused) void keep.play().catch(() => undefined); } catch { /* ignore */ } }
+/** true when sound can actually be heard (or is switched off on purpose). Used to show a "tap for sound" button when the browser is still blocking audio. */
+export function audioReady(): boolean {
+  const s = getSettings(); if (s.muteAll || !s.musicOn || s.music <= 0) return !!P && P.ctx.state === 'running';
+  if (!P || P.ctx.state !== 'running') return false;
+  return fileMusic ? !!decks[active] && !decks[active].el.paused : true;
 }
 export const audioParts = () => P;
 function applyVolumes() {
   if (!P) return; const s = getSettings(), t = P.ctx.currentTime;
   P.master.gain.setTargetAtTime(s.muteAll ? 0 : s.master, t, 0.04);
-  P.music.gain.setTargetAtTime(s.musicOn ? s.music * 0.55 : 0, t, 0.08);
-  P.sfx.gain.setTargetAtTime(s.sfxOn ? s.sfx : 0, t, 0.04);
+  P.music.gain.setTargetAtTime(s.musicOn ? s.music * 0.8 : 0, t, 0.08);
+  P.sfx.gain.setTargetAtTime(s.sfxOn ? s.sfx * 1.8 : 0, t, 0.04);
 }
-export function unlockAudio() { if (!ensureAudio()) return; unlockDecks(); syncMusic(); }
+export function unlockAudio() { if (!ensureAudio()) return; playbackSession(); startKeepAlive(); unlockDecks(); syncMusic(); }
 
 /* ───────── tiny synth helpers ───────── */
 const hz = (n: number) => 440 * Math.pow(2, (n - 69) / 12);

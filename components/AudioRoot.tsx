@@ -1,6 +1,6 @@
 'use client';
-import { useEffect } from 'react';
-import { sfx, unlockAudio } from '../lib/audio';
+import { useEffect, useState } from 'react';
+import { audioReady, sfx, unlockAudio } from '../lib/audio';
 import { closeSettings, getSettings, resetSettings, setSetting, usePanelOpen, useSettings, type Settings } from '../lib/settings';
 
 /* Mounted once in app/layout.tsx.
@@ -8,7 +8,8 @@ import { closeSettings, getSettings, resetSettings, setSetting, usePanelOpen, us
    2. Gives EVERY button in the game a click sound and a soft hover tick (no per-button wiring).
    3. Hosts the Settings panel (opened from anywhere with openSettings()). */
 export default function AudioRoot() {
-  const open = usePanelOpen();
+  const open = usePanelOpen(), [blocked, setBlocked] = useState(false);
+  useEffect(() => { const t = setInterval(() => setBlocked(!audioReady()), 900); return () => clearInterval(t); }, []);
   useEffect(() => {
     getSettings();
     const unlock = () => unlockAudio();
@@ -26,7 +27,7 @@ export default function AudioRoot() {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSettings(); };
     window.addEventListener('keydown', k); return () => { window.removeEventListener('keydown', k); sfx('close'); };
   }, [open]);
-  return open ? <SettingsPanel /> : null;
+  return <>{blocked && !open && <button className="tapSound" onClick={() => { unlockAudio(); setTimeout(() => sfx('success'), 60); }}>🔊 Tap to turn sound on</button>}{open && <SettingsPanel />}<style>{`.tapSound{all:unset;position:fixed;z-index:150;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translateX(-50%);cursor:pointer;background:var(--gold,#f0b94a);color:#fff;font-family:var(--gf,system-ui);font-size:17px;letter-spacing:.04em;padding:8px 18px;border:3px solid var(--ink,#1a1208);border-radius:999px;box-shadow:0 4px 0 var(--ink,#1a1208);-webkit-text-stroke:4px var(--ink,#1a1208);paint-order:stroke fill;animation:tapPulse 1.2s ease-in-out infinite}@keyframes tapPulse{50%{transform:translateX(-50%) scale(1.06)}}`}</style></>;
 }
 
 function Slider({ label, icon, k, s }: { label: string; icon: string; k: 'master' | 'music' | 'sfx' | 'voice'; s: Settings }) {

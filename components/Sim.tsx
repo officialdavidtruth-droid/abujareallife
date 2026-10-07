@@ -157,15 +157,17 @@ const DEST: Record<string, Dest> = {
 };
 const mkMem = (id: string, name: string, kid: boolean, h: number): Mem => ({ id, name, kid, h, pos: [0, 0], rot: 0, pose: 'stand', q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false });
 const F = {
-  last: 0,
-  mem: [mkMem('spouse', 'Ada', false, 1), mkMem('chidi', 'Chidi', true, .62), mkMem('amara', 'Amara', true, .48)],
-  reset() { this.last = 0; this.mem.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false })); },
-  load(b: unknown) { const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>; this.mem.forEach(m => { const v = o[m.id]; m.bond = typeof v === 'number' && isFinite(v) ? cl(v) : 30; }); },
-  bonds() { return Object.fromEntries(this.mem.map(m => [m.id, Math.round(m.bond * 10) / 10])); },
+  last: 0, on: false,   // nobody lives with you until YOU choose to start a family (Menu > Family)
+  all: [mkMem('spouse', 'Ada', false, 1), mkMem('chidi', 'Chidi', true, .62), mkMem('amara', 'Amara', true, .48)],
+  get mem(): Mem[] { return this.on ? this.all : []; },
+  setOn(v: boolean) { this.on = v; this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, hold: null, stuck: 0, init: false })); },
+  reset() { this.on = false; this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false })); },
+  load(b: unknown, on?: unknown) { this.on = on === true; const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>; this.all.forEach(m => { const v = o[m.id]; m.bond = typeof v === 'number' && isFinite(v) ? cl(v) : 30; }); },
+  bonds() { return Object.fromEntries(this.all.map(m => [m.id, Math.round(m.bond * 10) / 10])); },
   hold(id: string, key: string, mins: number) { const m = this.mem.find(x => x.id === id); if (m) m.hold = { key, until: S.min + mins }; },
   bump(id: string, n: number) { const m = this.mem.find(x => x.id === id); if (m) m.bond = cl(m.bond + n); },
 };
-const famAvg = () => F.mem.reduce((a, m) => a + m.bond, 0) / F.mem.length;
+const famAvg = () => F.mem.length ? F.mem.reduce((a, m) => a + m.bond, 0) / F.mem.length : 0;
 const famSnap = () => F.mem.map(m => ({ id: m.id, name: m.name, bond: Math.round(m.bond), away: m.away, e: m.away ? (m.kid ? '🏫' : '🛍️') : m.dest?.e ?? '🏠', label: m.away ? (m.kid ? 'At school' : 'Out shopping') : m.dest?.label ?? 'At home' }));
 
 // What each person wants to be doing at hour h. Kids go to school Mon-Fri (a week = 7 days, days 6-7 are the weekend).
@@ -261,9 +263,9 @@ function famDone(o: Obj, a: Act) {
 }
 function famLooks(look: Look): Look[] {
   const man = look.gender === 'm', base = { model: 'citizen', outfitModel: 'tee' };
-  F.mem[0].name = man ? 'Ada' : 'Emeka';
+  F.all[0].name = man ? 'Ada' : 'Emeka';
   return [
-    { ...base, name: F.mem[0].name, gender: man ? 'f' : 'm', hair: man ? 'braids' : 'short', hairColor: '#0d0907', skin: look.skin, outfit: man ? '#e07aa1' : '#3d5a80', pants: man ? '#2b3a55' : '#222831', height: 1 },
+    { ...base, name: F.all[0].name, gender: man ? 'f' : 'm', hair: man ? 'braids' : 'short', hairColor: '#0d0907', skin: look.skin, outfit: man ? '#e07aa1' : '#3d5a80', pants: man ? '#2b3a55' : '#222831', height: 1 },
     { ...base, name: 'Chidi', gender: 'm', hair: 'short', hairColor: '#0d0907', skin: look.skin, outfit: '#d18a22', pants: '#3a5a40', height: .62 },
     { ...base, name: 'Amara', gender: 'f', hair: 'bun', hairColor: '#0d0907', skin: look.skin, outfit: '#b43c35', pants: '#6b5a48', height: .5 },
   ];
@@ -328,11 +330,11 @@ const econ = async (kind: 'start' | 'finish', a: Act) => {
     else if (kind === 'finish' && d.paid) say(`Gig done: +${naira(d.paid)}`);
   } catch { say('Offline — payment not recorded.'); }
 };
-const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min, bonds: F.bonds() } }) }).catch(() => {});
+const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min, bonds: F.bonds(), family: F.on } }) }).catch(() => {});
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
 const snap = () => ({ needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
-  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap() });
+  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on });
 type UI = ReturnType<typeof snap>;
 
 type V3 = [number, number, number];
@@ -665,8 +667,8 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
     <Room />
     <Wing />
     <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
-    {OBJ.map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
-      onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(o); }}
+    {OBJ.filter(o => ui.famOn || o.acts.some(a => !a.all)).map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
+      onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(ui.famOn ? o : { ...o, acts: o.acts.filter(a => !a.all) }); }}
       onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(o.id); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(h => (h === o.id ? null : h)); }}>{VIS[o.id](ui)}</group>)}
     {DECOR.map(d => <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot}>{VIS[d.vis](ui)}</group>)}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
@@ -678,11 +680,11 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
 }
 
 export default function Sim() {
-  const [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
+  const [famModal, setFamModal] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); F.load(r.save.state.bonds); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: r.save.state.min, cash: r.save.cash }); F.load(r.save.state.bonds, r.save.state.family); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {
@@ -719,24 +721,32 @@ export default function Sim() {
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
-        <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button></div></div>
+        <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
+        {user && look && !outside && <button className="pill" onClick={() => { setFamModal(true); setMenu(false); }}>💍 Family</button>}</div></div>
     <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
       {NEEDS.map(([k, l, e]) => <div key={k} className={'nrow' + (ui.needs[k] < 25 ? ' low' : '')}><span>{e}<em> {l}</em></span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
-    {user && look && !outside && <div className="fam"><b>👨‍👩‍👧‍👦 Family</b>{ui.fam.map(f => <div key={f.id} className="frow"><span>{f.e}</span><em>{f.name}</em><small>{f.label}</small><div className="bar"><i style={{ width: f.bond + '%', background: '#e8638a' }} /></div></div>)}</div>}
+    {user && look && !outside && ui.famOn && !menu && <button className="famBtn" onClick={() => setFamOpen(v => !v)}>{famOpen ? '✕' : '👨‍👩‍👧‍👦 Family'}</button>}
+    {user && look && !outside && ui.famOn && famOpen && !menu && <div className="fam">{ui.fam.map(f => <div key={f.id} className="frow"><span>{f.e}</span><em>{f.name}</em><small>{f.label}</small><div className="bar"><i style={{ width: f.bond + '%', background: '#e8638a' }} /></div></div>)}</div>}
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
     {!outside && <div className="hint">Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom</div>}
+    {famModal && <div className="modal" onPointerDown={e => { if (e.target === e.currentTarget) setFamModal(false); }}><div className="box">
+      {ui.famOn ? <><h3>👨‍👩‍👧‍👦 Your family</h3><p className="muted">Ada/Emeka and the kids live with you. Spend time with them to grow your bond.</p>
+        <div className="row"><button onClick={() => setFamModal(false)}>Keep my family</button><button onClick={() => { if (window.confirm('End the family? Your spouse and kids will move out of the house.')) { F.setOn(false); setFamOpen(false); setFamModal(false); if (lookRef.current) saveNow(lookRef.current); } }}>💔 End family</button></div></>
+      : <><h3>💍 Start a family?</h3><p className="muted">Right now you live on your own. If you want, you can get married and share the home with a spouse and two kids. They follow their own daily routine, and you grow your bond with dinners, chats and play.</p><p className="muted">It is completely your choice, and you can change your mind later. (Marriage between real players is under Love in the city menu.)</p>
+        <div className="row"><button onClick={() => setFamModal(false)}>Not now</button><button className="pri" onClick={() => { F.setOn(true); setFamOpen(true); setFamModal(false); say('💍 Your new family moves in!'); if (lookRef.current) saveNow(lookRef.current); }}>💍 Get married &amp; start a family</button></div></>}
+    </div></div>}
     <style>{CSS}</style>
   </div>;
 }
 
 const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(circle at 40% 20%,#1c4a39,#07100d)}.card,.box{width:min(380px,92vw);background:#0c1713f5;border:1px solid #ffffff2a;border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:10px}.card h1{margin:0;font-size:22px}.logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,#d99a42,#6f4721);display:grid;place-items:center;font-weight:900}.muted{color:#9fb5aa;font-size:12px;margin:0}.card label{font-size:11px;color:#9fb5aa;display:flex;flex-direction:column;gap:6px}.card input,.box input,.vb input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:10px;color:#fff;font-size:14px}.tabs{display:flex;gap:6px}.tabs button,.row button{flex:1;background:#14261f;border:1px solid #2a4337;color:#cfe;border-radius:9px;padding:9px;cursor:pointer}.tabs .on{background:#1d7654}.pri{background:#d99a42;color:#1a1208;border:0;border-radius:11px;padding:12px;font-weight:800;cursor:pointer}.pri:disabled{opacity:.4}.bad{color:#ff8b8b;font-size:12px;margin:0}.vb{display:flex;flex-direction:column;gap:8px}.vb p,.box p{font-size:12px;margin:0}.row{display:flex;gap:6px}.modal{position:fixed;inset:0;z-index:55;background:#0008;display:grid;place-items:center}.box h3{margin:0}.box{color:#fff}
 `+`.sim{position:fixed;inset:0;font-family:Inter,system-ui,sans-serif;color:#fff;user-select:none}.sim canvas{display:block}
-.top{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}.top>*{pointer-events:auto}
+.top{position:absolute;z-index:30;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}.top>*{pointer-events:auto}
 .pill{background:#10201ad9;border:1px solid #ffffff2a;border-radius:999px;padding:7px 12px;font-size:12px;color:#fff;backdrop-filter:blur(8px);cursor:default}button.pill{cursor:pointer}
 .pill button{background:none;border:0;color:#9fb;font-size:11px;padding:0 6px;cursor:pointer}.pill button.on{color:#f0b94a;font-weight:800}.pill.on{background:#1d7654}.gold{color:#f3c56f;font-weight:800}
-.needs{position:absolute;left:10px;bottom:10px;width:220px;background:#10201ae6;border:1px solid #ffffff2a;border-radius:16px;padding:12px;backdrop-filter:blur(8px)}
+.needs{position:absolute;z-index:5;left:10px;bottom:10px;width:220px;background:#10201ae6;border:1px solid #ffffff2a;border-radius:16px;padding:12px;backdrop-filter:blur(8px)}
 .mood{display:flex;align-items:center;gap:8px;font-size:22px;margin-bottom:8px}.mood b{font-size:14px}.mood span{margin-left:auto;font-size:11px;color:#9fb5aa}
 .nrow{display:flex;align-items:center;gap:8px;font-size:11px;margin:5px 0}.nrow>span{width:86px}.bar{flex:1;height:8px;background:#ffffff1f;border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;border-radius:9px;transition:width .2s}
 .queue{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center}.cur{background:#10201af0;border:1px solid #f0b94a88;border-radius:12px;padding:8px 12px;font-size:12px;min-width:170px}.cur .bar{margin-top:6px}
@@ -748,5 +758,6 @@ const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:cent
 .bubble{background:#fff;color:#000;border-radius:14px;padding:3px 9px;font-size:20px;box-shadow:0 2px 8px #0005}
 .pie{background:#10201af5;border:1px solid #ffffff33;border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:5px;min-width:170px}.pie b{font-size:11px;color:#f0b94a;text-transform:uppercase;letter-spacing:.1em;padding:0 4px}
 .pie button{display:flex;justify-content:space-between;gap:12px;background:#1b3329;border:1px solid #2f5143;color:#fff;border-radius:9px;padding:8px 10px;font-size:12px;cursor:pointer;text-align:left}.pie button:hover:not(:disabled){background:#27503f}.pie button:disabled{opacity:.4;cursor:not-allowed}.pie small{color:#9fb5aa}
-@media(max-width:620px){.needs{width:170px;padding:8px}.hint{display:none}.nrow>span{width:70px}.fam{display:none}}
-.fam{position:absolute;left:10px;top:64px;width:190px;background:#10201ae6;border:1px solid #ffffff2a;border-radius:14px;padding:9px 11px;backdrop-filter:blur(8px);font-size:11px}.fam>b{display:block;font-size:11px;color:#f0b94a;margin-bottom:4px}.frow{display:grid;grid-template-columns:22px 1fr;align-items:center;margin:6px 0}.frow em{font-style:normal;font-weight:700}.frow small{grid-column:2;color:#9fb5aa;font-size:10px}.frow .bar{grid-column:1/-1;height:5px;margin-top:3px}.bubble.sm{font-size:15px;padding:2px 7px}`;
+@media(max-width:620px){.needs{width:170px;padding:8px}.hint{display:none}.nrow>span{width:70px}}
+.famBtn{position:absolute;z-index:6;left:calc(10px + env(safe-area-inset-left,0px));top:calc(58px + env(safe-area-inset-top,0px));background:#10201ae6;color:#f0b94a;border:1px solid #ffffff2a;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(8px)}
+.fam{position:absolute;z-index:6;left:calc(10px + env(safe-area-inset-left,0px));top:calc(94px + env(safe-area-inset-top,0px));width:190px;max-height:calc(100vh - 220px);overflow:auto;background:#10201ae6;border:1px solid #ffffff2a;border-radius:14px;padding:9px 11px;backdrop-filter:blur(8px);font-size:11px}.fam>b{display:block;font-size:11px;color:#f0b94a;margin-bottom:4px}.frow{display:grid;grid-template-columns:22px 1fr;align-items:center;margin:6px 0}.frow em{font-style:normal;font-weight:700}.frow small{grid-column:2;color:#9fb5aa;font-size:10px}.frow .bar{grid-column:1/-1;height:5px;margin-top:3px}.bubble.sm{font-size:15px;padding:2px 7px}`;

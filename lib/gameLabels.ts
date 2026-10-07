@@ -95,7 +95,7 @@ export const INTERIOR_UI_CSS = `
 .inLbl .glIco{width:34px;height:34px;font-size:18px}
 .inLbl .glTx{display:none}
 .inLbl:hover{padding:3px 14px 3px 3px!important;gap:7px!important}.inLbl:hover .glTx{display:inline}
-.inLbl.on{opacity:0;pointer-events:none;animation:none}   /* you are standing on it: the button at the bottom takes over */
+.inLbl.on,.inLbl.far{opacity:0;pointer-events:none;animation:none}   /* you are standing on it: the button at the bottom takes over */
 
 /* ---------- name plates: a little smaller, so they cover less of the room ---------- */
 .glPlate b{font-size:13px}.glPlate em{font-size:11px}
@@ -137,4 +137,9 @@ html[data-reduce-motion="1"] .inMenu{animation:none}
 
 /* portrait / very narrow screens: bottom sheet instead of a side sheet */
 @media (max-width:620px) and (orientation:portrait){.inMenu{left:10px;right:10px;top:auto;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto;max-height:46vh}}
+/* the action button sits beside the list, never over the player */
+.inAct{animation:none!important;transform:none!important;left:auto!important;max-width:44vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:3px solid var(--ink)!important;box-shadow:0 4px 0 var(--ink)!important;font-family:var(--gf);font-weight:400!important;font-size:17px!important;letter-spacing:.03em}
+@media (pointer:coarse){.inAct small{display:none}}
+/* tighter right-hand list so five spots fit without reaching the bottom buttons */
+.inDock{gap:6px!important}.inDock button{padding:4px 12px 4px 4px!important;font-size:15px!important}.inDock .glIco{width:26px;height:26px;font-size:14px}.inDock i{font-size:12px}
 `;

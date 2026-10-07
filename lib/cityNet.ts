@@ -163,7 +163,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
         .on('broadcast', { event: 'chat' }, ({ payload }) => {
           if (cur !== c) return;
           const u = String(payload?.u), t = String(payload?.t || '').trim().slice(0, 120), now = Date.now();
-          if (!t || !NET.peers[u] || muted.current.has(u) || now - (lastIn.current[u] || 0) < 900) return;
+          if (!t || u === name || muted.current.has(u) || now - (lastIn.current[u] || 0) < 120) return; // accept chat even if their position has not arrived yet
           lastIn.current[u] = now; say(u, t);
         })
         .subscribe(async s => {
@@ -205,9 +205,11 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
 
   const send = useCallback((txt: string) => {
     const t = txt.trim().slice(0, 120), now = Date.now();
-    if (!t || now - lastSend.current < 1200) return false;
+    if (!t || now - lastSend.current < 350) return false;
     lastSend.current = now; say(name, t, true);
-    ch.current?.send({ type: 'broadcast', event: 'chat', payload: { u: name, t } });
+    const c = ch.current;
+    if (!c || statusRef.current === 'off') { NET.msg = 'Chat is offline: multiplayer is not connected.'; return true; }
+    Promise.resolve(c.send({ type: 'broadcast', event: 'chat', payload: { u: name, t } })).then(r => { if (r && r !== 'ok') NET.msg = 'Message not delivered. Check your connection.'; }).catch(() => { NET.msg = 'Message not delivered. Check your connection.'; });
     return true;
   }, [name, say]);
   const toggleMute = useCallback((u: string) => {

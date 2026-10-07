@@ -41,7 +41,7 @@ export function useRoomNet(roomId: string, look: Look) {
       if (payload?.to !== name || typeof payload?.u !== 'string') return; rtcSubs.current.forEach(f => f(payload as RtcMsg));
     }).on('broadcast', { event: 'chat' }, ({ payload }) => {
       const u = String(payload?.u), t = String(payload?.t || '').trim().slice(0, 120), now = Date.now();
-      if (!t || !ROOM.peers[u] || now - (lastIn.current[u] || 0) < 900) return; lastIn.current[u] = now; say(u, t);
+      if (!t || u === name || now - (lastIn.current[u] || 0) < 120) return; lastIn.current[u] = now; say(u, t);
     }).subscribe(async s => { if (s === 'SUBSCRIBED' && !dead) await c.track({ look: lookRef.current }); });
     const beat = setInterval(() => { // 5 position updates/second, only when someone else is here
       const now = Date.now(); if (!Object.keys(ROOM.peers).length || now - lastPos.current < 190) return; lastPos.current = now;
@@ -50,7 +50,7 @@ export function useRoomNet(roomId: string, look: Look) {
     return () => { dead = true; clearInterval(beat); sb.removeChannel(c); ch.current = null; ROOM.peers = {}; setRoster([]); };
   }, [roomId, name, say]);
   const send = useCallback((t: string) => {
-    const s = t.trim().slice(0, 120), now = Date.now(); if (!s || now - lastSend.current < 1200) return false; lastSend.current = now;
+    const s = t.trim().slice(0, 120), now = Date.now(); if (!s || now - lastSend.current < 350) return false; lastSend.current = now;
     say(name, s); ch.current?.send({ type: 'broadcast', event: 'chat', payload: { u: name, t: s } }); return true;
   }, [name, say]);
   const signal = useCallback((to: string, t: string, d?: any) => { ch.current?.send({ type: 'broadcast', event: 'rtc', payload: { u: name, to, t, d } }); }, [name]);

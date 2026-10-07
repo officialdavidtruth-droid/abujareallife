@@ -6,7 +6,7 @@ import { FAME_SHIFT } from '../../../lib/profile';
 import { SKILL_FOR, shiftPayFor } from '../../../lib/interiors';
 import { isSenior, shiftJobs, shiftMins, tasksFor } from '../../../lib/work';
 
-// A shift lasts 45 min – 1 hour: the server assigns a task when you clock in, and job + task decide the length.
+// A shift lasts 8–12 minutes: the server assigns a task when you clock in, and job + task decide the length.
 // Stored in save.questId as  shift:<businessId>:<jobIndex>:<taskId>  (the server is the only clock). Leaving the building forfeits it (see /api/exit).
 const SHIFT = /^shift:([^:]+):(\d+):([a-z0-9]+)$/;
 export const dynamic = 'force-dynamic';

@@ -331,7 +331,7 @@ type Role = 'car' | 'taxi' | 'bike' | 'police';
 type SimCar = { s: number; color: string; kind: number; model: string; role: Role; mul: number; v?: number; off: number; hail: 0 | 1 | 2; stopping?: boolean; readyAt?: number; busy?: boolean };
 type Lane = { axis: 'x' | 'z'; dir: 1 | -1; fixed: number; speed: number; rot: number; road: number; cars: SimCar[] };
 const ROAM = { cars: [] as { l: Lane; c: SimCar }[], sel: -1, rideIdx: -1, openSheet: (_i: number) => {}, tap: (_i: number) => {} };
-const roleOf = (n: number): Role => (n % 5 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
+const roleOf = (n: number): Role => (n % 4 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
 const ROLE_MUL: Record<Role, number> = { car: 1, taxi: 1, bike: .8, police: 1.15 };
 const COLORS = ['#c0392b', '#e8e8ea', '#1f2933', '#2c5aa0', '#8e949a', '#b7791f', '#0f766e', '#7c2d12', '#d9d9dc', '#1e9e55'];
 function makeLanes(): Lane[] {
@@ -359,9 +359,9 @@ function Traffic() {
     ROAM.tap = (i: number) => {
       const e = ROAM.cars[i]; if (!e || e.c.busy || GAME.ride || VEH.drv || GAME.jailed) return;
       const t = TPOS[i], d = t ? Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z) : 999, role = e.c.role;
-      if (e.c.hail === 2) { if (d < 9) ROAM.openSheet(i); else GAME.notice = `Walk up to the ${role === 'taxi' ? 'taxi' : 'bike'} first.`; return; }
+      if (e.c.hail === 2) { if (d < 18) ROAM.openSheet(i); else GAME.notice = `Walk up to the ${role === 'taxi' ? 'taxi' : 'bike'} first.`; return; }
       if (e.c.hail === 1) return;
-      if (d > 45) { GAME.notice = 'Too far away: wait for it to come closer.'; return; }
+      if (d > 90) { GAME.notice = 'Too far away: wait for it to come closer.'; return; }
       const old = ROAM.cars[ROAM.sel]; if (old && old.c.hail && old.c !== e.c) releaseRoamer(old.c);
       e.c.hail = 1; e.c.stopping = false; e.c.v = e.l.speed * e.c.mul; ROAM.sel = i;
       GAME.notice = role === 'taxi' ? '🚕 Taxi is pulling over for you...' : '🚲 Bike taxi is pulling over for you...';
@@ -370,7 +370,7 @@ function Traffic() {
   }, [flat]);
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
-    let nearI = -1, nearD = 45;
+    let nearI = -1, nearD = 90;
     flat.forEach(({ l, c }, i) => {
       const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }), g = refs.current[i];
       if (c.busy) { tp.x = 1e5; tp.z = 1e5; if (g) g.visible = false; return; } // it is carrying a player (the ride has its own model)
@@ -379,15 +379,15 @@ function Traffic() {
       let v = c.v ?? base;
       if (c.hail === 1) {
         const prev = l.dir === 1 ? c.s - Math.floor(c.s / GRID) * GRID : Math.ceil(c.s / GRID) * GRID - c.s; // metres past the last junction
-        if (prev >= 6 && prev <= 12) c.stopping = true; // brake only mid-block, never inside a junction
-        if (c.stopping) v = Math.max(0, v - 10 * dt);
-        c.off = Math.min(EX, c.off + 2.2 * dt);
-        if (c.stopping && v === 0 && c.off >= EX - .02) { c.hail = 2; c.readyAt = t; GAME.notice = c.role === 'taxi' ? '🚕 Taxi stopped: walk up and tap it.' : '🚲 Bike taxi stopped: walk up and tap it.'; }
+        if (prev >= 3 && prev <= 14) c.stopping = true; // brake only mid-block, never inside a junction
+        if (c.stopping) v = Math.max(0, v - 16 * dt);
+        c.off = Math.min(EX, c.off + 3.5 * dt);
+        if (c.stopping && v === 0 && c.off >= EX - .02) { c.hail = 2; c.readyAt = t; if (Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z) < 18) ROAM.openSheet(i); GAME.notice = c.role === 'taxi' ? '🚕 Taxi stopped: walk up and tap it.' : '🚲 Bike taxi stopped: walk up and tap it.'; }
         c.v = v;
       } else if (c.hail === 2) {
         v = 0; c.v = 0; c.off = EX;
         const d = Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z);
-        if (t - (c.readyAt || t) > 45 || d > 70 || GAME.ride || VEH.drv) releaseRoamer(c); // you changed your mind: it drives off
+        if (t - (c.readyAt || t) > 120 || d > 140 || GAME.ride || VEH.drv) releaseRoamer(c); // you changed your mind: it drives off
       } else {
         if (c.off > 0) c.off = Math.max(0, c.off - 2.2 * dt);
         if (c.v !== undefined) { v = Math.min(base, c.v + 5 * dt); c.v = v >= base && c.off === 0 ? undefined : v; }
@@ -414,8 +414,8 @@ function Traffic() {
       if (nearI >= 0) {
         const e = flat[nearI], tp = TPOS[nearI], d = Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z), ic = e.c.role === 'taxi' ? '🚕' : '🚲';
         grp.position.set(tp.x, e.c.role === 'taxi' ? 2.5 : 2.1, tp.z);
-        key = e.c.hail === 1 ? `${ic} Pulling over...` : e.c.hail === 2 ? (d < 9 ? `${ic} Tap to ride` : `${ic} Waiting: walk up`) : `${ic} Tap to hail`;
-        if (e.c.hail === 2 && d < 9) key += '|go'; else if (e.c.hail === 0) key += '|go';
+        key = e.c.hail === 1 ? `${ic} Pulling over...` : e.c.hail === 2 ? (d < 18 ? `${ic} Tap to ride` : `${ic} Waiting: walk up`) : `${ic} Tap to hail`;
+        if (e.c.hail === 2 && d < 18) key += '|go'; else if (e.c.hail === 0) key += '|go';
       }
       if (key !== lblKey.current) { lblKey.current = key; el.style.display = key ? '' : 'none'; el.className = 'hailTag' + (key.endsWith('|go') ? ' go' : ''); el.textContent = key.replace('|go', ''); el.dataset.i = String(nearI); }
     }
@@ -423,6 +423,7 @@ function Traffic() {
   return <>
     {flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}
       onClick={c.role === 'taxi' || c.role === 'bike' ? (e => { if (e.delta > 6) return; e.stopPropagation(); ROAM.tap(i); }) : undefined}>
+      {(c.role === 'taxi' || c.role === 'bike') && <mesh position={[0, 1.1, 0]}><boxGeometry args={[3.4, 2.6, 5.6]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>}
       {c.role === 'taxi' ? <TaxiBody kit={kit} /> : c.role === 'bike' ? <BikeBody scale={.95} rider /> : c.role === 'police' ? <PoliceBody kit={kit} /> : <CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} />}
     </group>)}
     <group ref={lbl}><Html center zIndexRange={[4, 0]}><div ref={lblEl} className="hailTag" style={{ display: 'none' }} onClick={() => { const i = Number(lblEl.current?.dataset.i); if (i >= 0) ROAM.tap(i); }} /></Html></group>
@@ -504,7 +505,7 @@ function TransportVehicles() {
   useEffect(() => { // walk away (or the vehicle drives off) and the destination menu closes
     const id = setInterval(() => {
       if (open === null) return; const e = ROAM.cars[open], tp = TPOS[open];
-      if (!e || e.c.hail !== 2 || !tp || Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z) > 12) setOpen(null);
+      if (!e || e.c.hail !== 2 || !tp || Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z) > 24) setOpen(null);
     }, 250);
     return () => clearInterval(id);
   }, [open]);
@@ -993,7 +994,9 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── E: get in / get out / call car, H: horn ── */
     if (c.interact) {
       c.interact = false;
-      if (VEH.drv) {
+      const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => (e.c.role === 'taxi' || e.c.role === 'bike') && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
+      if (taxiI >= 0) ROAM.openSheet(taxiI);
+      else if (VEH.drv) {
         VEH.drv = false; VEH.v = 0; engineStop();
         const lx = -Math.sin(VEH.r), lz = -Math.cos(VEH.r);
         p.x = VEH.x + lx * 2.4; p.z = VEH.z + lz * 2.4; pushOut(p); p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;

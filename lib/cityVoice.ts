@@ -21,7 +21,7 @@ let iceCache: { at: number; list: RTCIceServer[]; relay: boolean } | null = null
 const PUBLIC_TURN: RTCIceServer = { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' };
 async function iceServers(): Promise<{ list: RTCIceServer[]; relay: boolean }> {
   if (iceCache && Date.now() - iceCache.at < 5 * 60_000) return iceCache;
-  let list: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], relay = false;
+  let list: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }], relay = false;
   try { const r = await fetch('/api/turn', { cache: 'no-store' }); if (r.ok) { const d = await r.json(); if (Array.isArray(d.iceServers) && d.iceServers.length) { list = d.iceServers; relay = !!d.relay; } } } catch { /* offline: keep STUN */ }
   const url = process.env.NEXT_PUBLIC_TURN_URL;
   if (url && !relay) { list = [...list, { urls: url.split(',').map(x => x.trim()), username: process.env.NEXT_PUBLIC_TURN_USERNAME, credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL }]; relay = true; }
@@ -38,7 +38,7 @@ export function useCityVoice(o: Opts) {
   const op = useRef(o); op.current = o;
   const dist = (n: string) => (op.current.dist || cityDist)(n); // open city: world distance · inside a building: distance inside the room
   const [live, setLive] = useState(0), lastFail = useRef(0);
-  const links = useRef(new Map<string, Link>()), building = useRef(new Set<string>()), early = useRef<Record<string, RTCIceCandidateInit[]>>({}), retry = useRef<Record<string, number>>({});
+  const links = useRef(new Map<string, Link>()), building = useRef(new Set<string>()), early = useRef<Record<string, RTCIceCandidateInit[]>>({}), retry = useRef<Record<string, number>>({}), asked = useRef<Record<string, number>>({});
   const stream = useRef<MediaStream | null>(null), micRef = useRef(false), ptt = useRef(false), stopLocal = useRef<() => void>(() => {}), ctx = useRef<AudioContext | null>(null);
   const note = (t: string) => { setMsg(t); setTimeout(() => setMsg(m => (m === t ? '' : m)), 6000); };
 
@@ -77,11 +77,10 @@ export function useCityVoice(o: Opts) {
     delete NET.talk[who];
   }, []);
 
-  async function build(who: string): Promise<Link> {
+  async function build(who: string, offerer = true): Promise<Link> {
     const { list } = await iceServers();
     const pc = new RTCPeerConnection({ iceServers: list, iceCandidatePoolSize: 2 });
-    const tr = pc.addTransceiver('audio', { direction: 'sendrecv' }); // always two-way, so we can listen even while our own mic is off
-    const t = track(); if (t) tr.sender.replaceTrack(t).catch(() => {});
+    if (offerer) { const tr = pc.addTransceiver('audio', { direction: 'sendrecv' }); const t0 = track(); if (t0) tr.sender.replaceTrack(t0).catch(() => {}); } // always two-way, so we can listen even while our own mic is off. The answering side attaches to the offer's own audio line instead (see attachAnswerer), which is what makes two-way audio reliable
     const L: Link = { pc, audio: null, ice: early.current[who] || [], since: Date.now(), live: false, stopWatch: () => {} }; delete early.current[who];
     pc.onicecandidate = e => { if (e.candidate) op.current.signal(who, 'ice', e.candidate.toJSON()); };
     pc.ontrack = e => {
@@ -99,6 +98,11 @@ export function useCityVoice(o: Opts) {
     };
     return L;
   }
+  const attachAnswerer = (L: Link) => { // after setRemoteDescription(offer): make the offer's audio line two-way and give it our mic
+    const tr = L.pc.getTransceivers().find(x => x.receiver.track?.kind === 'audio'); if (!tr) return;
+    try { tr.direction = 'sendrecv'; } catch { /* old browser */ }
+    const t = track(); if (t) tr.sender.replaceTrack(t).catch(() => {});
+  };
   const flush = async (L: Link) => { for (const x of L.ice.splice(0)) await L.pc.addIceCandidate(x).catch(() => {}); };
 
   const connect = useCallback(async (who: string) => { // we are the "caller" side of this pair (alphabetical rule), so we send the offer
@@ -118,8 +122,8 @@ export function useCityVoice(o: Opts) {
       if (dist(u) > VOICE_DROP) return;
       drop(u); early.current[u] = []; // a new offer replaces any older link; candidates that race ahead of the link wait in early[]
       try {
-        const L = await build(u); links.current.set(u, L);
-        await L.pc.setRemoteDescription(d); await flush(L);
+        const L = await build(u, false); links.current.set(u, L);
+        await L.pc.setRemoteDescription(d); attachAnswerer(L); await flush(L);
         const ans = await L.pc.createAnswer(); await L.pc.setLocalDescription(ans); p.signal(u, 'answer', { type: ans.type, sdp: ans.sdp });
       } catch { drop(u); retry.current[u] = Date.now() + 8000; }
     } else if (t === 'answer' && d) {
@@ -129,6 +133,7 @@ export function useCityVoice(o: Opts) {
       const L = links.current.get(u);
       if (L) { if (L.pc.remoteDescription) await L.pc.addIceCandidate(d).catch(() => {}); else L.ice.push(d); }
       else if (early.current[u]) early.current[u].push(d);
+    } else if (t === 'want') { if (dist(u) <= VOICE_MAX && !links.current.has(u) && !building.current.has(u) && p.me.toLowerCase() < u.toLowerCase()) connect(u);
     } else if (t === 'bye') { drop(u); retry.current[u] = Date.now() + 2000; }
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -137,10 +142,14 @@ export function useCityVoice(o: Opts) {
     const id = setInterval(() => {
       const p = op.current, now = Date.now(), cfg = getSettings();
       const near = p.roster.filter(n => !p.isMuted(n)).map(n => [n, dist(n)] as const).filter(([, d]) => d <= VOICE_MAX).sort((a, b) => a[1] - b[1]).slice(0, MAX_LINKS);
-      for (const [n] of near) if (!links.current.has(n) && !building.current.has(n) && p.me.toLowerCase() < n.toLowerCase() && now > (retry.current[n] || 0)) connect(n);
+      for (const [n] of near) {
+        if (links.current.has(n) || building.current.has(n) || now <= (retry.current[n] || 0)) continue;
+        if (p.me.toLowerCase() < n.toLowerCase()) connect(n);
+        else if (now - (asked.current[n] || 0) > 4000) { asked.current[n] = now; p.signal(n, 'want'); } // we are the answerer side: nudge them to call us
+      }
       links.current.forEach((L, n) => {
         const d = dist(n);
-        if (d > VOICE_DROP || !p.roster.includes(n) || p.isMuted(n) || (!L.live && now - L.since > 20_000)) { if (!L.live && d <= VOICE_DROP && now - lastFail.current > 60_000) { lastFail.current = now; note(`Couldn't connect voice with ${n}. Their network may be blocking direct calls — retrying.`); } drop(n, true); retry.current[n] = now + 8000; return; }
+        if (d > VOICE_DROP || !p.roster.includes(n) || p.isMuted(n) || (!L.live && now - L.since > 12_000)) { if (!L.live && d <= VOICE_DROP && now - lastFail.current > 60_000) { lastFail.current = now; note(`Couldn't connect voice with ${n}. Their network may be blocking direct calls — retrying.`); } drop(n, true); retry.current[n] = now + 8000; return; }
         if (L.audio) { const v = d <= VOICE_FULL ? 1 : 1 - (d - VOICE_FULL) / (VOICE_MAX - VOICE_FULL); L.audio.volume = clamp(v * cfg.voice); L.audio.muted = v < .02 || cfg.muteAll; } // iPhones ignore .volume, but obey .muted
       });
       setLinked(links.current.size); setLive([...links.current.values()].filter(L => L.live).length);

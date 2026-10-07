@@ -60,7 +60,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
         {net.roster.length > 8 && <input className="cpFind" value={find} placeholder="Find a player…" onChange={e => setFind(e.target.value)} />}
         <div className="cpPeople">{net.roster.length === 0 ? <span>You're the only one here right now. Invite friends!</span> : people.length === 0 ? <span>No player matches “{find}”.</span> : people.map(n => <button key={n} onClick={() => { setSel(n); setOpen(false); }}>👤 {n} <small>{Math.round(dist(n))}m</small></button>)}</div>
         <div className="cpLog" ref={box}>{net.log.length === 0 ? <span className="cpEmpty">Say hi to the city 👋</span> : net.log.slice(-40).map(m => <div key={m.id}><b>{m.u}:</b> {m.t}</div>)}</div>
-        <div className="cpIn"><input value={txt} maxLength={120} placeholder="Say something…" enterKeyHint="send" onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') go(); }} /><button onClick={go}>Send</button></div>
+        <div className="cpIn"><input value={txt} maxLength={120} placeholder="Say something…" enterKeyHint="send" onChange={e => setTxt(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') go(); }} onKeyUp={e => e.stopPropagation()} /><button type="button" onClick={go}>Send</button></div>
       </>}
     </div>}
   </>;

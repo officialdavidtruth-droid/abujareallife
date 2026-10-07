@@ -35,8 +35,8 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
 const OBJ: Obj[] = [
   { id: 'bed', name: 'Bed', p: [-4.6, -3.3], rot: 0, spot: [-3.3, -1.9], face: 0, boxes: [[-5.5, -3.7, -4.6, -2], [-3.7, -3.2, -4.55, -4.05]], acts: [
-    { k: 'sleep', label: 'Sleep', e: '💤', dur: 360, fx: { energy: 100, hunger: -10 }, pose: 'sleep' },
-    { k: 'nap', label: 'Nap', e: '😴', dur: 90, fx: { energy: 35 }, pose: 'sleep' }] },
+    { k: 'sleep', label: 'Sleep', e: '💤', dur: 240, fx: { energy: 100, hunger: -10 }, pose: 'sleep' },
+    { k: 'nap', label: 'Nap', e: '😴', dur: 60, fx: { energy: 35 }, pose: 'sleep' }] },
   { id: 'wardrobe', name: 'Wardrobe & mirror', p: [-2.25, -4.3], rot: 0, spot: [-2.25, -3.4], face: Math.PI, boxes: [[-2.95, -1.55, -4.6, -4]], acts: [
     { k: 'outfit', label: 'Change outfit', e: '👕', dur: 8, fx: { fun: 8 }, pose: 'stand', anim: 'wardrobe' },
     { k: 'mirror', label: 'Check the mirror', e: '🪞', dur: 10, fx: { fun: 10, social: 4 }, pose: 'stand', anim: 'groom' }] },

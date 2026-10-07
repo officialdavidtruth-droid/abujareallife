@@ -511,6 +511,112 @@ function pushOut(p: { x: number; z: number }, rad = BODY) {
 }
 const distTo = (s: { x0: number; x1: number; z0: number; z1: number }, x: number, z: number) => Math.hypot(Math.max(s.x0 - x, 0, x - s.x1), Math.max(s.z0 - z, 0, z - s.z1));
 
+/* ───────────── city navigation ─────────────
+ * The interior collision/pathfinding helper has a small-room coordinate system,
+ * so the outdoor city needs its own bounded navigator. It plans on the same
+ * world coordinates used by the 3D city and treats building footprints as solid.
+ */
+type CityBlk = { id: string; x0: number; x1: number; z0: number; z1: number };
+const BL: CityBlk[] = BUILDS.map(b => ({
+  id: b.id,
+  x0: b.x - b.w / 2 - .65,
+  x1: b.x + b.w / 2 + .65,
+  z0: b.z - b.d / 2 - .65,
+  z1: b.z + b.d / 2 + .65,
+}));
+const NAV_STEP = 2;
+const NAV_MIN = -132;
+const NAV_MAX = 132;
+const navBlocked = (blks: CityBlk[], x: number, z: number) =>
+  x < NAV_MIN || x > NAV_MAX || z < NAV_MIN || z > NAV_MAX ||
+  blks.some(b => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1);
+const navKey = (x: number, z: number) => `${Math.round(x / NAV_STEP)},${Math.round(z / NAV_STEP)}`;
+const navPoint = (x: number, z: number): [number, number] => [
+  THREE.MathUtils.clamp(Math.round(x / NAV_STEP) * NAV_STEP, NAV_MIN, NAV_MAX),
+  THREE.MathUtils.clamp(Math.round(z / NAV_STEP) * NAV_STEP, NAV_MIN, NAV_MAX),
+];
+function nearestNavFree(blks: CityBlk[], target: [number, number]): [number, number] {
+  if (!navBlocked(blks, target[0], target[1])) return target;
+  for (let r = 1; r <= 10; r++) {
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      const x = target[0] + dx * NAV_STEP, z = target[1] + dz * NAV_STEP;
+      if (!navBlocked(blks, x, z)) return [x, z];
+    }
+  }
+  return target;
+}
+function findPath(blks: CityBlk[], from: [number, number], to: [number, number]): [number, number][] {
+  const start = navPoint(from[0], from[1]);
+  const goal = nearestNavFree(blks, navPoint(to[0], to[1]));
+  if (!navBlocked(blks, start[0], start[1]) && !navBlocked(blks, goal[0], goal[1])) {
+    const clear = (a: [number, number], b: [number, number]) => {
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const n = Math.max(1, Math.ceil(d / .8));
+      for (let i = 1; i <= n; i++) {
+        const x = a[0] + (b[0] - a[0]) * i / n, z = a[1] + (b[1] - a[1]) * i / n;
+        if (navBlocked(blks, x, z)) return false;
+      }
+      return true;
+    };
+    if (clear(start, goal)) return [goal];
+  }
+
+  const toCell = (p: [number, number]) => [Math.round((p[0] - NAV_MIN) / NAV_STEP), Math.round((p[1] - NAV_MIN) / NAV_STEP)] as [number, number];
+  const toWorld = (c: [number, number]) => [NAV_MIN + c[0] * NAV_STEP, NAV_MIN + c[1] * NAV_STEP] as [number, number];
+  const s = toCell(start), g = toCell(goal);
+  const key = (c: [number, number]) => `${c[0]},${c[1]}`;
+  const open: [number, number][] = [s], came = new Map<string, string>(), score = new Map<string, number>([[key(s), 0]]), closed = new Set<string>();
+  const heuristic = (a: [number, number]) => Math.abs(a[0] - g[0]) + Math.abs(a[1] - g[1]);
+  let best = s;
+  while (open.length && closed.size < 18000) {
+    let bi = 0, bf = Infinity;
+    for (let i = 0; i < open.length; i++) {
+      const f = (score.get(key(open[i])) ?? Infinity) + heuristic(open[i]);
+      if (f < bf) { bf = f; bi = i; }
+    }
+    const cur = open.splice(bi, 1)[0], ck = key(cur);
+    if (closed.has(ck)) continue;
+    closed.add(ck);
+    if (heuristic(cur) < heuristic(best)) best = cur;
+    if (cur[0] === g[0] && cur[1] === g[1]) { best = cur; break; }
+    for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]] as const) {
+      const n: [number, number] = [cur[0] + dx, cur[1] + dz];
+      if (n[0] < 0 || n[1] < 0 || n[0] > Math.round((NAV_MAX-NAV_MIN)/NAV_STEP) || n[1] > Math.round((NAV_MAX-NAV_MIN)/NAV_STEP)) continue;
+      const w = toWorld(n);
+      if (navBlocked(blks, w[0], w[1])) continue;
+      const nk = key(n), ng = (score.get(ck) ?? Infinity) + 1;
+      if (ng < (score.get(nk) ?? Infinity)) { score.set(nk, ng); came.set(nk, ck); open.push(n); }
+    }
+  }
+  const cells: [number, number][] = [];
+  let curKey = key(best);
+  const startKey = key(s);
+  cells.push(best);
+  while (curKey !== startKey) {
+    const prev = came.get(curKey); if (!prev) break;
+    const [x, z] = prev.split(',').map(Number); cells.push([x, z]); curKey = prev;
+  }
+  cells.reverse();
+  const points = cells.map(toWorld);
+  if (!points.length || key(points[points.length - 1] as [number, number]) === key(start)) return [goal];
+  // String-pull the grid path so the character follows a small number of natural corners.
+  const out: [number, number][] = [];
+  let anchor = start;
+  for (let i = 0; i < points.length; i++) {
+    const candidate = points[i];
+    let clear = true;
+    const d = Math.hypot(candidate[0] - anchor[0], candidate[1] - anchor[1]);
+    for (let j = 1; j <= Math.ceil(d / .8); j++) {
+      const t = j / Math.ceil(d / .8), x = anchor[0] + (candidate[0] - anchor[0]) * t, z = anchor[1] + (candidate[1] - anchor[1]) * t;
+      if (navBlocked(blks, x, z)) { clear = false; break; }
+    }
+    if (!clear) { const prev = points[Math.max(0, i - 1)]; out.push(prev); anchor = prev; }
+  }
+  out.push(goal);
+  return out.filter((p, i, a) => i === 0 || Math.hypot(p[0] - a[i-1][0], p[1] - a[i-1][1]) > .5);
+}
+
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
 export const GAME = { jailed: false, hasCar: false, notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z } }; // set by the game layer; while true the player is locked inside the cell

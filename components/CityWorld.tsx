@@ -679,7 +679,9 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     const sy = Math.max(.32, Math.abs(Math.sin(ang))), sx = Math.cos(ang);
     if (Math.abs(n - lastN.current) > .01) { lastN.current = n; MATS.forEach(m => { m.emissiveIntensity = n * 1.2; }); if (stars.current) stars.current.visible = n > .4; }
 
-    /* ── input ── */
+    /* ── camera basis / input ── */
+    const cam = st.camera, t = oc.target as THREE.Vector3;
+    let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
     if (GAME.nav && (!nav.current || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
       const pts = findPath(BL, [p.x, p.z], [GAME.nav.x, GAME.nav.z]);
       nav.current = { key: `${GAME.nav.x}:${GAME.nav.z}`, points: pts.length ? pts : [[GAME.nav.x, GAME.nav.z]], i: 0 };
@@ -708,8 +710,6 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     }
     const m = Math.hypot(ix, iy); if (m > 1) { ix /= m; iy /= m; }
     const mag = Math.min(m, 1);
-    const cam = st.camera, t = oc.target as THREE.Vector3;
-    let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
     let snapCam = false;
 
     /* ── E: get in / get out / call car, H: horn ── */

@@ -785,6 +785,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
   const sunTarget = useMemo(() => new THREE.Object3D(), []);
   const moving = useRef(false), running = useRef(false), nearId = useRef<string | null>(null);
   const drag = useRef({ on: false, end: 0 }), lastN = useRef(-1), fov = useRef(52), hitCool = useRef(0), shown = useRef({ drv: false, placed: false });
+  const firstCam = useRef(true);
   const nav = useRef<{ key: string; points: [number, number][]; i: number } | null>(null);
   const [near, setN] = useState<any>(null);
   const [touchDevice, setTouchDevice] = useState(false);
@@ -824,7 +825,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     const viewFx = Math.sin(p.r), viewFz = Math.cos(p.r);
     if (c.look.x || c.look.y) {
       oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - c.look.x * 0.006);
-      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + c.look.y * 0.004, .62, 1.48));
+      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + c.look.y * 0.004, .35, 1.45));
       c.look = { x: 0, y: 0 };
     }
     let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
@@ -945,7 +946,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     c.jump = false;
     GAME.player.x = p.x; GAME.player.z = p.z;
     group.current.position.set(p.x, p.y, p.z); group.current.rotation.y = p.r;
-    group.current.visible = false;
+    group.current.visible = !VEH.drv;
     if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';
 
     /* ── car mesh, brake lights, headlights, floating label ── */
@@ -959,24 +960,20 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     OBS[0].x = p.x; OBS[0].z = p.z; OBS[0].on = !VEH.drv;
     OBS[1].x = VEH.x; OBS[1].z = VEH.z; OBS[1].on = VEH.placed;
 
-    /* ── first-person player-follow camera ── */
-    const targetY = VEH.drv ? 1.55 : 1.62 + p.y * .5;
-    // Preserve the player's current look direction while moving the camera anchor with them.
-    let lx = t.x - cam.position.x, lz = t.z - cam.position.z;
-    const ll = Math.hypot(lx, lz) || 1; lx /= ll; lz /= ll;
-    cam.position.set(p.x, targetY, p.z);
-    t.set(p.x + lx * .1, targetY, p.z + lz * .1);
-    oc.minDistance = .1; oc.maxDistance = .1;
-    if (c.recenter) {
-      c.recenter = false;
+    /* ── third-person follow camera (player is visible, orbit with mouse/touch) ── */
+    const dist = VEH.drv ? 8.5 : 4.8, targetY = (VEH.drv ? 1.6 : 1.5) + p.y * .6;
+    const dx0 = p.x - t.x, dy0 = targetY - t.y, dz0 = p.z - t.z;
+    cam.position.x += dx0; cam.position.y += dy0; cam.position.z += dz0; // carry the camera along with the player
+    t.set(p.x, targetY, p.z);
+    oc.minDistance = dist; oc.maxDistance = dist;
+    if (c.recenter || snapCam || firstCam.current) {
+      firstCam.current = false; c.recenter = false;
       const yaw = VEH.drv ? VEH.r : p.r;
-      lx = VEH.drv ? Math.cos(yaw) : Math.sin(yaw);
-      lz = VEH.drv ? -Math.sin(yaw) : Math.cos(yaw);
-      t.set(p.x + lx * .1, targetY, p.z + lz * .1);
+      const hx = VEH.drv ? Math.cos(yaw) : Math.sin(yaw), hz = VEH.drv ? -Math.sin(yaw) : Math.cos(yaw);
+      oc.setAzimuthalAngle?.(Math.atan2(-hx, -hz));
+      oc.setPolarAngle?.(1.2);
     }
     oc.update();
-    cam.position.set(p.x, targetY, p.z);
-    cam.lookAt(t);
     sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
 
     { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
@@ -1023,7 +1020,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
         <Html position={[0, 2.8, 0]} center><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
-      <OrbitControls ref={controls} makeDefault enableRotate={true} enablePan={false} enableDamping={false} rotateSpeed={.38} minDistance={0.01} maxDistance={0.01} minPolarAngle={.62} maxPolarAngle={1.48} target={[START.x, 1.62, START.z + 6]} />
+      <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={1.45} target={[START.x, 1.62, START.z + 6]} />
     </>
   );
 }

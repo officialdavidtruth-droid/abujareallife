@@ -421,3 +421,47 @@
     grid-template-columns:repeat(2,minmax(0,1fr))!important;
   }
 }
+
+
+/* ===== INTERIOR MOBILE CLEANUP V5 =====
+   Camera controls are intentionally hidden on touch/mobile interiors.
+   Leave is a dedicated side control so it never competes with the building header. */
+.inCam{display:none!important}
+.inTop{padding:8px 14px!important;min-height:48px!important}
+.inTop .inIdentity{width:100%!important;justify-content:center!important;text-align:center!important}
+.inTop .inIdentity b{max-width:min(62vw,360px)!important}
+.inLeaveSide{
+  position:absolute!important;
+  right:calc(12px + var(--sar))!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  z-index:145!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:5px!important;
+  min-width:82px!important;
+  height:42px!important;
+  padding:7px 12px!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+  border-radius:12px!important;
+  background:#d99a42!important;
+  color:#171008!important;
+  font-family:var(--gf)!important;
+  font-size:11px!important;
+  font-weight:900!important;
+  box-shadow:0 6px 18px rgba(0,0,0,.38)!important;
+}
+.inLeaveSide:active{transform:translateY(-50%) scale(.97)!important}
+@media (max-width:820px){
+  .inTop{left:50%!important;right:auto!important;transform:translateX(-50%)!important;width:min(430px,calc(100vw - 120px))!important;}
+  .inTop .inIdentity{justify-content:flex-start!important;text-align:left!important}
+  .inTop .inIdentity b{max-width:42vw!important}
+  .inLeaveSide{right:calc(10px + var(--sar))!important;top:50%!important;min-width:74px!important;height:38px!important;padding:6px 9px!important;font-size:10px!important}
+}
+@media (max-width:560px){
+  .inLeaveSide span{display:none!important}
+  .inLeaveSide{width:42px!important;min-width:42px!important;padding:0!important;border-radius:50%!important;font-size:16px!important}
+  .inTop{width:calc(100vw - 78px)!important;max-width:390px!important}
+  .inTop .inIdentity b{max-width:38vw!important}
+}

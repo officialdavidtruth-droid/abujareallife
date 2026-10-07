@@ -365,14 +365,30 @@ function Traffic() {
 
 /* ───────────── player transport stands: taxis + hire bikes ───────────── */
 const TRANSPORT_STOPS = [
-  { kind: 'taxi' as const, x: 0, z: 4.5, r: Math.PI, label: 'Taxi Stand' },
-  { kind: 'taxi' as const, x: 22, z: 4.5, r: Math.PI, label: 'Taxi Stand' },
-  { kind: 'taxi' as const, x: -22, z: -4.5, r: 0, label: 'Taxi Stand' },
-  { kind: 'bike' as const, x: 4.5, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
-  { kind: 'bike' as const, x: -4.5, z: -22, r: Math.PI / 2, label: 'Bike Hire' },
-  { kind: 'bike' as const, x: 26.5, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
+  // Park transport on the sidewalk/curb, never in the traffic lanes.
+  { kind: 'taxi' as const, x: 0, z: 5.6, r: 0, label: 'Taxi Stand' },
+  { kind: 'taxi' as const, x: 22, z: 5.6, r: 0, label: 'Taxi Stand' },
+  { kind: 'taxi' as const, x: -22, z: -5.6, r: Math.PI, label: 'Taxi Stand' },
+  { kind: 'bike' as const, x: 5.6, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
+  { kind: 'bike' as const, x: -5.6, z: -22, r: Math.PI / 2, label: 'Bike Hire' },
+  { kind: 'bike' as const, x: 27.6, z: 22, r: -Math.PI / 2, label: 'Bike Hire' },
 ];
 const DESTS = CITY.districts.slice(0, 8).map(d => ({ name: d.name, x: d.x, z: d.z }));
+
+// Solid footprints for parked taxis/bikes so players cannot walk through them.
+const TRANSPORT_SOLIDS = TRANSPORT_STOPS.map(t => ({ x: t.x, z: t.z, r: t.kind === 'taxi' ? 2.15 : 1.05 }));
+
+// Drop riders on the nearest curb/sidewalk instead of the middle of a road.
+function transitDrop(x: number, z: number) {
+  const gx = Math.round(x / GRID) * GRID, gz = Math.round(z / GRID) * GRID;
+  const dx = Math.abs(x - gx), dz = Math.abs(z - gz);
+  if (dx < dz) {
+    const side = x >= gx ? 1 : -1;
+    return { x: gx + side * (halfW(Math.round(gx / GRID)) + 2.0), z };
+  }
+  const side = z >= gz ? 1 : -1;
+  return { x, z: gz + side * (halfW(Math.round(gz / GRID)) + 2.0) };
+}
 function TransportVehicles() {
   const kit = useMemo(carKit, []), [open, setOpen] = useState<{ kind: 'taxi' | 'bike'; label: string } | null>(null), [near, setNear] = useState<{ kind: 'taxi' | 'bike'; label: string; x: number; z: number } | null>(null);
   useEffect(() => { const id = setInterval(() => { const p = GAME.player; let best: typeof near = null, bd = 4.5; for (const t of TRANSPORT_STOPS) { const d = Math.hypot(p.x - t.x, p.z - t.z); if (d < bd) { bd = d; best = t; } } setNear(best); }, 180); return () => clearInterval(id); }, []);
@@ -382,16 +398,17 @@ function TransportVehicles() {
     if (!r.ok) { GAME.notice = data.error || 'Transport unavailable.'; return; }
     GAME.notice = `${kind === 'taxi' ? '🚕 Taxi' : '🚲 Bike'} taking you to ${d.name}`;
     setOpen(null);
-    setTimeout(() => { GAME.tp = { x: d.x, z: d.z }; GAME.notice = `📍 Arrived in ${d.name}`; }, 850);
+    setTimeout(() => { GAME.tp = transitDrop(d.x, d.z); GAME.notice = `📍 Arrived in ${d.name}`; }, 850);
   };
   return <>
     {TRANSPORT_STOPS.map((t, i) => <group key={i} position={[t.x, 0, t.z]} rotation-y={t.r} onClick={e => { e.stopPropagation(); setOpen({ kind: t.kind, label: t.label }); }}>
-      {t.kind === 'taxi' ? <group><CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" /><mesh position={[-.05, 1.38, 0]}><boxGeometry args={[.9, .18, .8]} /><meshStandardMaterial color="#111" /></mesh></group> : <group scale={[.65,.65,.65]}><mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh><mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh></group>}
+      <mesh position={[0, .015, 0]} rotation-x={-Math.PI / 2}><planeGeometry args={[t.kind === 'taxi' ? 5.4 : 2.6, t.kind === 'taxi' ? 2.8 : 1.8]} /><meshStandardMaterial color="#3b4a43" roughness={1} /></mesh>
+      {t.kind === 'taxi' ? <group><CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" /><mesh position={[0, 1.52, 0]}><boxGeometry args={[.9, .18, .58]} /><meshStandardMaterial color="#111" /></mesh><Html position={[0, 1.72, 0]} center><div className="taxiRoof">TAXI</div></Html></group> : <group scale={[.65,.65,.65]}><mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh><mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh></group>}
       <Html position={[0, 2.2, 0]} center><div className="transportTag">{t.kind === 'taxi' ? '🚕' : '🚲'} {t.label}</div></Html>
     </group>)}
     {open && near && <Html position={[near.x, 2.8, near.z]} center><div className="transportMenu"><b>{open.kind === 'taxi' ? '🚕 Choose destination' : '🚲 Hire bike'}</b>{open.kind === 'bike' && <small>Fast travel · low cost</small>}{DESTS.map(d => <button key={d.name} onClick={() => ride(open.kind, d)}>{d.name}</button>)}<button className="transportClose" onClick={() => setOpen(null)}>Cancel</button></div></Html>}
     {near && !open && <Html position={[near.x, 2.1, near.z]} center><div className="transportPrompt">{near.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire'}</div></Html>}
-    <RuntimeStyle css={`.transportTag,.transportPrompt{background:#09130fe8;color:#fff;border:1px solid #ffffff2a;border-radius:999px;padding:5px 9px;font:800 10px Inter,system-ui;white-space:nowrap;box-shadow:0 5px 14px #0006}.transportPrompt{background:#d99a42;color:#111}.transportMenu{width:170px;display:flex;flex-direction:column;gap:5px;padding:9px;background:#09130ff5;border:2px solid #111;border-radius:14px;box-shadow:0 12px 30px #0008}.transportMenu b{font-size:12px}.transportMenu small{color:#9fb5aa;font-size:9px}.transportMenu button{border:0;border-radius:8px;background:#18352a;color:#fff;padding:6px 7px;font-weight:800;font-size:10px;cursor:pointer}.transportMenu button:hover{background:#d99a42;color:#111}.transportMenu .transportClose{background:#4a2525}`} />
+    <RuntimeStyle css={`.taxiRoof{background:#111;color:#ffd23f;border-radius:5px;padding:2px 7px;font:900 9px Inter,system-ui;letter-spacing:.12em;border:1px solid #ffd23f88}.transportTag,.transportPrompt{background:#09130fe8;color:#fff;border:1px solid #ffffff2a;border-radius:999px;padding:5px 9px;font:800 10px Inter,system-ui;white-space:nowrap;box-shadow:0 5px 14px #0006}.transportPrompt{background:#d99a42;color:#111}.transportMenu{width:170px;display:flex;flex-direction:column;gap:5px;padding:9px;background:#09130ff5;border:2px solid #111;border-radius:14px;box-shadow:0 12px 30px #0008}.transportMenu b{font-size:12px}.transportMenu small{color:#9fb5aa;font-size:9px}.transportMenu button{border:0;border-radius:8px;background:#18352a;color:#fff;padding:6px 7px;font-weight:800;font-size:10px;cursor:pointer}.transportMenu button:hover{background:#d99a42;color:#111}.transportMenu .transportClose{background:#4a2525}`} />
   </>;
 }
 
@@ -824,6 +841,12 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
       for (const tc of TPOS) { // cars are solid
         const tx = Math.cos(tc.r), tz = -Math.sin(tc.r);
         for (const to of [-1.1, 1.1]) { const ax = tc.x + tx * to, az = tc.z + tz * to, dx = p.x - ax, dz = p.z - az, d = Math.hypot(dx, dz); if (d < 1.45 && d > 1e-4) { p.x = ax + dx / d * 1.45; p.z = az + dz / d * 1.45; } }
+      }
+      // Parked taxi/bike stands are solid too; prevent the player from walking through them.
+      for (const t of TRANSPORT_SOLIDS) {
+        const dx = p.x - t.x, dz = p.z - t.z, d = Math.hypot(dx, dz), min = t.r + BODY;
+        if (d < min && d > 1e-4) { p.x = t.x + dx / d * min; p.z = t.z + dz / d * min; }
+        else if (d <= 1e-4) p.z += min;
       }
       if (VEH.placed) { const fxw = Math.cos(VEH.r), fzw = -Math.sin(VEH.r); for (const o of CAR_OFFS) { const ax = VEH.x + fxw * o, az = VEH.z + fzw * o, ex = p.x - ax, ez = p.z - az, d = Math.hypot(ex, ez); if (d < 1.4 && d > 1e-4) { p.x = ax + ex / d * 1.4; p.z = az + ez / d * 1.4; } } } // your parked car is solid too
       p.x = THREE.MathUtils.clamp(p.x, -LIM, LIM); p.z = THREE.MathUtils.clamp(p.z, -LIM, LIM);

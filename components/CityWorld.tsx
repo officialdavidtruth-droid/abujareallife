@@ -786,15 +786,6 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     const dt = Math.min(dtRaw, .05), c = ctl.current, k = c.keys, p = P.current, oc = controls.current;
     if (!oc) return;
 
-    // Camera look is driven by the dedicated right-side look pad on touch devices.
-    // This keeps movement and camera input completely separate, so walking never
-    // accidentally spins the camera.
-    if (c.look.x || c.look.y) {
-      oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - c.look.x * 0.006);
-      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + c.look.y * 0.004, .34, Math.PI / 2.05));
-      c.look = { x: 0, y: 0 };
-    }
-
     /* ── time of day (follows the in-game clock) ── */
     const hrs = ((((getMinute ? getMinute() : 12 * 60) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
     const day = sm(el, -.08, .3), n = 1 - day, dusk = Math.min(1, Math.max(0, 1 - Math.abs(el) / .28)) * .75;
@@ -808,6 +799,15 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
 
     /* ── camera basis / input ── */
     const cam = st.camera, t = oc.target as THREE.Vector3;
+    // Player-follow camera: the local player's head is the camera anchor.
+    // The view is intentionally first-person so every real user experiences Abuja from their own character's perspective.
+    const headY = VEH.drv ? 1.55 : 1.62 + p.y * .5;
+    const viewFx = Math.sin(p.r), viewFz = Math.cos(p.r);
+    if (c.look.x || c.look.y) {
+      oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - c.look.x * 0.006);
+      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + c.look.y * 0.004, .62, 1.48));
+      c.look = { x: 0, y: 0 };
+    }
     let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
     if (GAME.ride) {
       const ride = GAME.ride;
@@ -926,7 +926,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     c.jump = false;
     GAME.player.x = p.x; GAME.player.z = p.z;
     group.current.position.set(p.x, p.y, p.z); group.current.rotation.y = p.r;
-    group.current.visible = !VEH.drv;
+    group.current.visible = false;
     if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';
 
     /* ── car mesh, brake lights, headlights, floating label ── */
@@ -940,20 +940,24 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     OBS[0].x = p.x; OBS[0].z = p.z; OBS[0].on = !VEH.drv;
     OBS[1].x = VEH.x; OBS[1].z = VEH.z; OBS[1].on = VEH.placed;
 
-    /* ── camera ── */
-    const ox = t.x, oy = t.y, oz = t.z, ty = VEH.drv ? 1.3 : 1.5 + p.y * .5;
-    t.set(p.x, ty, p.z); cam.position.add(new THREE.Vector3(p.x - ox, ty - oy, p.z - oz));
-    if (VEH.drv) {
-      const bx = Math.cos(VEH.r), bz = -Math.sin(VEH.r);
-      if (snapCam) cam.position.set(VEH.x - bx * 10, 4.8, VEH.z - bz * 10);
-      else if (!drag.current.on && performance.now() - drag.current.end > 1800 && Math.abs(VEH.v) > 1.5) {
-        const d = THREE.MathUtils.clamp(Math.hypot(cam.position.x - VEH.x, cam.position.z - VEH.z), 6, 16), kk = 1 - Math.exp(-dt * 2.6);
-        cam.position.x += (VEH.x - bx * d - cam.position.x) * kk; cam.position.z += (VEH.z - bz * d - cam.position.z) * kk; cam.position.y += (4.8 - cam.position.y) * kk * .5;
-      }
+    /* ── first-person player-follow camera ── */
+    const targetY = VEH.drv ? 1.55 : 1.62 + p.y * .5;
+    // Preserve the player's current look direction while moving the camera anchor with them.
+    let lx = t.x - cam.position.x, lz = t.z - cam.position.z;
+    const ll = Math.hypot(lx, lz) || 1; lx /= ll; lz /= ll;
+    cam.position.set(p.x, targetY, p.z);
+    t.set(p.x + lx * .1, targetY, p.z + lz * .1);
+    oc.minDistance = .1; oc.maxDistance = .1;
+    if (c.recenter) {
+      c.recenter = false;
+      const yaw = VEH.drv ? VEH.r : p.r;
+      lx = VEH.drv ? Math.cos(yaw) : Math.sin(yaw);
+      lz = VEH.drv ? -Math.sin(yaw) : Math.cos(yaw);
+      t.set(p.x + lx * .1, targetY, p.z + lz * .1);
     }
-    const pc = cam as THREE.PerspectiveCamera, wantFov = VEH.drv ? 52 + Math.min(14, Math.abs(VEH.v) * .5) : 52;
-    if (Math.abs(fov.current - wantFov) > .05) { fov.current += (wantFov - fov.current) * Math.min(1, dt * 4); pc.fov = fov.current; pc.updateProjectionMatrix(); }
-    if (c.recenter) { c.recenter = false; const d = Math.hypot(cam.position.x - p.x, cam.position.z - p.z), r = VEH.drv ? VEH.r : p.r, bx = VEH.drv ? Math.cos(r) : Math.sin(r), bz = VEH.drv ? -Math.sin(r) : Math.cos(r); cam.position.set(p.x - bx * d, cam.position.y, p.z - bz * d); }
+    oc.update();
+    cam.position.set(p.x, targetY, p.z);
+    cam.lookAt(t);
     sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
 
     { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
@@ -1000,7 +1004,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
         <Html position={[0, 2.8, 0]} center><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
-      <OrbitControls ref={controls} makeDefault enableRotate={!touchDevice} enablePan={false} enableDamping dampingFactor={.12} rotateSpeed={.38} minDistance={4.5} maxDistance={18} minPolarAngle={.34} maxPolarAngle={Math.PI / 2.05} target={[START.x, 1.5, START.z]} />
+      <OrbitControls ref={controls} makeDefault enableRotate={true} enablePan={false} enableDamping={false} rotateSpeed={.38} minDistance={0.01} maxDistance={0.01} minPolarAngle={.62} maxPolarAngle={1.48} target={[START.x, 1.62, START.z + 6]} />
     </>
   );
 }
@@ -1157,7 +1161,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera behind you<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter view<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const b = await req.json().catch(() => ({})), st = await loadState(u.id); if (!st) return err('Create your character first.', 409);
   if (st.jailLeft) return err('You are in jail.', 403);
   const biz = insideBiz(st.save); if (!biz) return err('You are not inside a building.', 403);
-  const jobs = shiftJobs(biz), tasks = tasksFor(biz.type);
+  const jobs = shiftJobs(biz), currentIdx = Math.floor(Number(b.idx)), currentJob = Number.isFinite(currentIdx) && jobs[currentIdx] ? jobs[currentIdx] : null, tasks = tasksFor(biz.type, currentJob?.title);
   const cur = SHIFT.exec(st.save.questId || ''), mine = cur && cur[1] === biz.id ? { job: jobs[+cur[2]], task: tasks.find(t => t.id === cur[3]), idx: +cur[2] } : null;
 
   if (b.action === 'status') { // lets the room restore your timer after a refresh

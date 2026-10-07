@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Human from './Human';
 import { CITY } from '../lib/cityData';
-import type { Look } from '../lib/characterModels';
+import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
 import { NET, useCityNet } from '../lib/cityNet';
 import { JAIL_CELL_POS } from '../lib/profile';
@@ -391,27 +391,82 @@ function transitDrop(x: number, z: number) {
 }
 function TransportVehicles() {
   const kit = useMemo(carKit, []), [open, setOpen] = useState<{ kind: 'taxi' | 'bike'; label: string } | null>(null), [near, setNear] = useState<{ kind: 'taxi' | 'bike'; label: string; x: number; z: number } | null>(null);
-  useEffect(() => { const id = setInterval(() => { const p = GAME.player; let best: typeof near = null, bd = 4.5; for (const t of TRANSPORT_STOPS) { const d = Math.hypot(p.x - t.x, p.z - t.z); if (d < bd) { bd = d; best = t; } } setNear(best); }, 180); return () => clearInterval(id); }, []);
+  const [rideVersion, setRideVersion] = useState(0);
+  const activeRef = useRef<THREE.Group | null>(null);
+  useEffect(() => { const id = setInterval(() => { const p = GAME.player; let best: typeof near = null, bd = 4.5; if (!GAME.ride) { for (const t of TRANSPORT_STOPS) { const d = Math.hypot(p.x - t.x, p.z - t.z); if (d < bd) { bd = d; best = t; } } } setNear(best); }, 180); return () => clearInterval(id); }, []);
+
+  useFrame((_, dtRaw) => {
+    const ride = GAME.ride;
+    const g = activeRef.current;
+    if (!ride || !g) { if (g) g.visible = false; return; }
+    g.visible = true;
+    const pts = ride.path;
+    const target = pts[Math.min(ride.i, pts.length - 1)] || [ride.x, ride.z];
+    const dx = target[0] - ride.x, dz = target[1] - ride.z, d = Math.hypot(dx, dz), dt = Math.min(dtRaw, .05);
+    if (d < .7) {
+      if (ride.i < pts.length - 1) ride.i++;
+      else {
+        const drop = transitDrop(target[0], target[1]);
+        GAME.ride = null;
+        GAME.player.x = drop.x; GAME.player.z = drop.z;
+        GAME.tp = { x: drop.x, z: drop.z };
+        GAME.notice = `📍 Arrived at ${ride.name}`;
+        setRideVersion(v => v + 1);
+        return;
+      }
+    } else {
+      const step = Math.min(d, ride.speed * dt);
+      ride.r = Math.atan2(-dx, dz);
+      ride.x += dx / d * step; ride.z += dz / d * step;
+    }
+    g.position.set(ride.x, 0, ride.z); g.rotation.y = ride.r;
+    GAME.player.x = ride.x; GAME.player.z = ride.z;
+  });
+
   const ride = async (kind: 'taxi' | 'bike', d: { name: string; x: number; z: number }) => {
     const r = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) { GAME.notice = data.error || 'Transport unavailable.'; return; }
-    GAME.notice = `${kind === 'taxi' ? '🚕 Taxi' : '🚲 Bike'} taking you to ${d.name}`;
-    setOpen(null);
-    setTimeout(() => { GAME.tp = transitDrop(d.x, d.z); GAME.notice = `📍 Arrived in ${d.name}`; }, 850);
+    const start = GAME.player;
+    const startPoint: [number, number] = [start.x, start.z];
+    const goal = transitDrop(d.x, d.z);
+    const planned = findPath(BL, startPoint, [goal.x, goal.z]);
+    const path = planned.length ? planned : [[goal.x, goal.z] as [number, number]];
+    GAME.ride = { kind, x: start.x, z: start.z, r: 0, name: d.name, path, i: 0, speed: kind === 'taxi' ? 11 : 8 };
+    GAME.notice = `${kind === 'taxi' ? '🚕 Taxi driver' : '🚲 Bike driver'} is taking you to ${d.name}`;
+    setOpen(null); setRideVersion(v => v + 1);
   };
+  void rideVersion;
   return <>
-    {TRANSPORT_STOPS.map((t, i) => <group key={i} position={[t.x, 0, t.z]} rotation-y={t.r} onClick={e => { e.stopPropagation(); setOpen({ kind: t.kind, label: t.label }); }}>
+    {TRANSPORT_STOPS.map((t, i) => <group key={i} position={[t.x, 0, t.z]} rotation-y={t.r} onClick={e => { e.stopPropagation(); if (!GAME.ride) setOpen({ kind: t.kind, label: t.label }); }}>
       <mesh position={[0, .015, 0]} rotation-x={-Math.PI / 2}><planeGeometry args={[t.kind === 'taxi' ? 5.4 : 2.6, t.kind === 'taxi' ? 2.8 : 1.8]} /><meshStandardMaterial color="#3b4a43" roughness={1} /></mesh>
-      {t.kind === 'taxi' ? <group><CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" /><mesh position={[0, 1.52, 0]}><boxGeometry args={[.9, .18, .58]} /><meshStandardMaterial color="#111" /></mesh><Html position={[0, 1.72, 0]} center><div className="taxiRoof">TAXI</div></Html></group> : <group scale={[.65,.65,.65]}><mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh><mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,.0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh></group>}
+      {t.kind === 'taxi' ? <group><CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" /><mesh position={[0, 1.52, 0]}><boxGeometry args={[.9, .18, .58]} /><meshStandardMaterial color="#111" /></mesh><Html position={[0, 1.72, 0]} center><div className="taxiRoof">TAXI</div></Html></group> : <group scale={[.65,.65,.65]}><mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh><mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh><mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh></group>}
       <Html position={[0, 2.2, 0]} center><div className="transportTag">{t.kind === 'taxi' ? '🚕' : '🚲'} {t.label}</div></Html>
     </group>)}
-    {open && near && <Html position={[near.x, 2.8, near.z]} center><div className="transportMenu"><b>{open.kind === 'taxi' ? '🚕 Choose destination' : '🚲 Hire bike'}</b>{open.kind === 'bike' && <small>Fast travel · low cost</small>}{DESTS.map(d => <button key={d.name} onClick={() => ride(open.kind, d)}>{d.name}</button>)}<button className="transportClose" onClick={() => setOpen(null)}>Cancel</button></div></Html>}
-    {near && !open && <Html position={[near.x, 2.1, near.z]} center><div className="transportPrompt">{near.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire'}</div></Html>}
+    <group ref={activeRef} visible={false}>
+      {GAME.ride?.kind === 'taxi' ? <group>
+        <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" />
+        <group position={[0, .22, .35]} scale={.68}>
+          <Human look={{ ...DEFAULT_LOOK, name: 'Taxi Driver', outfit: '#d99a42' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} />
+        </group>
+        <mesh position={[0, 1.52, 0]}><boxGeometry args={[.9, .18, .58]} /><meshStandardMaterial color="#111" /></mesh>
+        <Html position={[0, 1.72, 0]} center><div className="taxiRoof">TAXI</div></Html>
+      </group> : <group scale={[.82,.82,.82]}>
+        <mesh position={[0,.75,0]}><boxGeometry args={[1.25,.22,.42]} /><meshStandardMaterial color="#2d8f62" /></mesh>
+        <mesh position={[.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh>
+        <mesh position={[-.52,1.05,0]}><cylinderGeometry args={[.09,.09,.55,10]} /><meshStandardMaterial color="#20252a" /></mesh>
+        <mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh>
+        <mesh rotation-z={Math.PI/2} position={[0,.5,0]}><torusGeometry args={[.48,.07,8,16]} /><meshStandardMaterial color="#111" /></mesh>
+        <group position={[0,.12,.12]} scale={.56}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>
+      </group>}
+      <Html position={[0, 2.05, 0]} center><div className="transportTag">{GAME.ride?.kind === 'taxi' ? '🚕 NPC TAXI DRIVER · AUTOMATIC' : '🚲 NPC BIKE DRIVER · AUTOMATIC'}</div></Html>
+    </group>
+    {open && near && <Html position={[near.x, 2.8, near.z]} center><div className="transportMenu"><b>{open.kind === 'taxi' ? '🚕 Choose destination' : '🚲 Bike taxi'}</b><small>NPC driver · automatic trip</small>{DESTS.map(d => <button key={d.name} onClick={() => ride(open.kind, d)}>{d.name}</button>)}<button className="transportClose" onClick={() => setOpen(null)}>Cancel</button></div></Html>}
+    {near && !open && !GAME.ride && <Html position={[near.x, 2.1, near.z]} center><div className="transportPrompt">{near.kind === 'taxi' ? '🚕 Tap to ride' : '🚲 Tap to hire'}</div></Html>}
+    {GAME.ride && <Html position={[GAME.ride.x, 2.25, GAME.ride.z]} center><div className="transportPrompt">{GAME.ride.kind === 'taxi' ? '🚕 Automatic taxi ride' : '🚲 Automatic bike ride'}</div></Html>}
     <RuntimeStyle css={`.taxiRoof{background:#111;color:#ffd23f;border-radius:5px;padding:2px 7px;font:900 9px Inter,system-ui;letter-spacing:.12em;border:1px solid #ffd23f88}.transportTag,.transportPrompt{background:#09130fe8;color:#fff;border:1px solid #ffffff2a;border-radius:999px;padding:5px 9px;font:800 10px Inter,system-ui;white-space:nowrap;box-shadow:0 5px 14px #0006}.transportPrompt{background:#d99a42;color:#111}.transportMenu{width:170px;display:flex;flex-direction:column;gap:5px;padding:9px;background:#09130ff5;border:2px solid #111;border-radius:14px;box-shadow:0 12px 30px #0008}.transportMenu b{font-size:12px}.transportMenu small{color:#9fb5aa;font-size:9px}.transportMenu button{border:0;border-radius:8px;background:#18352a;color:#fff;padding:6px 7px;font-weight:800;font-size:10px;cursor:pointer}.transportMenu button:hover{background:#d99a42;color:#111}.transportMenu .transportClose{background:#4a2525}`} />
   </>;
 }
-
 /* ───────────── roadside advertising billboards ───────────── */
 const BILLBOARDS = [
   { x: -11, z: 8, r: 0, title: 'ABUJA REAL LIFE', sub: 'Your city. Your story.' },
@@ -689,7 +744,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16 };
-export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z } }; // set by the game layer; while true the player is locked inside the cell
+export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z }, ride: null as null | { kind: 'taxi' | 'bike'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const SKY = { day: new THREE.Color('#8fc3ea'), dusk: new THREE.Color('#ee9a68'), night: new THREE.Color('#060b19'), fogDay: new THREE.Color('#c9dff0'), fogDusk: new THREE.Color('#e3a888'), fogNight: new THREE.Color('#0a1226'), sun: new THREE.Color('#fff3e0'), sunLow: new THREE.Color('#ffb070'), moon: new THREE.Color('#8fa6e8') };
@@ -754,6 +809,17 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick }:
     /* ── camera basis / input ── */
     const cam = st.camera, t = oc.target as THREE.Vector3;
     let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
+    if (GAME.ride) {
+      const ride = GAME.ride;
+      p.x = ride.x; p.z = ride.z; p.y = 0; p.vy = 0; moving.current = false; running.current = false;
+      group.current.visible = false;
+      const lookDist = 8, rx = Math.cos(ride.r), rz = -Math.sin(ride.r);
+      oc.target.set(ride.x, 1.2, ride.z);
+      cam.position.set(ride.x - rx * lookDist, 4.6, ride.z - rz * lookDist);
+      GAME.player.x = ride.x; GAME.player.z = ride.z;
+      if (c.interact) c.interact = false;
+      return;
+    } else { group.current.visible = true; }
     if (GAME.nav && (!nav.current || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
       const pts = findPath(BL, [p.x, p.z], [GAME.nav.x, GAME.nav.z]);
       nav.current = { key: `${GAME.nav.x}:${GAME.nav.z}`, points: pts.length ? pts : [[GAME.nav.x, GAME.nav.z]], i: 0 };

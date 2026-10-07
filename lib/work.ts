@@ -18,7 +18,21 @@ const GROUP_OF: Record<string, string> = {
   Supermarket: 'shop', Market: 'shop', Pharmacy: 'shop', 'Petrol Station': 'shop', 'Car Dealer': 'shop', Mechanic: 'shop',
   Hospital: 'care', Salon: 'care', Barber: 'care', Gym: 'care', School: 'care', Cinema: 'care', 'Police Station': 'station', Jail: 'station', Airport: 'travel', 'Rail Station': 'travel',
 };
-export const tasksFor = (type: string): Task[] => GROUPS[GROUP_OF[type] || 'shop'];
+export const tasksFor = (type: string, title?: string): Task[] => {
+  if (title === 'Taxi Driver') return [
+    { id: 'pickup', label: 'Pick up a passenger and complete a city ride', mins: 45 },
+    { id: 'dropoff', label: 'Complete a passenger drop-off', mins: 48 },
+    { id: 'airport', label: 'Complete an airport passenger run', mins: 52 },
+    { id: 'rush', label: 'Handle the evening taxi rush', mins: 55 },
+  ];
+  if (title === 'Bike Taxi Driver') return [
+    { id: 'pickup', label: 'Pick up a passenger and complete a bike ride', mins: 45 },
+    { id: 'dropoff', label: 'Complete a passenger drop-off', mins: 48 },
+    { id: 'short', label: 'Complete three short city trips', mins: 50 },
+    { id: 'rush', label: 'Handle the bike taxi rush', mins: 55 },
+  ];
+  return GROUPS[GROUP_OF[type] || 'shop'];
+};
 export const isSenior = (j: Job) => j.pay >= 200_000; // senior roles need rank 2
 export const shiftMins = (job: Job, t: Task) => Math.min(60, t.mins + (isSenior(job) ? 5 : 0)); // always 45–60
 export const fmtClock = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;

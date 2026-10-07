@@ -53,7 +53,7 @@ function GameMap({ onClose, onSelect }: { onClose: () => void; onSelect: (b: Bus
   const points = CITY.businesses.filter(b => Math.abs(b.x) <= bounds && Math.abs(b.z) <= bounds);
   const select = (b: Business) => { setSelected(b); onSelect(b); };
   const navigate = (b: Business) => {
-    const build = CITY.buildings.find(x => x.business.id === b.id);
+    const build = CITY.buildings.find(x => x.business?.id === b.id);
     const pad = 5.2;
     let tx = b.x, tz = b.z;
     if (build) {

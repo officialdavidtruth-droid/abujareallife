@@ -1,0 +1,2 @@
+-- Home layouts are stored in InventoryItem.metadata under itemKey=home_layout.
+-- No schema change is required because InventoryItem already supports JSON metadata.

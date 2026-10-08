@@ -24,6 +24,7 @@ import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
 import { findPath, blocked, inside, HARD, type Blk, type Box, type P, setEastLimit, setSouthLimit } from '../lib/collision';
 import { USES } from '../lib/pantry';
+import { itemById } from '../lib/catalog';
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
 type Pose = 'stand' | 'sit' | 'sleep';
@@ -133,14 +134,27 @@ const WALLS: Blk[] = [{ id: 'wall', b: [6.1, 6.3, -4.6, 1.0] }, { id: 'wall', b:
 // Every solid footprint in the flat. Walking is planned around these (see lib/collision.ts) and re-checked every frame.
 // What your home has: rooms and luxury items bought under Menu > Home upgrades (saved on the server, see /api/home).
 const HOME = { own: new Set<string>() };
+type HomeLayout = Record<string, { x: number; z: number; r: number }>;
+const HOME_LAYOUT: HomeLayout = {};
+const HOME_OWNED: { id:string; itemKey:string; name:string; e:string; cat:string; cost:number; condition:number; x:number; z:number; r:number; fp?:[number,number] }[] = [];
+const HOME_SOLD = new Set<string>();
+const EDITABLE_HOME_IDS = new Set(OBJ.map(o => o.id).concat(DECOR.map(d => d.id)).filter(id => id !== 'door'));
+const homeT = (id: string) => HOME_LAYOUT[id] || { x: 0, z: 0, r: 0 };
+const movedP = (p: P, id: string): P => { const t = homeT(id); return [p[0] + t.x, p[1] + t.z]; };
+const movedObj = (o: Obj): Obj => { const t = homeT(o.id); const p = movedP(o.p, o.id); const spot = movedP(o.spot, o.id); const appr = o.appr ? movedP(o.appr, o.id) : undefined; const boxes = (o.boxes || []).map(b => [b[0] + t.x, b[1] + t.x, b[2] + t.z, b[3] + t.z] as Box); return { ...o, p, rot: o.rot + t.r, spot, appr, boxes }; };
+const movedDecor = (d: typeof DECOR[number]) => { const t = homeT(d.id); return { ...d, p: movedP(d.p, d.id), rot: d.rot + t.r, boxes: d.boxes.map(b => [b[0] + t.x, b[1] + t.x, b[2] + t.z, b[3] + t.z] as Box) }; };
+const movedOwned = (i: typeof HOME_OWNED[number]) => { const t=homeT(i.id); return { ...i, x:i.x+t.x, z:i.z+t.z, r:i.r+t.r }; };
+const ownedBox = (i: typeof HOME_OWNED[number]): Box => { const m=movedOwned(i), w=i.fp?.[0]||.8, d=i.fp?.[1]||.6; return [m.x-w/2,m.x+w/2,m.z-d/2,m.z+d/2]; };
+const resetHomeLayout = () => { for (const k of Object.keys(HOME_LAYOUT)) delete HOME_LAYOUT[k]; };
+
 const southOn = () => HOME.own.has('south_wing'); // the south wing extension (gym, cinema and office go in it)
 const wingOn = () => HOME.own.has('kids_room'); // the kids' wing (beds, desk, toy box, dividing wall) only exists once you build it
 const WING_IDS = new Set(['toybox', 'kdesk', 'kbedA', 'kbedB', 'nstand', 'kwar']);
-const BL_BASE: Blk[] = [...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
+const BL_BASE: Blk[] = [...HOME_OWNED.flatMap(o => [{ id:o.id, b:ownedBox(o) }]), ...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
 let blKey = '\0', blList: Blk[] = [];
 const BL = (): Blk[] => {
-  const key = (wingOn() ? 'w' : '') + (southOn() ? 's' : '') + [...LUX_IDS].filter(hasObj).join(',');
-  if (key !== blKey) { blKey = key; blList = [...BL_BASE, ...(southOn() ? SWALLS : [])].filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && hasObj(k.id)); }
+  const key = (wingOn() ? 'w' : '') + (southOn() ? 's' : '') + [...LUX_IDS].filter(hasObj).join(',') + JSON.stringify(HOME_LAYOUT);
+  if (key !== blKey) { blKey = key; blList = [...HOME_OWNED.flatMap(o => [{ id:o.id, b:ownedBox(o) }]), ...OBJ.flatMap(o => (movedObj(o).boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => movedDecor(d).boxes.map(b => ({ id: d.id, b }))), ...WALLS, ...(southOn() ? SWALLS : [])].filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && hasObj(k.id)); }
   return blList;
 };
 // Apply what the server says you own: build/remove the wing, move the family in, show the luxury items.
@@ -153,7 +167,7 @@ function applyHome(ids: string[]) {
 }
 const dist = (a: P, b: P) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const W = (p: P, own?: string): Task => ({ t: 'walk', x: p[0], z: p[1], own });
-const within = (p: P) => OBJ.find(o => o.appr && o.boxes?.some(b => inside(p, b)));
+const within = (p: P) => OBJ.map(movedObj).find(o => o.appr && o.boxes?.some(b => inside(p, b)));
 // Route that first steps OUT of whatever you are sitting/standing in, walks around furniture, then steps INTO the target seat/shower.
 function route(from: P, to: P, tgt?: Obj): Task[] {
   const so = within(from), out: Task[] = []; let a = from;
@@ -164,7 +178,7 @@ function route(from: P, to: P, tgt?: Obj): Task[] {
 }
 // Lets the React shell react to things that happen inside the sim (leave the house, change clothes).
 const H: { door?: () => void; outfit?: () => void } = {};
-const find = (id: string) => OBJ.find(o => o.id === id)!;
+const find = (id: string) => movedObj(OBJ.find(o => o.id === id)!);
 
 const NEW = () => ({ pos: [0, .5] as [number, number], rot: 0, pose: 'stand' as Pose, needs: { hunger: 78, energy: 72, hygiene: 70, bladder: 70, fun: 55, social: 50 } as Record<N, number>,
   min: worldMinute(), cash: 0, meals: 0, supplies: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
@@ -410,7 +424,7 @@ const econ = async (kind: 'start' | 'finish', a: Act) => {
 const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min, bonds: F.bonds(), family: F.on } }) }).catch(() => {});
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
-const snap = () => ({ needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
+const snap = () => ({ homeOwned: [...HOME_OWNED], homeSold: [...HOME_SOLD], needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
   cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on, wing: wingOn(), south: southOn(), meals: S.meals, supplies: S.supplies, home: [...HOME.own] });
 type UI = ReturnType<typeof snap>;
 
@@ -810,7 +824,15 @@ function Lights() {
     <pointLight ref={lamp} position={[0, 3.2, 0]} color="#ffd9a0" /><pointLight ref={lamp2} position={[8.9, 3.2, 0]} color="#ffe3b8" /><pointLight ref={lamp3} position={[0, 3.2, 6.9]} color="#ffe0b0" /></>;
 }
 
-function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void; look: Look }) {
+function OwnedFurniture({ item, editing, onSelect }: { item: typeof HOME_OWNED[number]; editing: boolean; onSelect: (id:string)=>void }) {
+  const m=movedOwned(item), w=item.fp?.[0]||.8, d=item.fp?.[1]||.6;
+  return <group position={[m.x,0,m.z]} rotation-y={m.r} onClick={e=>{if(e.delta>4)return;e.stopPropagation();if(editing)onSelect(item.id);}}>
+    <B p={[0,.16,0]} s={[w,.28,d]} c={item.cat==='tech'?'#252a32':item.cat==='decor'?'#496d42':'#7b5a3b'} r={.05}/>
+    <Html position={[0,.45,0]} center zIndexRange={[12,5]} style={{pointerEvents:'none'}}><div style={{fontSize:Math.min(34,18+Math.max(w,d)*4)}}>{item.e}</div></Html>
+  </group>;
+}
+
+function World({ ui, sel, setSel, look, editingHome, setHomeSel }: { ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void; look: Look; editingHome: boolean; setHomeSel: (id: string | null) => void }) {
   const [hov, setHov] = useState<string | null>(null), floorTex = useMemo(() => woodTex(8.8, 4.6), []), flooks = useMemo(() => famLooks(look), [look.gender, look.skin]); // eslint-disable-line react-hooks/exhaustive-deps
   useFrame((_, dt) => tick(Math.min(dt, .1)));
   return <>
@@ -822,10 +844,11 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
     {ui.south && <SouthWing ui={ui} />}
     {ui.wing ? <Wing /> : <EastWall />}
     <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
-    {OBJ.filter(o => (!GATE[o.id] || ui.home.includes(GATE[o.id])) && (ui.famOn || o.acts.some(a => !a.all))).map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
-      onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(ui.famOn ? o : { ...o, acts: o.acts.filter(a => !a.all) }); }}
-      onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(o.id); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(h => (h === o.id ? null : h)); }}>{VIS[o.id](ui)}</group>)}
-    {DECOR.filter(d => ui.wing || !WING_IDS.has(d.id)).map(d => <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot}>{VIS[d.vis](ui)}</group>)}
+    {OBJ.filter(o => !ui.homeSold.includes(o.id) && (!GATE[o.id] || ui.home.includes(GATE[o.id])) && (ui.famOn || o.acts.some(a => !a.all))).map(raw => { const o = movedObj(raw); return <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
+      onClick={e => { if (e.delta > 4) return; e.stopPropagation(); if (editingHome && EDITABLE_HOME_IDS.has(o.id)) { setHomeSel(o.id); setSel(null); return; } setSel(ui.famOn ? o : { ...o, acts: o.acts.filter(a => !a.all) }); }}
+      onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(o.id); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(h => (h === o.id ? null : h)); }}>{VIS[o.id](ui)}</group>; })}
+    {DECOR.filter(d => !ui.homeSold.includes(d.id) && (ui.wing || !WING_IDS.has(d.id))).map(raw => { const d = movedDecor(raw); return <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot} onClick={e => { if (e.delta > 4) return; e.stopPropagation(); if (editingHome && EDITABLE_HOME_IDS.has(d.id)) setHomeSel(d.id); }}><group>{VIS[d.vis](ui)}</group></group>; })}
+    {ui.homeOwned.map(i => <OwnedFurniture key={i.id} item={i} editing={editingHome} onSelect={setHomeSel} />)}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]}><div className="pie"><b>{sel.name}</b>
@@ -836,11 +859,11 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
 
 
 export default function Sim() {
-  const [famModal, setFamModal] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
+  const [famModal, setFamModal] = useState(false), [homeEdit, setHomeEdit] = useState(false), [homeSel, setHomeSel] = useState<string | null>(null), [homeSaving, setHomeSaving] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null), [homeItems, setHomeItems] = useState<typeof HOME_OWNED[number][]>([]), [homePlaceable, setHomePlaceable] = useState<{itemKey:string;name:string;e:string;cat:string;cost:number;quantity:number;fp?:[number,number]}[]>([]);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); loadPantry(); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); loadPantry(); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } try { const l = await fetch('/api/home/layout', { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture',{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {
@@ -867,7 +890,7 @@ export default function Sim() {
     {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} onDenied={() => setInside(null)} username={user.username} getMinute={worldMinute} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const ex = buildingExitPoint(inside); if (ex) GAME.tp = ex; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
-    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
+    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} /></Canvas>}
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
@@ -878,7 +901,7 @@ export default function Sim() {
       <div className="topMore"><div className="pill">{worldCalendar(ui.min).season.e} {worldCalendar(ui.min).season.label} · {weatherAt().e} {weatherAt().label}</div>
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
-        {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>}
+        {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !outside && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
@@ -890,12 +913,17 @@ export default function Sim() {
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
     {!outside && <div className="hint">Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom</div>}
+    {homeEdit && !outside && user && look && <div className="homeEditor">
+      <div><b>🏠 HOME DESIGN</b><span>Move furniture and decor anywhere inside your house.</span></div>
+      {homeSel ? <><strong>{HOME_OWNED.find(i=>i.id===homeSel)?.name || (OBJ.find(o => o.id === homeSel) || DECOR.find(d => d.id === homeSel))?.name || homeSel}</strong><div className="homeBtns"><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z - .25 }; blKey = '\0'; setUi(snap()); }}>↑</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x - .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>←</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x + .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>→</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z + .25 }; blKey = '\0'; setUi(snap()); }}>↓</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r - Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↺</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r + Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↻</button></div><div className="homeSelectedMeta">{(() => { const owned=HOME_OWNED.find(i=>i.id===homeSel); const name=owned?.name || (OBJ.find(o=>o.id===homeSel)||DECOR.find(d=>d.id===homeSel))?.name || homeSel; const price=owned?Math.round(owned.cost*.62*Math.max(.2,owned.condition/100)):({bed:260000,wardrobe:190000,fridge:780000,dining:220000,shower:90000,toilet:80000,tv:650000,desk:90000,mat:25000,radio:38000,shelf:85000,plant:5500,gen:190000,toybox:35000,kbedA:120000,kbedB:120000,nstand:38000,kwar:190000,gbench:140000,gbag:90000,cinema:950000,odesk:480000,oshelf:380000} as Record<string,number>)[homeSel]||0; return <span>Estimated resale: <b>{naira(price)}</b></span>; })()}<button className="sellHome" onClick={async()=>{ if(!homeSel)return; const owned=HOME_OWNED.some(i=>i.id===homeSel); if(!confirm('Sell this item from your house?'))return; const r=await fetch('/api/home/furniture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'sell',kind:owned?'owned':'static',id:homeSel})}); const d=await r.json().catch(()=>({})); if(r.ok){ HOME_OWNED.splice(0,HOME_OWNED.length,...HOME_OWNED.filter(i=>i.id!==homeSel)); blKey='\0'; HOME_SOLD.add(homeSel); delete HOME_LAYOUT[homeSel]; setHomeItems([...HOME_OWNED]); setHomeSel(null); setUi(snap()); say(`Sold for ${naira(d.gained||0)}.`); } else say(d.error||'Could not sell item.'); }}>💰 Sell item</button></div></> : <span>Tap a piece of furniture or decor.</span>}
+      <div className="homeInventory"><b>🛒 Your furniture inventory</b><div className="homeInventoryList">{homePlaceable.slice(0,12).map(i=><button key={i.itemKey} onClick={async()=>{const r=await fetch('/api/home/furniture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'place',itemKey:i.itemKey})});const d=await r.json().catch(()=>({}));if(r.ok){HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[]));setHomeItems([...HOME_OWNED]);const f=await fetch('/api/home/furniture',{cache:'no-store'});if(f.ok){const x=await f.json();setHomePlaceable(x.placeable||[]);}setUi(snap());say(`${i.name} placed in your home.`);}else say(d.error||'Could not place item.');}}>{i.e} {i.name} <small>×{i.quantity}</small></button>)}</div></div><div className="homeEditorActions"><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT }) }); setHomeSaving(false); say(r.ok ? '🏠 Home layout saved.' : 'Could not save home layout.'); }}>{homeSaving ? 'Saving…' : 'Save layout'}</button></div>
+    </div>}
     <RuntimeStyle css={CSS} />
   </div>;
 }
 
 const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(circle at 40% 20%,#1c4a39,#07100d)}.card,.box{width:min(380px,92vw);background:#0c1713f5;border:1px solid #ffffff2a;border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:10px}.card h1{margin:0;font-size:22px}.logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,#d99a42,#6f4721);display:grid;place-items:center;font-weight:900}.muted{color:#9fb5aa;font-size:12px;margin:0}.card label{font-size:11px;color:#9fb5aa;display:flex;flex-direction:column;gap:6px}.card input,.box input,.vb input{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:10px;color:#fff;font-size:14px}.tabs{display:flex;gap:6px}.tabs button,.row button{flex:1;background:#14261f;border:1px solid #2a4337;color:#cfe;border-radius:9px;padding:9px;cursor:pointer}.tabs .on{background:#1d7654}.pri{background:#d99a42;color:#1a1208;border:0;border-radius:11px;padding:12px;font-weight:800;cursor:pointer}.pri:disabled{opacity:.4}.bad{color:#ff8b8b;font-size:12px;margin:0}.vb{display:flex;flex-direction:column;gap:8px}.vb p,.box p{font-size:12px;margin:0}.row{display:flex;gap:6px}.modal{position:fixed;inset:0;z-index:55;background:#0008;display:grid;place-items:center}.box h3{margin:0}.box{color:#fff}
-`+`.sim{position:fixed;inset:0;font-family:Inter,system-ui,sans-serif;color:#fff;user-select:none}.sim canvas{display:block}
+`+`.homeEditor{position:absolute;z-index:35;left:50%;top:62px;transform:translateX(-50%);width:min(430px,calc(100vw - 24px));background:#10201af2;border:1px solid #f0b94a66;border-radius:16px;padding:11px 12px;color:#fff;backdrop-filter:blur(10px);display:flex;flex-direction:column;gap:8px}.homeEditor>div:first-child{display:flex;flex-direction:column;gap:2px}.homeEditor span{font-size:10px;color:#9fb5aa}.homeSelectedMeta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:10px;color:#b9c9c0}.homeSelectedMeta>span{flex:1}.sellHome{background:#8e3434!important;border-color:#b95050!important;color:#fff!important}.homeInventory{border-top:1px solid #ffffff14;padding-top:8px;font-size:10px}.homeInventoryList{display:flex;gap:5px;overflow-x:auto;padding-top:5px}.homeInventoryList button{white-space:nowrap;background:#172b23;border:1px solid #2b493b;color:#fff;border-radius:8px;padding:7px 8px;font-size:9px}.homeInventoryList small{color:#9fb5aa}.homeBtns{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}.homeBtns button,.homeEditorActions button{background:#1b3329;border:1px solid #2f5143;color:#fff;border-radius:9px;padding:8px;font-weight:800}.homeEditorActions{display:flex;gap:6px}.homeEditorActions button{flex:1}.homeEditorActions .save{background:#d99a42;color:#17110a;border-color:#d99a42}.sim{position:fixed;inset:0;font-family:Inter,system-ui,sans-serif;color:#fff;user-select:none}.sim canvas{display:block}
 .top{position:absolute;z-index:30;top:10px;left:10px;right:10px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}.top>*{pointer-events:auto}
 .pill{background:#10201ad9;border:1px solid #ffffff2a;border-radius:999px;padding:7px 12px;font-size:12px;color:#fff;backdrop-filter:blur(8px);cursor:default}button.pill{cursor:pointer}
 .pill button{background:none;border:0;color:#9fb;font-size:11px;padding:0 6px;cursor:pointer}.pill button.on{color:#f0b94a;font-weight:800}.pill.on{background:#1d7654}.gold{color:#f3c56f;font-weight:800}

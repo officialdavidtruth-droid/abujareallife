@@ -404,6 +404,8 @@ model PlayerPosition {
   district  String   @default("Wuse")
   driving   Boolean  @default(false)
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([district, updatedAt])
 }
 

@@ -157,7 +157,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
           NET.msg = payload.t.slice(0, 140);
         })
         .on('broadcast', { event: 'rtc' }, ({ payload }) => {
-          if (cur !== c || payload?.to !== name || typeof payload?.u !== 'string') return;
+          if (cur !== c || (payload?.to !== name && payload?.to !== '*') || typeof payload?.u !== 'string') return;
           rtcSubs.current.forEach(f => f(payload as RtcMsg));
         })
         .on('broadcast', { event: 'chat' }, ({ payload }) => {

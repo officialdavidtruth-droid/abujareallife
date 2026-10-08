@@ -11,6 +11,12 @@ export const VOICE_MAX = 30;       // metres: silent / not connected beyond this
 export const VOICE_DROP = 40;      // links are only dropped past this (a little hysteresis, so walking at the edge does not flap)
 export const VOICE_REQ_RANGE = VOICE_MAX; // kept for older imports
 const MAX_LINKS = 6;
+/* ── Relay voice: the part that makes voice work on ANY network. ──
+   Direct WebRTC fails on most phone networks without a TURN server. So while a nearby player has no live direct link to you,
+   your voice is also sent as small compressed audio chunks through the same Supabase channel (only while you are actually speaking),
+   and played back with distance volume. Once a direct link goes live, the relay stops for that pair automatically. */
+const mu = (x: number) => { const s = x < 0 ? -1 : 1, y = s * Math.log(1 + 255 * Math.min(1, Math.abs(x))) / Math.log(256); return Math.round((y + 1) * 127.5); };
+const unmu = (b: number) => { const y = b / 127.5 - 1, s = y < 0 ? -1 : 1; return s * ((Math.pow(256, Math.abs(y)) - 1) / 255); };
 export type VoiceApi = ReturnType<typeof useCityVoice>;
 
 const cityDist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(p.x - NET.me.x, p.z - NET.me.z) : Infinity; };
@@ -37,8 +43,13 @@ export function useCityVoice(o: Opts) {
   const [micOn, setMicOnS] = useState(false), [msg, setMsg] = useState(''), [linked, setLinked] = useState(0);
   const op = useRef(o); op.current = o;
   const dist = (n: string) => (op.current.dist || cityDist)(n); // open city: world distance · inside a building: distance inside the room
-  const [live, setLive] = useState(0), lastFail = useRef(0);
-  const links = useRef(new Map<string, Link>()), building = useRef(new Set<string>()), early = useRef<Record<string, RTCIceCandidateInit[]>>({}), retry = useRef<Record<string, number>>({}), asked = useRef<Record<string, number>>({});
+  const [live, setLive] = useState(0), lastFail = useRef(0), [turn, setTurn] = useState<{ ok: boolean | null; provider: string; error: string }>({ ok: null, provider: '', error: '' }), [relayOn, setRelayOn] = useState(false);
+  useEffect(() => { // what does the SERVER say about the TURN setup? (the same check as opening /api/turn)
+    let dead = false;
+    fetch('/api/turn', { cache: 'no-store' }).then(async r => { const d = await r.json().catch(() => ({})); if (dead) return; if (!r.ok) setTurn({ ok: false, provider: '', error: d.error || `HTTP ${r.status}` }); else setTurn({ ok: !!d.relay, provider: d.provider || '', error: d.error || '' }); }).catch(() => { if (!dead) setTurn({ ok: false, provider: '', error: 'could not reach /api/turn' }); });
+    return () => { dead = true; };
+  }, []);
+  const links = useRef(new Map<string, Link>()), building = useRef(new Set<string>()), early = useRef<Record<string, RTCIceCandidateInit[]>>({}), retry = useRef<Record<string, number>>({}), asked = useRef<Record<string, number>>({}), relayNeed = useRef(false), proc = useRef<{ sp: ScriptProcessorNode; src: MediaStreamAudioSourceNode; z: GainNode } | null>(null), hang = useRef(0), relayPlay = useRef<Record<string, { next: number; g: GainNode }>>({});
   const stream = useRef<MediaStream | null>(null), micRef = useRef(false), ptt = useRef(false), stopLocal = useRef<() => void>(() => {}), ctx = useRef<AudioContext | null>(null);
   const note = (t: string) => { setMsg(t); setTimeout(() => setMsg(m => (m === t ? '' : m)), 6000); };
 
@@ -56,12 +67,31 @@ export function useCityVoice(o: Opts) {
     } catch { return () => {}; }
   };
 
+  const startRelay = () => {
+    if (proc.current || !stream.current) return;
+    const c = audioCtx(); if (!c || !c.createScriptProcessor) return;
+    try {
+      const src = c.createMediaStreamSource(stream.current), sp = c.createScriptProcessor(2048, 1, 1), z = c.createGain(); z.gain.value = 0;
+      let carry = 0; const out: number[] = [];
+      sp.onaudioprocess = e => {
+        if (!relayNeed.current || !(micRef.current || ptt.current)) { out.length = 0; return; }
+        const inp = e.inputBuffer.getChannelData(0), ratio = c.sampleRate / 16000, now = Date.now();
+        let peak = 0; for (let i = 0; i < inp.length; i++) peak = Math.max(peak, Math.abs(inp[i]));
+        if (peak > .02) hang.current = now + 450;
+        if (now > hang.current) { out.length = 0; carry = 0; return; } // silence: send nothing
+        for (; carry < inp.length; carry += ratio) { const i = Math.floor(carry), f = carry - i, a = inp[i], b = inp[Math.min(i + 1, inp.length - 1)]; out.push(mu(a + (b - a) * f)); }
+        carry -= inp.length;
+        if (out.length >= 3200) { const bytes = new Uint8Array(out.splice(0, out.length)); let s = ''; for (let i = 0; i < bytes.length; i += 4096) s += String.fromCharCode(...bytes.subarray(i, i + 4096)); op.current.signal('*', 'aud', { b: btoa(s) }); }
+      };
+      src.connect(sp); sp.connect(z); z.connect(c.destination); proc.current = { sp, src, z };
+    } catch { /* no relay on this browser: direct links still work */ }
+  };
   async function getMic() {
     if (stream.current) return true;
     if (!navigator.mediaDevices?.getUserMedia) { note('Voice needs a secure (https) page and a browser with microphone support.'); return false; }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
-      stream.current = s; syncTrack(); stopLocal.current = watch(s, op.current.me);
+      stream.current = s; syncTrack(); stopLocal.current = watch(s, op.current.me); startRelay();
       const t = s.getAudioTracks()[0]; links.current.forEach(L => L.pc.getSenders().forEach(x => { if (!x.track || x.track.kind === 'audio') x.replaceTrack(t).catch(() => {}); })); // start sending on links that already exist
       return true;
     } catch (e) { const n = (e as DOMException)?.name; note(n === 'NotFoundError' ? 'No microphone found on this device.' : 'Microphone blocked. Allow mic access for this site (lock icon in the address bar) and try again.'); return false; }
@@ -133,6 +163,21 @@ export function useCityVoice(o: Opts) {
       const L = links.current.get(u);
       if (L) { if (L.pc.remoteDescription) await L.pc.addIceCandidate(d).catch(() => {}); else L.ice.push(d); }
       else if (early.current[u]) early.current[u].push(d);
+    } else if (t === 'aud') {
+      if (typeof d?.b !== 'string' || d.b.length > 20000) return;
+      const L = links.current.get(u); if (L?.live) return; // a direct link already carries their voice
+      const dd = dist(u); if (dd > VOICE_MAX) return;
+      const c = audioCtx(); if (!c) return;
+      try {
+        const bin = atob(d.b), n = bin.length, f32 = new Float32Array(n); for (let i = 0; i < n; i++) f32[i] = unmu(bin.charCodeAt(i));
+        const buf = c.createBuffer(1, n, 16000); buf.copyToChannel(f32, 0);
+        let R = relayPlay.current[u]; if (!R) { R = { next: 0, g: c.createGain() }; R.g.connect(c.destination); relayPlay.current[u] = R; }
+        const cfg = getSettings(), v = dd <= VOICE_FULL ? 1 : 1 - (dd - VOICE_FULL) / (VOICE_MAX - VOICE_FULL);
+        R.g.gain.value = cfg.muteAll ? 0 : clamp(v * cfg.voice);
+        const s = c.createBufferSource(); s.buffer = buf; s.connect(R.g);
+        if (R.next < c.currentTime + .05 || R.next - c.currentTime > 1.2) R.next = c.currentTime + .18; // jitter buffer / catch up after a stall
+        s.start(R.next); R.next += buf.duration; NET.talk[u] = Date.now() + 500;
+      } catch { /* bad frame */ }
     } else if (t === 'want') { if (dist(u) <= VOICE_MAX && !links.current.has(u) && !building.current.has(u) && p.me.toLowerCase() < u.toLowerCase()) connect(u);
     } else if (t === 'bye') { drop(u); retry.current[u] = Date.now() + 2000; }
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -142,6 +187,7 @@ export function useCityVoice(o: Opts) {
     const id = setInterval(() => {
       const p = op.current, now = Date.now(), cfg = getSettings();
       const near = p.roster.filter(n => !p.isMuted(n)).map(n => [n, dist(n)] as const).filter(([, d]) => d <= VOICE_MAX).sort((a, b) => a[1] - b[1]).slice(0, MAX_LINKS);
+      relayNeed.current = near.some(([n]) => !links.current.get(n)?.live);
       for (const [n] of near) {
         if (links.current.has(n) || building.current.has(n) || now <= (retry.current[n] || 0)) continue;
         if (p.me.toLowerCase() < n.toLowerCase()) connect(n);
@@ -149,10 +195,10 @@ export function useCityVoice(o: Opts) {
       }
       links.current.forEach((L, n) => {
         const d = dist(n);
-        if (d > VOICE_DROP || !p.roster.includes(n) || p.isMuted(n) || (!L.live && now - L.since > 12_000)) { if (!L.live && d <= VOICE_DROP && now - lastFail.current > 60_000) { lastFail.current = now; note(`Couldn't connect voice with ${n}. Their network may be blocking direct calls — retrying.`); } drop(n, true); retry.current[n] = now + 8000; return; }
+        if (d > VOICE_DROP || !p.roster.includes(n) || p.isMuted(n) || (!L.live && now - L.since > 12_000)) { if (!L.live && d <= VOICE_DROP && now - lastFail.current > 60_000) { lastFail.current = now; note(`Couldn't connect voice with ${n}. Using relay voice instead (slightly lower quality).`); } drop(n, true); retry.current[n] = now + 8000; return; }
         if (L.audio) { const v = d <= VOICE_FULL ? 1 : 1 - (d - VOICE_FULL) / (VOICE_MAX - VOICE_FULL); L.audio.volume = clamp(v * cfg.voice); L.audio.muted = v < .02 || cfg.muteAll; } // iPhones ignore .volume, but obey .muted
       });
-      setLinked(links.current.size); setLive([...links.current.values()].filter(L => L.live).length);
+      setRelayOn(relayNeed.current && (micRef.current || ptt.current)); setLinked(links.current.size); setLive([...links.current.values()].filter(L => L.live).length);
     }, 1000);
     return () => clearInterval(id);
   }, [connect, drop]);
@@ -182,8 +228,9 @@ export function useCityVoice(o: Opts) {
 
   useEffect(() => () => {
     [...links.current.keys()].forEach(n => drop(n, true));
+    try { proc.current?.sp.disconnect(); proc.current?.src.disconnect(); proc.current?.z.disconnect(); } catch { /* gone */ } proc.current = null;
     stopLocal.current(); stream.current?.getTracks().forEach(t => t.stop()); stream.current = null; ctx.current?.close().catch(() => {}); ctx.current = null;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { micOn, toggleMic, setMic, msg, linked, live };
+  return { micOn, toggleMic, setMic, msg, linked, live, turn, relayOn };
 }

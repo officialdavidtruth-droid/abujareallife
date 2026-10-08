@@ -51,6 +51,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
         <button onClick={() => net.toggleMute(sel)}>{net.muted.includes(sel) ? '🔇' : '🔈'}<small>{net.muted.includes(sel) ? 'Unmute chat & voice' : 'Mute chat & voice'}</small></button>
       </div>
       <p>Voice is proximity chat: turn your 🎤 on and everyone near you hears you, fading with distance.</p>
+      <VoiceStatus voice={voice} />
     </div>}
 
     {open && <div className="cpChat">
@@ -59,6 +60,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
         <div className="cpTitle">🏙️ Abuja · City {net.room} · {net.status === 'online' ? `${count} players` : net.status}</div>
         {net.roster.length > 8 && <input className="cpFind" value={find} placeholder="Find a player…" onChange={e => setFind(e.target.value)} />}
         <div className="cpPeople">{net.roster.length === 0 ? <span>You're the only one here right now. Invite friends!</span> : people.length === 0 ? <span>No player matches “{find}”.</span> : people.map(n => <button key={n} onClick={() => { setSel(n); setOpen(false); }}>👤 {n} <small>{Math.round(dist(n))}m</small></button>)}</div>
+        <VoiceStatus voice={voice} />
         <div className="cpLog" ref={box}>{net.log.length === 0 ? <span className="cpEmpty">Say hi to the city 👋</span> : net.log.slice(-40).map(m => <div key={m.id}><b>{m.u}:</b> {m.t}</div>)}</div>
         <div className="cpIn"><input value={txt} maxLength={120} placeholder="Say something…" enterKeyHint="send" onChange={e => setTxt(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') go(); }} onKeyUp={e => e.stopPropagation()} /><button type="button" onClick={go}>Send</button></div>
       </>}
@@ -66,7 +68,17 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   </>;
 }
 
+function VoiceStatus({ voice }: { voice: VoiceApi }) {
+  const t = voice.turn;
+  return <div className="cpVs">
+    <b>🎙️ Voice status</b>
+    <div>{t.ok === null ? '⏳ Checking relay server…' : t.ok ? `✅ TURN relay detected${t.provider ? ' (' + t.provider + ')' : ''}` : `❌ No TURN relay detected${t.error ? ': ' + t.error : ''}${t.error.includes('no TURN variables') ? ' — add the variables in your host and REDEPLOY' : ''}`}</div>
+    <div>{voice.micOn ? '🎤 Mic on' : '🔇 Mic off'} · direct links {voice.live}/{voice.linked}{voice.relayOn ? ' · 📡 relay audio active' : ''}</div>
+  </div>;
+}
+
 const CSS = `
+.cpVs{font-size:11px;line-height:1.35;background:#0d1d16;border:1px solid #ffffff22;border-radius:10px;padding:7px 9px;color:#cfe3d8;display:flex;flex-direction:column;gap:2px}.cpVs b{color:#fff}
 .cpProf{display:flex;flex-direction:column;gap:7px;margin:6px 0 8px}.cpBadges{display:flex;flex-wrap:wrap;gap:5px}.cpBadges span{background:#13231d;border:1px solid #ffffff20;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700}.cpBadges .cpTier{background:#d99a42;color:#1a1410;border-color:#d99a42}
 .cpBio{margin:0;font-size:12px;color:#cfe0d7;font-style:italic}.cpStats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.cpStats div{background:#0d1b16;border:1px solid #ffffff12;border-radius:10px;padding:6px 2px;text-align:center}.cpStats b{display:block;font-size:13px;color:#f0b94a}.cpStats small{font-size:9px;color:#8fa79b}
 .cpSkills{display:flex;flex-wrap:wrap;gap:5px}.cpSkills span{font-size:11px;background:#10201a;border-radius:8px;padding:3px 8px}.cpRel{margin:0;font-size:12px}.cpLoad{font-size:12px;color:#8fa79b;margin:6px 0}.cpStall{background:#35c46b;color:#06210f;border:0;border-radius:10px;padding:9px;font-weight:800;font-size:12px;cursor:pointer}.cpFind{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:13px;margin-bottom:6px}.cpPeople small{opacity:.6;margin-left:4px}

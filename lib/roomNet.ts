@@ -38,7 +38,7 @@ export function useRoomNet(roomId: string, look: Look) {
       p.tx = num(payload.x, 40); p.tz = num(payload.z, 40); p.tr = num(payload.r, 7); p.mv = payload.m ? 1 : 0; p.w = Math.round(num(payload.w, 99));
       if (!p.init) { p.init = true; p.x = p.tx; p.z = p.tz; p.r = p.tr; }
     }).on('broadcast', { event: 'rtc' }, ({ payload }) => { // voice set-up messages addressed to me
-      if (payload?.to !== name || typeof payload?.u !== 'string') return; rtcSubs.current.forEach(f => f(payload as RtcMsg));
+      if ((payload?.to !== name && payload?.to !== '*') || typeof payload?.u !== 'string') return; rtcSubs.current.forEach(f => f(payload as RtcMsg));
     }).on('broadcast', { event: 'chat' }, ({ payload }) => {
       const u = String(payload?.u), t = String(payload?.t || '').trim().slice(0, 120), now = Date.now();
       if (!t || u === name || now - (lastIn.current[u] || 0) < 120) return; lastIn.current[u] = now; say(u, t);

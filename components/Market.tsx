@@ -13,14 +13,15 @@ const ago = (t: number) => { const m = Math.max(0, Math.round((Date.now() - t) /
 /* Player marketplace: browse what other players are selling, list your own items, manage your stalls. */
 export default function Market({ onClose, onCash, seller }: { onClose: () => void; onCash: (n: number) => void; seller?: string }) {
   const [tab, setTab] = useState<'shop' | 'browse' | 'sell' | 'mine'>(seller ? 'browse' : 'shop'), [data, setData] = useState<Data | null>(null), [cat, setCat] = useState(''), [q, setQ] = useState(''), [who, setWho] = useState(seller || '');
-  const [inv, setInv] = useState<{ id: string; qty: number }[]>([]), [msg, setMsg] = useState(''), [busy, setBusy] = useState(false);
+  const [inv, setInv] = useState<{ id: string; qty: number }[]>([]), [cashFb, setCashFb] = useState<number | null>(null), [msg, setMsg] = useState(''), [busy, setBusy] = useState(false);
   const [qtys, setQtys] = useState<Record<string, number>>({}), [pick, setPick] = useState(''), [sq, setSq] = useState(1), [sp, setSp] = useState('');
   const [shopCat, setShopCat] = useState<CatId | ''>(''), [shopQ, setShopQ] = useState(''), [sort, setSort] = useState<'cheap' | 'pricey' | 'az'>('cheap'), [shopQty, setShopQty] = useState<Record<string, number>>({}), [limit, setLimit] = useState(60);
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4000); };
   const load = useCallback(async () => {
     const p = new URLSearchParams(); if (who) p.set('seller', who);
     const [m, i] = await Promise.all([fetch('/api/market?' + p).then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/inventory').then(r => r.ok ? r.json() : null).catch(() => null)]);
-    if (m) { setData(m); onCash(m.cash); } if (i) setInv(i.items || []);
+    if (m) { setData(m); setCashFb(m.cash); onCash(m.cash); } else { const st = await fetch('/api/status').then(r => r.ok ? r.json() : null).catch(() => null); if (st && typeof st.cash === 'number') setCashFb(st.cash); }
+    if (i) setInv(i.items || []);
   }, [who, onCash]);
   useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [load]);
 
@@ -34,6 +35,8 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
     return CATALOG.filter(i => !i.use && !isStaple(i) && (!shopCat || i.cat === shopCat) && (!n || i.name.toLowerCase().includes(n))).sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? a.cost - b.cost : b.cost - a.cost);
   }, [shopCat, shopQ, sort]);
   useEffect(() => setLimit(60), [shopCat, shopQ, sort]);
+  const cash = data?.cash ?? cashFb; // null = not known yet, so never call someone broke before we know
+  const tooPoor = (cost: number) => cash != null && cash < cost;
   const owned = useMemo(() => Object.fromEntries(inv.map(x => [x.id, x.qty])), [inv]);
 
   const act = async (body: object, ok: string) => { if (busy) return; setBusy(true); const r = await call(body); setBusy(false); if (!r.ok) return say('⛔ ' + (r.d.error || 'Failed.')); if (r.d.cash != null) onCash(r.d.cash); say(ok); await load(); };
@@ -64,7 +67,7 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
           <div className="mkPic">{i.e}</div><b>{i.name}</b><small>{CATS.find(c => c.id === i.cat)?.label}{have ? ` · you own ${have}` : ''}</small>
           <span className="mkPrice">{naira(unit)}</span>
           <div className="mkStep"><button disabled={n <= 1} onClick={() => setShopQty(q => ({ ...q, [i.id]: n - 1 }))}>−</button><span>{n}</span><button disabled={n >= 20} onClick={() => setShopQty(q => ({ ...q, [i.id]: n + 1 }))}>+</button></div>
-          <button className="mkGo" disabled={busy || (data?.cash ?? 0) < unit * n} onClick={() => shopBuy(i.id, i.name, n)}>{(data?.cash ?? 0) < unit * n ? 'Too pricey' : `Buy ${naira(unit * n)}`}</button>
+          <button className="mkGo" disabled={busy || tooPoor(unit * n)} onClick={() => shopBuy(i.id, i.name, n)}>{tooPoor(unit * n) ? 'Too pricey' : `Buy ${naira(unit * n)}`}</button>
         </div>; })}
         {mall.length === 0 && <p className="mkEmpty">Nothing matches that search.</p>}
         {mall.length > limit && <button className="mkMore" onClick={() => setLimit(l => l + 60)}>Show more ({mall.length - limit} left)</button>}
@@ -78,7 +81,7 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
         return <div className="mkCard" key={l.id}>
           <div className="mkIcon">{l.e}</div>
           <div className="mkInfo"><b>{l.name}</b><small>by @{l.seller}{l.mine ? ' (you)' : ''} · {l.qty} left · {ago(l.at)}</small><span className="mkPrice">{naira(l.price)} each{cheap && <em>deal</em>}</span></div>
-          {l.mine ? <span className="mkYours">Your stall</span> : <div className="mkBuy"><div className="mkStep"><button disabled={n <= 1} onClick={() => setQtys(s => ({ ...s, [l.id]: n - 1 }))}>−</button><span>{n}</span><button disabled={n >= l.qty} onClick={() => setQtys(s => ({ ...s, [l.id]: n + 1 }))}>+</button></div><button className="mkGo" disabled={busy || (data?.cash ?? 0) < total} onClick={() => buy(l)}>Buy {naira(total)}</button></div>}
+          {l.mine ? <span className="mkYours">Your stall</span> : <div className="mkBuy"><div className="mkStep"><button disabled={n <= 1} onClick={() => setQtys(s => ({ ...s, [l.id]: n - 1 }))}>−</button><span>{n}</span><button disabled={n >= l.qty} onClick={() => setQtys(s => ({ ...s, [l.id]: n + 1 }))}>+</button></div><button className="mkGo" disabled={busy || tooPoor(total)} onClick={() => buy(l)}>Buy {naira(total)}</button></div>}
         </div>; })}</div>
     </>}
 

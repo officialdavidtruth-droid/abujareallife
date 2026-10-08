@@ -74,3 +74,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Management_businessId_key" ON "Management"("b
 CREATE UNIQUE INDEX IF NOT EXISTS "Management_userId_key" ON "Management"("userId");
 CREATE INDEX IF NOT EXISTS "Management_expiresAt_idx" ON "Management"("expiresAt");
 DO $$ BEGIN ALTER TABLE "Management" ADD CONSTRAINT "Management_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Phone messages between players (safe to re-run). Without this table the Messages app cannot load or send.
+CREATE TABLE IF NOT EXISTS "Message" (
+  "id" TEXT PRIMARY KEY,
+  "fromId" TEXT NOT NULL,
+  "fromName" TEXT NOT NULL,
+  "toName" TEXT NOT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'text',
+  "body" TEXT NOT NULL,
+  "data" JSONB,
+  "readAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "Message_toName_readAt_idx" ON "Message"("toName", "readAt");
+CREATE INDEX IF NOT EXISTS "Message_fromName_createdAt_idx" ON "Message"("fromName", "createdAt");
+CREATE INDEX IF NOT EXISTS "Message_toName_createdAt_idx" ON "Message"("toName", "createdAt");

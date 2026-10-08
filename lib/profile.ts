@@ -53,6 +53,8 @@ export const PROFESSIONS = [
   { id: 'artist', label: 'Artist', e: '🎤', rank: 1, blurb: 'Music, content, nightlife.' },
   { id: 'criminal', label: 'Street Hustler', e: '🕶️', rank: 1, blurb: 'Risky money. Police are real players.' },
   { id: 'police', label: 'Police Officer', e: '👮', rank: 2, blurb: 'Real officers: patrol, chase, arrest, run the station.' },
+  { id: 'firefighter', label: 'Firefighter', e: '🚒', rank: 1, blurb: 'Fires, floods and rescues. First on the scene.' },
+  { id: 'mechanic', label: 'Mechanic', e: '🔧', rank: 1, blurb: 'Repair breakdowns and crashed vehicles.' },
 ] as const;
 export type ProfessionId = (typeof PROFESSIONS)[number]['id'];
 
@@ -112,6 +114,8 @@ export const QUESTS: Quest[] = [
   { at: ['Gym'], id: 'gym', title: 'Train a client', blurb: 'Coach someone at the gym.', reward: 30_000, skill: 'fitness', xp: 12, secs: 25, legal: true },
   { at: ['Office', 'Bank'], id: 'negotiate', title: 'Close a deal', blurb: 'Negotiate a supplier contract.', reward: 90_000, skill: 'business', xp: 20, secs: 35, minSkill: 2, legal: true },
   { at: ['Police Station'], id: 'patrol', title: 'Beat patrol', blurb: 'Patrol your district.', reward: 70_000, skill: 'law', xp: 18, secs: 30, legal: true, profession: ['police'] },
+  { at: ['Police Station', 'Government'], id: 'firedrill', title: 'Fire safety drill', blurb: 'Inspect and drill at a station.', reward: 65_000, skill: 'fitness', xp: 16, secs: 30, legal: true, profession: ['firefighter'] },
+  { at: ['Mechanic', 'Petrol Station'], id: 'fixcar', title: 'Fix a customer car', blurb: 'Diagnose and repair a vehicle.', reward: 55_000, skill: 'driving', xp: 16, secs: 28, legal: true, profession: ['mechanic'] },
   { at: ['Hospital'], id: 'shift', title: 'Clinic shift', blurb: 'Treat patients at the hospital.', reward: 80_000, skill: 'medicine', xp: 18, secs: 30, legal: true, profession: ['doctor'] },
   { at: ['Nightclub', 'Market'], id: 'smuggle', title: 'Run a shady package', blurb: 'High pay. If you are caught, you are caught.', reward: 150_000, skill: 'stealth', xp: 25, secs: 30, legal: false },
 ];
@@ -163,3 +167,38 @@ export const rankFor = (profession: ProfessionId, totalXp: number) => (professio
 // Where the police station and jail sit in the city grid (see cityData.ts). Jail cell = inside the station compound.
 export const POLICE_STATION_POS = { x: 16.5, z: -5.5 };
 export const JAIL_CELL_POS = { x: 80, z: 80 }; // fenced cell on open ground; CityWorld locks jailed players inside it
+
+/* ───────── Wealth progression: each tier unlocks something to chase ───────── */
+export const WEALTH_TIERS = [
+  { at: 0, label: 'Broke', unlock: 'Street hustles and entry jobs' },
+  { at: 50_000, label: 'Getting by', unlock: 'Rent a basic room' },
+  { at: 500_000, label: 'Stable', unlock: 'Better apartment' },
+  { at: 5_000_000, label: 'Comfortable', unlock: 'Buy a car' },
+  { at: 20_000_000, label: 'Wealthy', unlock: 'Luxury house' },
+  { at: 50_000_000, label: 'Investor', unlock: 'Buy your first business' },
+  { at: 200_000_000, label: 'Mogul', unlock: 'Own multiple businesses' },
+  { at: 1_000_000_000, label: 'Tycoon', unlock: 'Run a major company' },
+  { at: 5_000_000_000, label: 'Empire', unlock: 'Shape the whole city' },
+] as const;
+export function wealthTier(net: number) {
+  let i = 0; for (let k = 0; k < WEALTH_TIERS.length; k++) if (net >= WEALTH_TIERS[k].at) i = k;
+  const cur = WEALTH_TIERS[i], next = WEALTH_TIERS[i + 1] || null;
+  return { ...cur, level: i, next, pct: next ? Math.min(100, Math.round(((net - cur.at) / (next.at - cur.at)) * 100)) : 100 };
+}
+
+/* ───────── Career ladders per profession (rank = index + 1, 250 XP per rank) ───────── */
+const GENERIC_LADDER = ['Assistant', 'Sales Officer', 'Manager', 'Executive', 'CEO'];
+export const CAREER_LADDERS: Record<string, string[]> = {
+  police: ['Recruit', 'Constable', 'Sergeant', 'Inspector', 'Commissioner'],
+  doctor: ['Intern', 'Doctor', 'Specialist', 'Surgeon', 'Hospital Director'],
+  firefighter: ['Trainee', 'Firefighter', 'Engineer', 'Captain', 'Fire Chief'],
+  mechanic: ['Apprentice', 'Technician', 'Senior Technician', 'Workshop Lead', 'Garage Owner'],
+  driver: ['Rider', 'Taxi Driver', 'Fleet Driver', 'Dispatcher', 'Fleet Owner'],
+  trader: ['Hawker', 'Stall Owner', 'Wholesaler', 'Distributor', 'Market Chief'],
+  developer: ['Intern Dev', 'Junior Dev', 'Senior Dev', 'Tech Lead', 'CTO'],
+  artist: ['Busker', 'Local Act', 'Signed Artist', 'Headliner', 'Icon'],
+  criminal: ['Runner', 'Hustler', 'Fixer', 'Lieutenant', 'Kingpin'],
+};
+export const careerLadder = (profession: string) => CAREER_LADDERS[profession] || GENERIC_LADDER;
+
+export const FRIEND_STATUSES = ['friends', 'best_friends', 'family'] as const;

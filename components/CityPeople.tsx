@@ -32,6 +32,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
 
     <div className="cpStack">
       {voice.msg && <div className="cpNote">{voice.msg}</div>}
+      {voice.mic.perm !== 'granted' && !voice.micOn && <div className="cpCard"><div>🎤 <b>Voice chat needs your microphone.</b>{voice.mic.perm === 'denied' && <><br /><small>It is blocked for this site: tap the 🔒 by the address bar → Microphone → Allow, then reload.</small></>}{voice.mic.inApp && <><br /><small>Open the game in Chrome or Safari: in-app browsers can't use the mic.</small></>}</div><div className="cpRow"><button className="ok" onClick={() => voice.requestMic()}>Allow microphone</button></div></div>}
       {net.notices.map(n => <div key={n.id} className="cpCard"><div>{ACT_EMOJI[n.k]} <b>{n.from}</b> {n.text}</div><div className="cpRow">{dist(n.from) <= INTERACT_RANGE && <button className="ok" onClick={() => { net.act(n.k, n.from); net.dismissNotice(n.id); }}>{n.reply}</button>}<button onClick={() => net.dismissNotice(n.id)}>Dismiss</button></div></div>)}
     </div>
 

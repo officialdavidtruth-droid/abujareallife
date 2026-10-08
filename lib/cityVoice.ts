@@ -88,15 +88,28 @@ export function useCityVoice(o: Opts) {
       src.connect(sp); sp.connect(z); z.connect(c.destination); proc.current = { sp, src, z };
     } catch { /* no relay on this browser: direct links still work */ }
   };
+  const micError = (e: unknown) => { const n = (e as DOMException)?.name; const m = n === 'NotFoundError' ? 'No microphone found on this device.' : n === 'NotReadableError' ? 'The microphone is being used by another app. Close it and try again.' : 'Microphone blocked. Tap the lock icon next to the address, set Microphone to Allow, then reload the page.'; note(m); setMicState(s => ({ ...s, err: m })); readPerm(); };
+  // Ask the browser for the microphone RIGHT NOW (shows the permission prompt if it has not been answered). Used on the first tap and by the "Allow microphone" button.
+  const requestMic = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) { setMicState(m => ({ ...m, err: 'This browser cannot use the microphone here. Open the game in Chrome or Safari (not inside WhatsApp / Instagram / Facebook).' })); return false; }
+    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); setMicState(m => ({ ...m, perm: 'granted', err: '' })); return true; } catch (e) { micError(e); return false; }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const permRef = useRef('unknown'), primed = useRef(false); permRef.current = mic.perm;
+  useEffect(() => { // first tap or key press anywhere in the game: if permission was never granted, ask for it
+    const first = () => { if (primed.current) return; primed.current = true; window.removeEventListener('pointerdown', first); window.removeEventListener('keydown', first); if (permRef.current !== 'granted') requestMic(); };
+    window.addEventListener('pointerdown', first); window.addEventListener('keydown', first);
+    return () => { window.removeEventListener('pointerdown', first); window.removeEventListener('keydown', first); };
+  }, [requestMic]);
   async function getMic() {
-    if (stream.current) return true;
+    if (stream.current && stream.current.getAudioTracks()[0]?.readyState === 'live') return true;
+    if (stream.current) { try { proc.current?.sp.disconnect(); proc.current?.src.disconnect(); proc.current?.z.disconnect(); } catch { /* gone */ } proc.current = null; stopLocal.current(); stream.current = null; } // the old mic stream died (permission revoked / device unplugged): ask again
     if (!navigator.mediaDevices?.getUserMedia) { note('Voice needs a secure (https) page and a browser with microphone support.'); setMicState(m => ({ ...m, err: 'This browser cannot use the microphone here. Open the game in Chrome or Safari (not inside WhatsApp / Instagram / Facebook).' })); return false; }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
       stream.current = s; syncTrack(); stopLocal.current = watch(s, op.current.me); startRelay();
       const t = s.getAudioTracks()[0]; links.current.forEach(L => L.pc.getSenders().forEach(x => { if (!x.track || x.track.kind === 'audio') x.replaceTrack(t).catch(() => {}); })); // start sending on links that already exist
       return true;
-    } catch (e) { const n = (e as DOMException)?.name; const m = n === 'NotFoundError' ? 'No microphone found on this device.' : n === 'NotReadableError' ? 'The microphone is being used by another app. Close it and try again.' : 'Microphone blocked. Tap the lock icon next to the address, set Microphone to Allow, then reload the page.'; note(m); setMicState(s => ({ ...s, err: m })); readPerm(); return false; }
+    } catch (e) { micError(e); return false; }
   }
 
   const drop = useCallback((who: string, tell = false) => {
@@ -234,5 +247,5 @@ export function useCityVoice(o: Opts) {
     stopLocal.current(); stream.current?.getTracks().forEach(t => t.stop()); stream.current = null; ctx.current?.close().catch(() => {}); ctx.current = null;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { micOn, toggleMic, setMic, msg, linked, live, turn, relayOn, mic };
+  return { micOn, toggleMic, setMic, msg, linked, live, turn, relayOn, mic, requestMic };
 }

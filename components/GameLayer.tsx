@@ -8,6 +8,7 @@ import { CRIMES, FAME_TIERS, checkAccess, HELP_FAME, HELP_TIP, JAIL_CELL_POS, PO
 
 import RuntimeStyle from './RuntimeStyle';
 import Market from './Market';
+import Messages from './Messages';
 type Tier = { id: string; label: string; e: string; at: number; next: { label: string; at: number } | null; pct: number };
 type St = { cash: number; heat: number; wanted: boolean; jailLeft: number; rank: number; profile: Profile; origin: Origin | null; hasCar: boolean; fame: number; tier: Tier };
 type Row = { rank: number; name: string; fame: number; origin: string | null; tier: string; you: boolean };
@@ -19,8 +20,14 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 export default function GameLayer({ username, onCash, near, role, onEnter, onDenied, open, onToggle, onCityTab, cityTab, getMinute }: { username: string; onCash: (n: number) => void; near: { name: string; type: string; id: string } | null; role: 'player' | 'police'; onEnter: (id: string) => void; onDenied?: (reason: string) => void; open: boolean; onToggle: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; getMinute?: () => number }) {
   const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
   const [quest, setQuest] = useState<{ id: string; end: number } | null>(null), [, tick] = useState(0), [bail, setBail] = useState(0), [enter, setEnter] = useState<{ ok: boolean; reason: string; name: string } | null>(null);
-  const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null);
+  const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null), [chatWith, setChatWith] = useState<string | null>(null), [unread, setUnread] = useState(0), seenMsg = useRef('');
   useEffect(() => { const f = (e: Event) => setMarket({ seller: String((e as CustomEvent).detail || '') || undefined }); window.addEventListener('arl-open-market', f); return () => window.removeEventListener('arl-open-market', f); }, []);
+  useEffect(() => { const f = (e: Event) => { const n = String((e as CustomEvent).detail || ''); if (n) { setChatWith(n); setTab('phone'); } }; window.addEventListener('arl-open-chat', f); return () => window.removeEventListener('arl-open-chat', f); }, []);
+  useEffect(() => { // unread badge + a pop-up when a new text arrives
+    let dead = false;
+    const poll = async () => { try { const r = await fetch('/api/messages?count=1', { cache: 'no-store' }); if (!r.ok || dead) return; const d = await r.json(); setUnread(d.unread || 0); const l = d.latest; if (l && l.id !== seenMsg.current) { const first = seenMsg.current === ''; seenMsg.current = l.id; if (!first) say(`💬 ${l.from}: ${l.kind === 'loc' ? '📍 shared a location' : l.kind === 'cash' ? '💸 sent you money' : String(l.body).slice(0, 60)}`); } else if (!l) seenMsg.current = seenMsg.current || '-'; } catch { /* offline */ } };
+    poll(); const id = setInterval(poll, 6000); return () => { dead = true; clearInterval(id); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
   const refresh = useCallback(async () => { const r = await fetch('/api/status'); if (r.ok) { const d = await r.json(); setSt(d); GAME.hasCar = !!d.hasCar; onCash(d.cash); } }, [onCash]);
   useEffect(() => { refresh(); const a = setInterval(refresh, 5000), b = setInterval(() => { if (GAME.notice) { say(GAME.notice); GAME.notice = ''; } tick(x => x + 1); }, 500); return () => { clearInterval(a); clearInterval(b); }; }, [refresh]);
@@ -69,15 +76,16 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
       <button className="glFame" onClick={() => setTab(tab === 'fame' ? null : 'fame')} aria-label="Popularity">
         <span>{st.tier.e} {st.tier.label}</span><div className="fbar"><i style={{ width: st.tier.pct + '%' }} /></div><small>{st.tier.next ? `${st.fame}/${st.tier.next.at}` : `${st.fame} · MAX`}</small></button></div>
     <div className="dock">
-      <button className="dockToggle" onClick={onToggle} aria-label="Menu">{open ? '✕' : '☰'}</button>
+      <button className="dockToggle" onClick={onToggle} aria-label="Menu">{open ? '✕' : '☰'}{!open && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>
       {near && !st.jailLeft && <button className="enter" disabled={entering} onClick={tryEnter}>{entering ? '⏳ Entering…' : businessStatus(near.type as any, getMinute ? getMinute() : 0).open ? '🚪 Enter' : '🔒 Closed'}</button>}
       {(() => { const h = !st.jailLeft && helpNear(); return h ? <button className="help" onClick={() => help(h)}>🤝 Help {h}</button> : null; })()}
-      {open && <div className="dockGrid">{items.map(([e, l, f]) => <button key={l} onClick={() => { f(); onToggle(); }}><span>{e}</span><small>{l}</small></button>)}</div>}
+      {open && <div className="dockGrid">{items.map(([e, l, f]) => <button key={l} onClick={() => { f(); onToggle(); }}><span>{e}</span><small>{l}</small>{l === 'Phone' && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>)}</div>}
     </div>
+    <RuntimeStyle id="arl-badge" css=".dockBadge{position:absolute;top:2px;right:2px;background:#e5484d;color:#fff;border-radius:999px;font-size:10px;font-weight:900;font-style:normal;padding:1px 6px;pointer-events:none;line-height:1.3}.dockGrid button,.dockToggle{position:relative}" />
     {msg && <div className="glToast">{msg}</div>}
     {quest && <div className="glToast">⏳ {QUESTS.find(q => q.id === quest.id)?.title}: {left}s</div>}
     {enter && <div className="glModal" onClick={() => setEnter(null)}><div className="glBox" onClick={e => e.stopPropagation()}><h3>{enter.name}</h3><p>{enter.ok ? '✅ ' : '⛔ '}{enter.reason}</p><button onClick={() => setEnter(null)}>Close</button></div></div>}
-    {tab === 'phone' && <PhonePanel onClose={() => setTab(null)} onCityTab={onCityTab} cityTab={cityTab} onMarket={() => { setTab(null); setMarket({}); }} />}
+    {tab === 'phone' && <PhonePanel start={chatWith} unread={unread} onUnread={setUnread} onCash={n => { onCash(n); refresh(); }} onClose={() => { setTab(null); setChatWith(null); }} onCityTab={onCityTab} cityTab={cityTab} onMarket={() => { setTab(null); setMarket({}); }} />}
     {market && <Market seller={market.seller} onClose={() => setMarket(null)} onCash={onCash} />}
     {st.jailLeft > 0 && <div className="glJail"><h2>🚔 In jail</h2><p>{Math.floor(st.jailLeft / 60)}:{String(st.jailLeft % 60).padStart(2, '0')} left</p><button disabled={st.cash < bail} onClick={async () => { const r = await post('/api/jail'); say(r.ok ? 'Bail paid.' : r.d.error); refresh(); }}>Pay bail {naira(bail)}</button></div>}
     {tab && tab !== 'phone' && <div className="glPanel"><button className="x" onClick={() => setTab(null)}>×</button>
@@ -140,8 +148,9 @@ function MyLifePanel({ username, st, prof, profile }: { username: string; st: St
   </>;
 }
 
-function PhonePanel({ onClose, onCityTab, cityTab, onMarket }: { onClose: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; onMarket: () => void }) {
-  const [app, setApp] = useState<'home' | 'garage' | 'messages'>('home');
+function PhonePanel({ start, unread, onUnread, onCash, onClose, onCityTab, cityTab, onMarket }: { start: string | null; unread: number; onUnread: (n: number) => void; onCash: (n: number) => void; onClose: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; onMarket: () => void }) {
+  const [app, setApp] = useState<'home' | 'garage' | 'messages'>(start ? 'messages' : 'home');
+  useEffect(() => { if (start) setApp('messages'); }, [start]);
   const [vehicles, setVehicles] = useState<any[]>([]), [catalog, setCatalog] = useState(VEHICLE_CATALOG), [busy, setBusy] = useState('');
   const refreshVehicles = useCallback(async () => { const r = await fetch('/api/vehicles'); if (r.ok) { const d = await r.json(); setVehicles(d.vehicles || []); setCatalog(d.catalog || VEHICLE_CATALOG); } }, []);
   useEffect(() => { refreshVehicles(); window.dispatchEvent(new Event('arl-phone-use')); }, [refreshVehicles]);
@@ -152,7 +161,7 @@ function PhonePanel({ onClose, onCityTab, cityTab, onMarket }: { onClose: () => 
     {app === 'home' && <div className="phoneApps">
       <button onClick={() => onCityTab(cityTab === 'map' ? null : 'map')}><b>🗺️</b><span>Maps</span></button>
       <button onClick={() => onCityTab(cityTab === 'jobs' ? null : 'jobs')}><b>💼</b><span>Jobs</span></button>
-      <button onClick={() => setApp('messages')}><b>💬</b><span>Messages</span></button>
+      <button onClick={() => setApp('messages')} style={{ position: 'relative' }}><b>💬</b><span>Messages</span>{unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>
       <button onClick={() => setApp('garage')}><b>🚗</b><span>Garage</span></button>
       <button onClick={onMarket}><b>🛒</b><span>Market</span></button>
       <button onClick={() => setApp('garage')}><b>🏪</b><span>Dealership</span></button>
@@ -160,9 +169,9 @@ function PhonePanel({ onClose, onCityTab, cityTab, onMarket }: { onClose: () => 
       <button onClick={() => onClose()}><b>🏦</b><span>Bank</span></button>
       <button onClick={() => onClose()}><b>🎯</b><span>Missions</span></button>
     </div>}
-    {app === 'messages' && <div className="phonePage"><div className="phoneEmpty">💬<b>No new messages</b><small>Player messages will appear here. Multiplayer chat remains available in the game.</small></div><button className="phoneBack" onClick={() => setApp('home')}>← Home</button></div>}
+    {app === 'messages' && <Messages start={start} onCash={onCash} onClose={onClose} onUnread={onUnread} />}
     {app === 'garage' && <div className="phonePage"><div className="phoneSectionTitle"><b>My garage</b><span>{vehicles.length} owned</span></div>{vehicles.length === 0 ? <div className="phoneEmpty">🚗<b>No vehicle yet</b><small>Choose a licensed model below.</small></div> : vehicles.map(v => <div className="carCard" key={v.id}><div className="carThumb">🚘</div><div><b>{v.name}</b><small>{v.type} · {v.condition}% condition · {v.fuel}% fuel</small></div><span className="carOwned">OWNED</span></div>)}<div className="phoneSectionTitle"><b>Dealership</b><span>Licensed models</span></div>{catalog.map(v => <div className="carCard" key={v.id}><div className="carThumb">🚘</div><div><b>{v.brand} {v.model}</b><small>{v.year} · {v.type} · {v.topSpeed} km/h · handling {v.handling}</small></div><button className="carBuy" disabled={busy === v.id} onClick={() => buy(v.id)}>{busy === v.id ? '...' : naira(v.price)}</button></div>)}<button className="phoneBack" onClick={() => setApp('home')}>← Home</button></div>}
-    <div className="phoneNav"><button onClick={() => setApp('home')}>⌂<small>Home</small></button><button onClick={() => setApp('messages')}>💬<small>Messages</small></button><button onClick={() => setApp('garage')}>🚗<small>Garage</small></button></div>
+    <div className="phoneNav"><button onClick={() => setApp('home')}>⌂<small>Home</small></button><button onClick={() => setApp('messages')} style={{ position: 'relative' }}>💬<small>Messages</small>{unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button><button onClick={() => setApp('garage')}>🚗<small>Garage</small></button></div>
   </div></div>;
 }
 

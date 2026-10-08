@@ -285,3 +285,20 @@ model Listing {
   @@index([status, createdAt])
   @@index([sellerId, status])
 }
+
+// Phone messages between players (one row per message; a "thread" is every row between two names).
+model Message {
+  id        String    @id @default(cuid())
+  fromId    String
+  fromName  String
+  toName    String
+  kind      String    @default("text") // text | loc | cash
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([toName, readAt])
+  @@index([fromName, createdAt])
+  @@index([toName, createdAt])
+}

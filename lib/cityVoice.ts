@@ -43,7 +43,9 @@ export function useCityVoice(o: Opts) {
   const [micOn, setMicOnS] = useState(false), [msg, setMsg] = useState(''), [linked, setLinked] = useState(0);
   const op = useRef(o); op.current = o;
   const dist = (n: string) => (op.current.dist || cityDist)(n); // open city: world distance · inside a building: distance inside the room
-  const [live, setLive] = useState(0), lastFail = useRef(0), [turn, setTurn] = useState<{ ok: boolean | null; provider: string; error: string }>({ ok: null, provider: '', error: '' }), [relayOn, setRelayOn] = useState(false);
+  const [live, setLive] = useState(0), lastFail = useRef(0), [turn, setTurn] = useState<{ ok: boolean | null; provider: string; error: string }>({ ok: null, provider: '', error: '' }), [relayOn, setRelayOn] = useState(false), [mic, setMicState] = useState<{ perm: string; secure: boolean; inApp: boolean; err: string }>({ perm: 'unknown', secure: true, inApp: false, err: '' });
+  const readPerm = () => { try { const ua = navigator.userAgent || ''; const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|MicroMessenger|TikTok|Snapchat|; wv\)/i.test(ua); const secure = window.isSecureContext !== false && !!navigator.mediaDevices?.getUserMedia; (navigator as any).permissions?.query({ name: 'microphone' }).then((r: any) => { setMicState(m => ({ ...m, perm: r.state, secure, inApp })); r.onchange = () => setMicState(m => ({ ...m, perm: r.state })); }).catch(() => setMicState(m => ({ ...m, secure, inApp }))); setMicState(m => ({ ...m, secure, inApp })); } catch { /* ignore */ } };
+  useEffect(readPerm, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { // what does the SERVER say about the TURN setup? (the same check as opening /api/turn)
     let dead = false;
     fetch('/api/turn', { cache: 'no-store' }).then(async r => { const d = await r.json().catch(() => ({})); if (dead) return; if (!r.ok) setTurn({ ok: false, provider: '', error: d.error || `HTTP ${r.status}` }); else setTurn({ ok: !!d.relay, provider: d.provider || '', error: d.error || '' }); }).catch(() => { if (!dead) setTurn({ ok: false, provider: '', error: 'could not reach /api/turn' }); });
@@ -88,13 +90,13 @@ export function useCityVoice(o: Opts) {
   };
   async function getMic() {
     if (stream.current) return true;
-    if (!navigator.mediaDevices?.getUserMedia) { note('Voice needs a secure (https) page and a browser with microphone support.'); return false; }
+    if (!navigator.mediaDevices?.getUserMedia) { note('Voice needs a secure (https) page and a browser with microphone support.'); setMicState(m => ({ ...m, err: 'This browser cannot use the microphone here. Open the game in Chrome or Safari (not inside WhatsApp / Instagram / Facebook).' })); return false; }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
       stream.current = s; syncTrack(); stopLocal.current = watch(s, op.current.me); startRelay();
       const t = s.getAudioTracks()[0]; links.current.forEach(L => L.pc.getSenders().forEach(x => { if (!x.track || x.track.kind === 'audio') x.replaceTrack(t).catch(() => {}); })); // start sending on links that already exist
       return true;
-    } catch (e) { const n = (e as DOMException)?.name; note(n === 'NotFoundError' ? 'No microphone found on this device.' : 'Microphone blocked. Allow mic access for this site (lock icon in the address bar) and try again.'); return false; }
+    } catch (e) { const n = (e as DOMException)?.name; const m = n === 'NotFoundError' ? 'No microphone found on this device.' : n === 'NotReadableError' ? 'The microphone is being used by another app. Close it and try again.' : 'Microphone blocked. Tap the lock icon next to the address, set Microphone to Allow, then reload the page.'; note(m); setMicState(s => ({ ...s, err: m })); readPerm(); return false; }
   }
 
   const drop = useCallback((who: string, tell = false) => {
@@ -205,7 +207,7 @@ export function useCityVoice(o: Opts) {
 
   const setMic = useCallback(async (on: boolean) => {
     if (on && !(await getMic())) return;
-    audioCtx(); micRef.current = on; setMicOnS(on); syncTrack();
+    audioCtx(); micRef.current = on; setMicOnS(on); syncTrack(); if (on) setMicState(s => ({ ...s, err: '' }));
     if (on) note('🎤 Mic on: nearby players can hear you.');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleMic = useCallback(() => setMic(!micRef.current), [setMic]);
@@ -232,5 +234,5 @@ export function useCityVoice(o: Opts) {
     stopLocal.current(); stream.current?.getTracks().forEach(t => t.stop()); stream.current = null; ctx.current?.close().catch(() => {}); ctx.current = null;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { micOn, toggleMic, setMic, msg, linked, live, turn, relayOn };
+  return { micOn, toggleMic, setMic, msg, linked, live, turn, relayOn, mic };
 }

@@ -48,6 +48,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
       </div> : <p className="cpLoad">Loading profile…</p>}
       <div className="cpGrid">
         {ACT_LIST.map(([k, e, l]) => <button key={k} disabled={!canAct} onClick={() => { net.act(k, sel); setSel(null); }}>{e}<small>{l}</small></button>)}
+        <button onClick={() => { window.dispatchEvent(new CustomEvent('arl-open-chat', { detail: sel })); setSel(null); }}>💬<small>Message</small></button>
         <button onClick={() => net.toggleMute(sel)}>{net.muted.includes(sel) ? '🔇' : '🔈'}<small>{net.muted.includes(sel) ? 'Unmute chat & voice' : 'Mute chat & voice'}</small></button>
       </div>
       <p>Voice is proximity chat: turn your 🎤 on and everyone near you hears you, fading with distance.</p>
@@ -73,6 +74,12 @@ function VoiceStatus({ voice }: { voice: VoiceApi }) {
   return <div className="cpVs">
     <b>🎙️ Voice status</b>
     <div>{t.ok === null ? '⏳ Checking relay server…' : t.ok ? `✅ TURN relay detected${t.provider ? ' (' + t.provider + ')' : ''}` : `❌ No TURN relay detected${t.error ? ': ' + t.error : ''}${t.error.includes('no TURN variables') ? ' — add the variables in your host and REDEPLOY' : ''}`}</div>
+    {voice.mic.inApp && <div>⚠️ You seem to be inside an app's built-in browser (WhatsApp, Instagram, Facebook…). These never ask for the microphone. Open the game in Chrome or Safari.</div>}
+    {!voice.mic.secure && <div>⚠️ This page can't use the microphone (needs https and a supported browser).</div>}
+    {voice.mic.perm === 'denied' && <div>🚫 Microphone is BLOCKED for this site, so no prompt will appear. Tap the 🔒 icon by the address bar → Microphone → Allow, then reload.</div>}
+    {voice.mic.perm === 'prompt' && !voice.micOn && <div>👉 Tap the 🔇 Mic button on the game screen: the browser will then ask for permission.</div>}
+    {voice.mic.perm === 'granted' && <div>✅ Microphone permission granted</div>}
+    {voice.mic.err && <div>❌ {voice.mic.err}</div>}
     <div>{voice.micOn ? '🎤 Mic on' : '🔇 Mic off'} · direct links {voice.live}/{voice.linked}{voice.relayOn ? ' · 📡 relay audio active' : ''}</div>
   </div>;
 }

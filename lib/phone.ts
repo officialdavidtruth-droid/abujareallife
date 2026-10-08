@@ -8,7 +8,9 @@ export const PHONES: Phone[] = [
   { tier: 2, itemId: 'tec_mid_range_smartphone', name: 'Mid-range smartphone', e: '📱', maxLen: 500, maxChats: 999, read: true, maps: true, location: true, cash: false, perks: ['Everything in Budget', 'Share your live location 📍', 'Texts up to 500'] },
   { tier: 3, itemId: 'tec_flagship_smartphone', name: 'Flagship smartphone', e: '📲', maxLen: 800, maxChats: 999, read: true, maps: true, location: true, cash: true, perks: ['Everything in Mid-range', 'Send money 💸 to anyone', 'Texts up to 800'] },
 ];
-export const phoneOf = (tier: number): Phone => PHONES[Math.max(0, Math.min(3, Math.floor(tier) || 0))];
+/* Chat is FREE for everyone: every player gets every messaging feature, whatever phone is in their bag. */
+export const FREE_PHONE: Phone = { tier: 3, itemId: '', name: 'Phone', e: '📱', maxLen: 500, maxChats: 999, read: true, maps: true, location: true, cash: true, perks: ['Unlimited chats', 'Read receipts', 'Maps', 'Share location', 'Send money'] };
+export const phoneOf = (_tier?: number): Phone => FREE_PHONE;
 export const tierFromItems = (keys: Iterable<string>): PhoneTier => { let t = 0; for (const k of keys) { const p = PHONES.find(x => x.itemId && x.itemId === k); if (p && p.tier > t) t = p.tier; } return t as PhoneTier; };
 export const MAX_SEND_CASH = 500_000;
-export const MSG_COOLDOWN_MS = 700;
+export const MSG_COOLDOWN_MS = 250;

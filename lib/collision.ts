@@ -5,7 +5,9 @@ export type P = [number, number];
 
 export const R = 0.24; // body radius used when planning routes
 export const HARD = 0.18; // body radius used for the hard "you cannot enter this" check every frame
-export const BOUNDS = { x0: -5.85, x1: 10.95, z0: -4.3, z1: 4.3 }; // walkable area inside the walls: main flat + the kids' wing to the east
+export const FULL_X1 = 10.95, FLAT_X1 = 5.95;
+export const BOUNDS = { x0: -5.85, x1: FULL_X1, z0: -4.3, z1: 4.3 }; // walkable area inside the walls. Only the main flat by default; the kids' wing to the east is added when a family starts.
+export const setEastLimit = (wing: boolean) => { BOUNDS.x1 = wing ? FULL_X1 : FLAT_X1; };
 const G = 0.15; // grid cell size for path-finding
 
 export const inside = (p: P, k: Box, r = 0) => p[0] > k[0] - r && p[0] < k[1] + r && p[1] > k[2] - r && p[1] < k[3] + r;
@@ -18,7 +20,7 @@ function clear(blks: Blk[], a: P, b: P, own?: string) { // is the straight line 
   return true;
 }
 
-const NX = Math.ceil((BOUNDS.x1 - BOUNDS.x0) / G) + 1, NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
+const NX = Math.ceil((FULL_X1 - BOUNDS.x0) / G) + 1, NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
 const cell = (p: P): [number, number] => [Math.round((p[0] - BOUNDS.x0) / G), Math.round((p[1] - BOUNDS.z0) / G)];
 const pos = (i: number, j: number): P => [i * G + BOUNDS.x0, j * G + BOUNDS.z0];
 

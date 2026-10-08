@@ -1,4 +1,5 @@
 'use client';
+import HomeUpgrades from './HomeUpgrades';
 import RuntimeStyle from './RuntimeStyle';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, RoundedBox, Html } from '@react-three/drei';
@@ -20,7 +21,7 @@ import { CITY } from '../lib/cityData';
 import { GAME } from './CityWorld';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, OUTFITS, type Look } from '../lib/characterModels';
-import { findPath, blocked, inside, HARD, type Blk, type Box, type P } from '../lib/collision';
+import { findPath, blocked, inside, HARD, type Blk, type Box, type P, setEastLimit } from '../lib/collision';
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
 type Pose = 'stand' | 'sit' | 'sleep';
@@ -29,7 +30,7 @@ type Obj = { id: string; name: string; p: [number, number]; rot: number; spot: [
 type Task = { t: 'walk'; x: number; z: number; own?: string } | { t: 'act'; a: Act; o: Obj };
 
 const NEEDS: [N, string, string][] = [['hunger', 'Hunger', '🍲'], ['energy', 'Energy', '😴'], ['hygiene', 'Hygiene', '🚿'], ['bladder', 'Bladder', '🚽'], ['fun', 'Fun', '🎮'], ['social', 'Social', '💬']];
-const DECAY: Record<N, number> = { hunger: .07, energy: .045, hygiene: .05, bladder: .09, fun: .06, social: .04 };
+const DECAY: Record<N, number> = { hunger: .03, energy: .02, hygiene: .05, bladder: .09, fun: .06, social: .04 };
 const cl = (n: number) => Math.max(0, Math.min(100, n));
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
@@ -81,7 +82,15 @@ const OBJ: Obj[] = [
     { k: 'toys', label: 'Build blocks with the kids', e: '🧱', dur: 30, fx: { fun: 30, social: 8 }, pose: 'stand', anim: 'squat', bond: 4, all: 'kids' }] },
   { id: 'kdesk', name: "Kids' desk", p: [10.9, .5], rot: -Math.PI / 2, spot: [10.05, .5], face: Math.PI / 2, boxes: [[10.45, 11.3, -.35, 1.35], [9.8, 10.3, .25, .75]], appr: [9.2, .5], acts: [
     { k: 'kread', label: 'Read a storybook', e: '📖', dur: 25, fx: { fun: 12, social: 6 }, pose: 'sit', anim: 'read', bond: 4, all: 'kids' }] },
+  // Luxury items (bought under Menu > Home upgrades; only present once owned)
+  { id: 'massage', name: 'Massage chair', p: [-2.2, 4.0], rot: 0, spot: [-2.2, 3.2], face: 0, boxes: [[-2.6, -1.8, 3.6, 4.3]], acts: [
+    { k: 'massage', label: 'Massage', e: '💆', dur: 30, fx: { energy: 45, fun: 12, hygiene: 3 }, pose: 'stand', pow: true, anim: 'stretch' }] },
+  { id: 'aquarium', name: 'Aquarium', p: [.2, 4.05], rot: 0, spot: [.2, 3.2], face: 0, boxes: [[-.4, .8, 3.8, 4.3]], acts: [
+    { k: 'fish', label: 'Watch the fish', e: '🐠', dur: 15, fx: { fun: 18, energy: 4 }, pose: 'stand', anim: 'think' }] },
+  { id: 'treadmill', name: 'Treadmill', p: [1.7, 3.65], rot: 0, spot: [1.7, 2.7], face: 0, boxes: [[1.35, 2.05, 3.0, 4.3]], acts: [
+    { k: 'run', label: 'Run on the treadmill', e: '🏃', dur: 40, fx: { energy: -20, hunger: -10, hygiene: -12, fun: 20 }, pose: 'stand', pow: true, anim: 'squat' }] },
 ];
+const LUX_IDS = new Set(['massage', 'aquarium', 'treadmill']);
 const EMOTES: Act[] = [
   { k: 'wave', label: 'Wave', e: '👋', dur: 6, fx: { social: 8 }, pose: 'stand', anim: 'wave' },
   { k: 'edance', label: 'Dance', e: '🕺', dur: 20, fx: { fun: 22, energy: -6 }, pose: 'stand', anim: 'dance' },
@@ -101,7 +110,23 @@ const DECOR: { id: string; p: [number, number]; rot: number; boxes: Box[]; vis: 
 const WALLS: Blk[] = [{ id: 'wall', b: [6.1, 6.3, -4.6, 1.0] }, { id: 'wall', b: [6.1, 6.3, 2.6, 4.6] }];
 
 // Every solid footprint in the flat. Walking is planned around these (see lib/collision.ts) and re-checked every frame.
-const BL: Blk[] = [...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
+// What your home has: rooms and luxury items bought under Menu > Home upgrades (saved on the server, see /api/home).
+const HOME = { own: new Set<string>() };
+const wingOn = () => HOME.own.has('kids_room'); // the kids' wing (beds, desk, toy box, dividing wall) only exists once you build it
+const WING_IDS = new Set(['toybox', 'kdesk', 'kbedA', 'kbedB', 'nstand', 'kwar']);
+const BL_BASE: Blk[] = [...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
+let blKey = '\0', blList: Blk[] = [];
+const BL = (): Blk[] => {
+  const key = (wingOn() ? 'w' : '') + [...LUX_IDS].filter(i => HOME.own.has(i)).join(',');
+  if (key !== blKey) { blKey = key; blList = BL_BASE.filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && (!LUX_IDS.has(k.id) || HOME.own.has(k.id))); }
+  return blList;
+};
+// Apply what the server says you own: build/remove the wing, move the family in, show the luxury items.
+function applyHome(ids: string[]) {
+  HOME.own = new Set(ids); setEastLimit(wingOn());
+  if (!wingOn() && S.pos[0] > 5.5) { S.pos = [4.8, S.pos[1]]; S.q = []; S.cur = null; }
+  const fam = HOME.own.has('family') && wingOn(); if (fam !== F.on) F.setOn(fam);
+}
 const dist = (a: P, b: P) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const W = (p: P, own?: string): Task => ({ t: 'walk', x: p[0], z: p[1], own });
 const within = (p: P) => OBJ.find(o => o.appr && o.boxes?.some(b => inside(p, b)));
@@ -110,7 +135,7 @@ function route(from: P, to: P, tgt?: Obj): Task[] {
   const so = within(from), out: Task[] = []; let a = from;
   if (so && so === tgt) return [];
   if (so) { out.push(W(so.appr!, so.id)); a = so.appr!; }
-  if (tgt?.appr) { out.push(...findPath(BL, a, tgt.appr).map(p => W(p))); out.push(W(to, tgt.id)); } else out.push(...findPath(BL, a, to).map(p => W(p)));
+  if (tgt?.appr) { out.push(...findPath(BL(), a, tgt.appr).map(p => W(p))); out.push(W(to, tgt.id)); } else out.push(...findPath(BL(), a, to).map(p => W(p)));
   return out;
 }
 // Lets the React shell react to things that happen inside the sim (leave the house, change clothes).
@@ -162,9 +187,9 @@ const F = {
   last: 0, on: false,   // nobody lives with you until YOU choose to start a family (Menu > Family)
   all: [mkMem('spouse', 'Ada', false, 1), mkMem('chidi', 'Chidi', true, .62), mkMem('amara', 'Amara', true, .48)],
   get mem(): Mem[] { return this.on ? this.all : []; },
-  setOn(v: boolean) { this.on = v; this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, hold: null, stuck: 0, init: false })); },
-  reset() { this.on = false; this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false })); },
-  load(b: unknown, on?: unknown) { this.on = on === true; const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>; this.all.forEach(m => { const v = o[m.id]; m.bond = typeof v === 'number' && isFinite(v) ? cl(v) : 30; }); },
+  setOn(v: boolean) { this.on = v; setEastLimit(wingOn()); this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, hold: null, stuck: 0, init: false })); },
+  reset() { this.on = false; HOME.own = new Set(); setEastLimit(false); this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false })); },
+  load(b: unknown, on?: unknown) { this.on = on === true; setEastLimit(wingOn()); const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>; this.all.forEach(m => { const v = o[m.id]; m.bond = typeof v === 'number' && isFinite(v) ? cl(v) : 30; }); },
   bonds() { return Object.fromEntries(this.all.map(m => [m.id, Math.round(m.bond * 10) / 10])); },
   hold(id: string, key: string, mins: number) { const m = this.mem.find(x => x.id === id); if (m) m.hold = { key, until: S.min + mins }; },
   bump(id: string, n: number) { const m = this.mem.find(x => x.id === id); if (m) m.bond = cl(m.bond + n); },
@@ -202,7 +227,7 @@ function goTo(m: Mem, d: Dest) {
   let a: P = [m.pos[0], m.pos[1]];
   if (out?.appr) { m.q.push({ x: out.appr[0], z: out.appr[1], own: out.own }); a = out.appr; }
   const target = d.appr || d.spot;
-  findPath(BL, a, target).forEach(p => m.q.push({ x: p[0], z: p[1] }));
+  findPath(BL(), a, target).forEach(p => m.q.push({ x: p[0], z: p[1] }));
   if (d.appr) m.q.push({ x: d.spot[0], z: d.spot[1], own: d.own });
 }
 function famTick(dt: number) {
@@ -225,8 +250,8 @@ function famTick(dt: number) {
       if (dd < .1) { m.cur = null; continue; }
       const st = Math.min(dd, (m.kid ? 1.8 : 2.2) * dt * S.speed);
       let nx = m.pos[0] + dx / dd * st, nz = m.pos[1] + dz / dd * st;
-      if (blocked(BL, [nx, nz], m.cur.own, HARD)) { // same rule as the player: never step into furniture
-        if (!blocked(BL, [nx, m.pos[1]], m.cur.own, HARD)) nz = m.pos[1]; else if (!blocked(BL, [m.pos[0], nz], m.cur.own, HARD)) nx = m.pos[0]; else { nx = m.pos[0]; nz = m.pos[1]; }
+      if (blocked(BL(), [nx, nz], m.cur.own, HARD)) { // same rule as the player: never step into furniture
+        if (!blocked(BL(), [nx, m.pos[1]], m.cur.own, HARD)) nz = m.pos[1]; else if (!blocked(BL(), [m.pos[0], nz], m.cur.own, HARD)) nx = m.pos[0]; else { nx = m.pos[0]; nz = m.pos[1]; }
       }
       m.stuck = Math.hypot(nx - m.pos[0], nz - m.pos[1]) < st * .3 ? m.stuck + dt : 0;
       if (m.stuck > 1.2) { m.stuck = 0; m.q = []; m.cur = null; if (m.dest) m.pos = [m.dest.spot[0], m.dest.spot[1]]; continue; } // wedged: just place them at their spot
@@ -304,8 +329,8 @@ function tick(dt: number) {
     if (d < .1) { S.cur = null; return; }
     const st = Math.min(d, 3 * dt * S.speed);
     let nx = S.pos[0] + dx / d * st, nz = S.pos[1] + dz / d * st;
-    if (blocked(BL, [nx, nz], c.own, HARD)) { // never step into furniture: slide along it, or stop
-      if (!blocked(BL, [nx, S.pos[1]], c.own, HARD)) nz = S.pos[1]; else if (!blocked(BL, [S.pos[0], nz], c.own, HARD)) nx = S.pos[0]; else { nx = S.pos[0]; nz = S.pos[1]; }
+    if (blocked(BL(), [nx, nz], c.own, HARD)) { // never step into furniture: slide along it, or stop
+      if (!blocked(BL(), [nx, S.pos[1]], c.own, HARD)) nz = S.pos[1]; else if (!blocked(BL(), [S.pos[0], nz], c.own, HARD)) nx = S.pos[0]; else { nx = S.pos[0]; nz = S.pos[1]; }
     }
     S.stuck = Math.hypot(nx - S.pos[0], nz - S.pos[1]) < st * .3 ? S.stuck + dt : 0;
     if (S.stuck > .7) { S.stuck = 0; S.cur = null; S.q = []; say('Something is in the way.'); return; }
@@ -336,7 +361,7 @@ const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { '
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
 const snap = () => ({ needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
-  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on });
+  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on, wing: wingOn(), home: [...HOME.own] });
 type UI = ReturnType<typeof snap>;
 
 type V3 = [number, number, number];
@@ -512,6 +537,24 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[.1, .8, .12]} s={[.075, .012, .15]} c="#14161a" r={.01} rot={[0, .5, 0]} /><B p={[-.02, .8, .1]} s={[.16, .02, .22]} c="#c9b98a" ro={.9} rot={[0, -.2, 0]} />
     <C p={[-.2, .81, -.2]} r={.07} h={.02} c="#333" /><C p={[-.2, .93, -.2]} r={.014} h={.22} c="#333" /><C p={[-.2, 1.1, -.2]} r={.12} rt={.08} h={.16} c="#f2e6c9" ro={1} e={ui.power ? '#ffd9a0' : undefined} ei={.4} />
     <C p={[.2, .86, -.2]} r={.05} h={.12} c="#6bb7d9" ro={.1} /><Sp p={[.2, .96, -.2]} r={.05} c="#d9452b" /><Sp p={[.24, .98, -.17]} r={.04} c="#f0b53a" /></>,
+  massage: () => <>
+    <B p={[0, .12, 0]} s={[.8, .24, .9]} c="#241a16" ro={.5} /><B p={[0, .38, -.05]} s={[.66, .26, .7]} c="#4a3329" ro={.55} r={.07} />
+    <B p={[0, .85, .32]} s={[.66, .95, .22]} c="#4a3329" ro={.55} r={.08} rot={[-.12, 0, 0]} /><B p={[0, 1.4, .36]} s={[.4, .22, .14]} c="#5a4034" ro={.55} r={.06} />
+    <B p={[-.38, .6, -.02]} s={[.1, .22, .7]} c="#2f211b" ro={.5} r={.04} /><B p={[.38, .6, -.02]} s={[.1, .22, .7]} c="#2f211b" ro={.5} r={.04} />
+    <B p={[0, .2, -.62]} s={[.5, .3, .35]} c="#4a3329" ro={.55} r={.06} /><C p={[.38, .74, -.3]} r={.012} h={.03} c="#7cf0b0" e="#7cf0b0" ei={1.4} /></>,
+  aquarium: ui => <>
+    <B p={[0, .38, 0]} s={[1.1, .76, .46]} c="#5a3b24" ro={.55} /><B p={[0, .8, 0]} s={[1.16, .05, .52]} c="#2a1b10" ro={.4} />
+    <B p={[0, 1.2, 0]} s={[1.02, .72, .4]} c="#7fd6ff" op={.35} ro={.15} r={.02} /><B p={[0, .93, 0]} s={[.98, .06, .36]} c="#e8d9a8" ro={1} />
+    <B p={[0, 1.58, 0]} s={[1.1, .05, .46]} c="#1c1c20" ro={.4} />
+    {[[-.3, 1.2, 0], [.1, 1.35, .04], [.32, 1.1, -.03]].map(([x, y, z], i) => <Sp key={i} p={[x, y, z]} r={.05} c={i === 1 ? '#ffd24a' : '#ff7a2f'} sc={[1.6, 1, .6]} />)}
+    <C p={[-.4, 1.1, .08]} r={.03} h={.35} c="#2f8f4a" ro={1} /><C p={[.42, 1.08, .05]} r={.03} h={.3} c="#3fb86a" ro={1} />
+    <C p={[0, 1.55, 0]} r={.015} h={.8} c="#bfeaff" e={ui.power ? '#bfeaff' : undefined} ei={1.2} rot={[0, 0, Math.PI / 2]} /></>,
+  treadmill: ui => <>
+    <B p={[0, .12, 0]} s={[.62, .16, 1.3]} c="#1d2024" ro={.5} r={.04} /><B p={[0, .21, 0]} s={[.5, .02, 1.14]} c="#2b2f36" ro={.9} />
+    {[-.3, .3].map(x => <B key={x} p={[x, .75, -.55]} s={[.05, 1.2, .05]} c="#9aa3a8" m={.7} ro={.3} />)}
+    <B p={[0, 1.3, -.55]} s={[.7, .05, .06]} c="#9aa3a8" m={.7} ro={.3} /><B p={[0, 1.15, -.57]} s={[.44, .26, .06]} c="#111418" ro={.4} />
+    <B p={[0, 1.15, -.605]} s={[.34, .16, .01]} c={ui.power ? '#7cf0b0' : '#20262b'} ro={.3} />
+    {[-.34, .34].map(x => <B key={x} p={[x, .58, 0]} s={[.04, .04, 1.1]} c="#9aa3a8" m={.6} ro={.3} />)}</>,
   mat: () => <><B p={[0, .018, 0]} s={[.8, .035, 1.85]} c="#7b3f8a" ro={1} r={.015} /><B p={[0, .037, 0]} s={[.74, .004, 1.79]} c="#8d4f9a" ro={1} r={.002} /><C p={[0, .045, -.95]} r={.05} h={.78} c="#7b3f8a" ro={1} rot={[0, 0, Math.PI / 2]} /></>,
   radio: ui => <>
     <B p={[0, .56, 0]} s={[.38, 1.0, .34]} c="#1d2127" ro={.45} r={.04} /><B p={[0, .04, 0]} s={[.46, .05, .4]} c="#111" /><B p={[-.196, .56, 0]} s={[.015, .96, .3]} c="#14171a" />
@@ -607,6 +650,11 @@ const Frame = ({ p, ry = 0, w = .4, h = .5 }: { p: V3; ry?: number; w?: number; 
     <Sp p={[0, h * .2 * k, 0]} r={w * .07 * k} c="#5e3a22" sc={[1, 1.1, .3]} /><B p={[0, h * .02 * k, 0]} s={[w * .15 * k, h * .3 * k, .01]} c={c} ro={1} r={.005} /></group>)}
 </group>;
 
+// Closed east wall of the flat, used until a family is started (then the Wing replaces it, with its doorway).
+function EastWall() {
+  return <><B p={[6.2, .65, 0]} s={[.2, 1.3, 9.4]} c="#ddd2bf" ro={.95} r={.01} /><B p={[6.2, 1.32, 0]} s={[.26, .04, 9.46]} c="#f4f0e6" ro={.5} r={.01} /></>;
+}
+
 // The kids' wing east of the flat: walls (half-height cutaway, like the rest of the house), window, play rug, wall decor.
 function Wing() {
   return <>
@@ -650,7 +698,7 @@ function Lights() {
     const h = (S.min / 60) % 24, s = Math.max(0, Math.sin((h - 6) / 12 * Math.PI));
     sun.current.intensity = .15 + 2.4 * s; amb.current.intensity = .25 + 1 * s;
     sun.current.color.set(h < 8 || h > 17 ? '#ffb27a' : '#fff4e0');
-    lamp.current.intensity = S.power ? (1 - s) * 70 : 0; lamp2.current.intensity = S.power ? (1 - s) * 55 : 0;
+    lamp.current.intensity = S.power ? (1 - s) * 70 : 0; lamp2.current.intensity = S.power && wingOn() ? (1 - s) * 55 : 0;
     (scene.background as THREE.Color).copy(night).lerp(day, s);
   });
   return <><color attach="background" args={['#bfdcf2']} /><hemisphereLight ref={amb} args={['#cfe6ff', '#6b5a48', 1]} />
@@ -664,20 +712,20 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
   return <>
     <Lights />
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
-    <mesh rotation-x={-Math.PI / 2} position={[2.6, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); walk(e.point.x, e.point.z); }}>
-      <planeGeometry args={[17.6, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
+    <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); walk(e.point.x, e.point.z); }}>
+      <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
     <Room />
-    <Wing />
+    {ui.wing ? <Wing /> : <EastWall />}
     <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
-    {OBJ.filter(o => ui.famOn || o.acts.some(a => !a.all)).map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
+    {OBJ.filter(o => (!LUX_IDS.has(o.id) || ui.home.includes(o.id)) && (ui.famOn || o.acts.some(a => !a.all))).map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
       onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(ui.famOn ? o : { ...o, acts: o.acts.filter(a => !a.all) }); }}
       onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(o.id); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(h => (h === o.id ? null : h)); }}>{VIS[o.id](ui)}</group>)}
-    {DECOR.map(d => <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot}>{VIS[d.vis](ui)}</group>)}
+    {DECOR.filter(d => ui.wing || !WING_IDS.has(d.id)).map(d => <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot}>{VIS[d.vis](ui)}</group>)}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]}><div className="pie"><b>{sel.name}</b>
       {sel.acts.map(a => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : `${a.dur} min`}</small></button>)}</div></Html>}
-    <OrbitControls enablePan={false} target={[2.6, 0, 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
+    <OrbitControls enablePan={false} target={[ui.wing ? 2.6 : 0, 0, 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
   </>;
 }
 
@@ -696,11 +744,11 @@ function cityExitPoint(b: (typeof CITY.buildings)[number]) {
 }
 
 export default function Sim() {
-  const [famModal, setFamModal] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
+  const [famModal, setFamModal] = useState(false), [homeUp, setHomeUp] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {
@@ -727,6 +775,7 @@ export default function Sim() {
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = cityExitPoint(b); fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
+    {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
     <div className={'top' + (menu ? ' open' : '')}><div className="pill">{worldCalendar(ui.min).weekday} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
       <div className="pill gold">{naira(ui.cash)}</div>
@@ -735,6 +784,7 @@ export default function Sim() {
       <div className="topMore"><div className="pill">{worldCalendar(ui.min).season.e} {worldCalendar(ui.min).season.label} · {weatherAt().e} {weatherAt().label}</div>
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
+        {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>

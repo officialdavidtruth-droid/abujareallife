@@ -19,6 +19,8 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   useEffect(() => { if (sel && !net.roster.includes(sel)) setSel(null); }, [sel, net.roster, setSel]);
   useEffect(() => { const onPick = (e: Event) => { const name = String((e as CustomEvent).detail || ''); if (name && net.roster.includes(name)) setSel(name); }; window.addEventListener('arl-player-select', onPick); return () => window.removeEventListener('arl-player-select', onPick); }, [net.roster, setSel]);
   const go = () => { if (net.send(txt)) setTxt(''); };
+  const [micHide, setMicHide] = useState(false);
+  useEffect(() => { if (voice.msg) setMicHide(false); }, [voice.msg]); // a new mic problem brings the prompt back
   const count = net.roster.length + 1;
   const label = !net.enabled ? 'Solo' : net.status === 'online' ? `${count} online` : net.status === 'error' ? 'Offline' : 'Connecting…';
   const d = sel ? dist(sel) : Infinity, canAct = d <= INTERACT_RANGE;
@@ -31,8 +33,8 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
     <button className="cpOnline" onClick={() => setOpen(o => !o)} aria-label="Players and chat"><span>🌍</span><em>{label}</em><b>{net.enabled ? count : '–'}</b>{net.unread > 0 && !open && <i>{net.unread > 9 ? '9+' : net.unread}</i>}</button>
 
     <div className="cpStack">
-      {voice.msg && <div className="cpNote">{voice.msg}</div>}
-      {voice.mic.perm !== 'granted' && !voice.micOn && <div className="cpCard"><div>🎤 <b>Voice chat needs your microphone.</b>{voice.mic.perm === 'denied' && <><br /><small>It is blocked for this site: tap the 🔒 by the address bar → Microphone → Allow, then reload.</small></>}{voice.mic.inApp && <><br /><small>Open the game in Chrome or Safari: in-app browsers can't use the mic.</small></>}</div><div className="cpRow"><button className="ok" onClick={() => voice.requestMic()}>Allow microphone</button></div></div>}
+      {voice.msg && <div className="cpNote" onClick={() => voice.clearMsg()}><span>{voice.msg}</span><button aria-label="Dismiss" onClick={e => { e.stopPropagation(); voice.clearMsg(); }}>✕</button></div>}
+      {voice.mic.perm !== 'granted' && !voice.micOn && !micHide && <div className="cpCard"><div>🎤 <b>Voice chat needs your microphone.</b>{voice.mic.perm === 'denied' && <><br /><small>It is blocked for this site: tap the 🔒 by the address bar → Microphone → Allow, then reload.</small></>}{voice.mic.inApp && <><br /><small>Open the game in Chrome or Safari: in-app browsers can't use the mic.</small></>}</div><div className="cpRow"><button className="ok" onClick={() => voice.requestMic()}>Allow microphone</button><button onClick={() => { setMicHide(true); voice.clearMsg(); }}>Cancel</button></div></div>}
       {net.notices.map(n => <div key={n.id} className="cpCard"><div>{ACT_EMOJI[n.k]} <b>{n.from}</b> {n.text}</div><div className="cpRow">{dist(n.from) <= INTERACT_RANGE && <button className="ok" onClick={() => { net.act(n.k, n.from); net.dismissNotice(n.id); }}>{n.reply}</button>}<button onClick={() => net.dismissNotice(n.id)}>Dismiss</button></div></div>)}
     </div>
 
@@ -98,7 +100,7 @@ const CSS = `
 .cpCard.ring{border-color:#d99a42;animation:popIn .2s both,pulseGlow 1.4s ease-in-out infinite}.cpCard.live{border-color:#3fb98a}.cpCard small{color:#9fb5aa}
 .cpRow{display:flex;gap:8px}.cpRow button,.cpIn button{flex:1;min-height:42px;border-radius:10px;border:1px solid #2d493b;background:#173126;color:#fff;font-weight:700;font-size:13px}
 .cpRow .ok{background:#1d7654;border-color:#3fb98a}.cpRow .no{background:#4a1f1f;border-color:#7d3a3a}
-.cpNote{background:#d99a42;color:#1a1208;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;text-align:center}
+.cpNote{background:#d99a42;color:#1a1208;border-radius:999px;padding:8px 10px 8px 14px;font-size:12px;font-weight:700;text-align:center;display:flex;align-items:center;gap:8px}.cpNote span{flex:1}.cpNote button{flex:none;width:24px;height:24px;border:0;border-radius:50%;background:#1a120833;color:#1a1208;font-weight:900;font-size:12px;padding:0}
 .cpSheet{position:absolute;z-index:30;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100vw - 24px));background:#09130ff7;border:1px solid #ffffff2e;border-radius:18px;padding:14px;color:#fff;box-shadow:0 18px 50px #000a;animation:popIn .2s both}
 .cpSheet p{margin:8px 0 0;font-size:10px;color:#7f968b}.cpHead{display:flex;flex-direction:column;gap:2px;padding-right:34px;margin-bottom:10px}.cpHead b{font-size:16px}.cpHead span{font-size:11px;color:#9fb5aa}
 .cpGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.cpGrid button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:64px;padding:8px 2px;border-radius:12px;border:1px solid #2d493b;background:#14261f;color:#fff;font-size:24px}.cpGrid button small{font-size:9px;color:#b7c8bf;text-align:center;line-height:1.15}.cpGrid button:disabled{opacity:.4}
@@ -109,7 +111,7 @@ const CSS = `
 .cpLog{min-height:70px;max-height:34vh;overflow-y:auto;background:#0a1511;border-radius:10px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;gap:4px;user-select:text;-webkit-user-select:text}.cpLog b{color:#f3c56f}.cpEmpty{color:#7f968b}
 .cpIn{display:flex;gap:6px}.cpIn input{flex:1;min-width:0;background:#0a1511;border:1px solid #2a4337;border-radius:10px;padding:10px;color:#fff;font-size:16px}.cpIn button{flex:0 0 auto;padding:0 16px;background:#d99a42;color:#1a1208;border:0}
 @media (pointer:coarse),(max-width:820px){
-  .cpOnline{left:auto;transform:none;right:calc(10px + env(safe-area-inset-right,0px));top:calc(224px + env(safe-area-inset-top,0px));width:46px;height:46px;min-height:46px;padding:0;justify-content:center;gap:0;position:absolute;flex-direction:column;line-height:1}
+  .cpOnline{left:auto;transform:none;left:calc(108px + env(safe-area-inset-left,0px));right:auto;top:calc(100px + env(safe-area-inset-top,0px));width:46px;height:46px;min-height:46px;padding:0;justify-content:center;gap:0;position:absolute;flex-direction:column;line-height:1}
   .cpOnline span{font-size:19px}.cpOnline em{display:none}.cpOnline b{display:block;font-size:10px}
   .cpStack{top:calc(104px + env(safe-area-inset-top,0px));width:min(360px,calc(100vw - 270px))}
   .cpChat{left:auto;right:calc(66px + env(safe-area-inset-right,0px));transform:none;top:calc(56px + env(safe-area-inset-top,0px));width:min(340px,calc(100vw - 90px));max-height:calc(100% - 70px)}

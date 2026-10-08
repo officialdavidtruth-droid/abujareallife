@@ -1,13 +1,10 @@
-# Phone messages & phone grades
+# Phone messages (free for everyone)
 
-* Tap a player in the city -> **💬 Message** opens your chat thread with them on your phone (📱 Phone -> Messages).
-* Threads are saved in the `Message` table (polled every few seconds; unread badge + pop-up for new texts).
-* **Phone grades** (best smartphone in your bag; the Tech store sells the same items, or upgrade from the phone itself):
-  * Basic phone (everyone): texts up to 140 chars, 3 chats.
-  * Budget smartphone: unlimited chats, 300 chars, read receipts, Maps (navigate to shared locations).
-  * Mid-range: + share your location.
-  * Flagship: + send money (max ₦500,000 per transfer).
-* The server enforces all of it (`app/api/messages`, `app/api/phone`, rules in `lib/phone.ts`).
+* Tap a player in the city -> **💬 Message**, or type a name in 📱 Phone -> Messages.
+* **Chat is free**: unlimited chats, read receipts, maps, share location and send money (max ₦500,000 per transfer) for every player. No phone upgrade needed.
+* Sending is instant: your bubble appears the moment you press Send (shown with … then ✓), and the server call runs in the background. A failed message shows "Not sent · tap to retry".
+* Threads refresh every 1.5 s while open. The server checks name, cooldown and rate limit in a single parallel round trip.
+* Rules live in `lib/phone.ts` (`FREE_PHONE`), `app/api/messages`.
 
 ## One-time setup
-Run `prisma/migrations/0009_messages/migration.sql` once in the Supabase SQL editor, then redeploy.
+Run `prisma/migrations/0009_messages/migration.sql` once in the Supabase SQL editor (if not already done).

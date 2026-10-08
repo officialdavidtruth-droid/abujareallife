@@ -164,11 +164,10 @@
 
   .sim.outside .cwStick{left:calc(16px + var(--sal))!important;bottom:calc(18px + var(--sab))!important;width:108px!important;height:108px!important}
   .sim.outside .cwKnob{width:48px!important;height:48px!important}
-  .sim.outside .cwBtns{right:calc(14px + var(--sar))!important;bottom:calc(18px + var(--sab))!important;grid-template-columns:repeat(2,58px)!important;gap:7px!important}
-  .sim.outside .cwBtns .big{grid-column:2!important;grid-row:1!important}
-  .sim.outside .cwBtns>.cam:not(.cwTouch){grid-column:1!important;grid-row:1!important}
-  .sim.outside .cwBtns>.cwTouch:not(.cam){grid-column:1!important;grid-row:2!important}
-  .sim.outside .cwBtns>.cwBtn:not(.cam):not(.cwTouch):not(.big){grid-column:2!important;grid-row:2!important}
+  .sim.outside .cwBtns{right:calc(14px + var(--sar))!important;bottom:calc(18px + var(--sab))!important;grid-template-columns:58px 58px 72px!important;gap:7px!important;align-items:center!important;justify-items:center!important}
+  /* every button gets its own cell (auto-placed); only Jump is pinned: big, on the right, spanning two rows */
+  .sim.outside .cwBtns .big{grid-column:3!important;grid-row:1 / span 2!important}
+  .sim.outside .cwBtns>.cwBtn:not(.big){grid-column:auto!important;grid-row:auto!important}
   .sim.outside .cwBtn{width:58px!important;height:58px!important}
   .sim.outside .cwBtn.big{width:68px!important;height:68px!important}
   .sim.outside .cwLookPad{right:0!important;top:28%!important;width:45%!important;height:36%!important;background:transparent!important}

@@ -2,14 +2,9 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../lib/auth';
-import { MAX_SEND_CASH, MSG_COOLDOWN_MS, PHONES, phoneOf, tierFromItems } from '../../../lib/phone';
-// Phone messages. The server enforces the phone grade: what you may send depends on the best phone in your bag.
+import { FREE_PHONE, MAX_SEND_CASH, MSG_COOLDOWN_MS } from '../../../lib/phone';
+// Phone messages. Chat is free for everyone: no phone grade, no chat limit.
 export const dynamic = 'force-dynamic';
-const ids = PHONES.map(p => p.itemId).filter(Boolean);
-async function tierOf(userId: string) {
-  const rows = await prisma.inventoryItem.findMany({ where: { userId, itemKey: { in: ids }, quantity: { gt: 0 } }, select: { itemKey: true } });
-  return tierFromItems(rows.map((r: { itemKey: string }) => r.itemKey));
-}
 const find = (name: string) => prisma.user.findUnique({ where: { usernameKey: name.trim().toLowerCase() } });
 type Row = { id: string; fromName: string; toName: string; kind: string; body: string; data: unknown; readAt: Date | null; createdAt: Date };
 const shape = (m: Row, me: string) => ({ id: m.id, mine: m.fromName === me, kind: m.kind, body: m.body, data: m.data || null, at: m.createdAt.getTime(), read: !!m.readAt });
@@ -27,16 +22,16 @@ export async function GET(req: Request) {
       const other = await find(withName); if (!other || other.id === u.id) return err('No such player.', 404);
       const rows = await prisma.message.findMany({ where: { OR: [{ fromName: me, toName: other.username }, { fromName: other.username, toName: me }] }, orderBy: { createdAt: 'desc' }, take: 150 });
       await prisma.message.updateMany({ where: { fromName: other.username, toName: me, readAt: null }, data: { readAt: new Date() } });
-      return NextResponse.json({ name: other.username, tier: await tierOf(u.id), messages: rows.reverse().map((m: Row) => shape(m, me)) });
+      return NextResponse.json({ name: other.username, tier: 3, messages: rows.reverse().map((m: Row) => shape(m, me)) });
     }
-    const [rows, unread, tier] = await Promise.all([
+    const [rows, unread] = await Promise.all([
       prisma.message.findMany({ where: { OR: [{ fromName: me }, { toName: me }] }, orderBy: { createdAt: 'desc' }, take: 400 }),
-      prisma.message.count({ where: { toName: me, readAt: null } }), tierOf(u.id),
+      prisma.message.count({ where: { toName: me, readAt: null } }),
     ]);
     const by = new Map<string, { name: string; last: ReturnType<typeof shape>; unread: number }>();
     for (const m of rows as Row[]) { const p = m.fromName === me ? m.toName : m.fromName; let c = by.get(p); if (!c) { c = { name: p, last: shape(m, me), unread: 0 }; by.set(p, c); } if (m.toName === me && !m.readAt) c.unread++; }
     const s = await prisma.save.findUnique({ where: { userId: u.id }, select: { cash: true } });
-    return NextResponse.json({ convs: [...by.values()], unread, tier, cash: s?.cash ?? 0 });
+    return NextResponse.json({ convs: [...by.values()], unread, tier: 3, cash: s?.cash ?? 0 });
   } catch (e) { return serverError(e); }
 }
 
@@ -44,20 +39,18 @@ export async function POST(req: Request) {
   try {
     const u = await currentUser(); if (!u) return err('Not signed in.', 401);
     const b = await req.json().catch(() => ({})), me = u.username;
-    const to = await find(String(b.to || '')); if (!to || to.id === u.id) return err('No such player.', 404);
-    const tier = await tierOf(u.id), ph = phoneOf(tier), kind = b.kind === 'loc' ? 'loc' : b.kind === 'cash' ? 'cash' : 'text';
-    const text = String(b.body || '').replace(/\s+/g, ' ').trim().slice(0, ph.maxLen);
+    const kind = b.kind === 'loc' ? 'loc' : b.kind === 'cash' ? 'cash' : 'text';
+    const text = String(b.body || '').replace(/\s+/g, ' ').trim().slice(0, FREE_PHONE.maxLen);
     if (kind === 'text' && !text) return err('Type a message first.');
-    if (kind === 'loc' && !ph.location) return err(`Sharing your location needs a ${PHONES[2].name} or better.`, 403);
-    if (kind === 'cash' && !ph.cash) return err(`Sending money needs a ${PHONES[3].name}.`, 403);
-    const last = await prisma.message.findFirst({ where: { fromName: me }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+    // one round trip for everything we need to check, instead of five in a row
+    const [to, last, recent] = await Promise.all([
+      find(String(b.to || '')),
+      prisma.message.findFirst({ where: { fromName: me }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+      prisma.message.count({ where: { fromName: me, createdAt: { gt: new Date(Date.now() - 60_000) } } }),
+    ]);
+    if (!to || to.id === u.id) return err('No such player.', 404);
     if (last && Date.now() - last.createdAt.getTime() < MSG_COOLDOWN_MS) return err('Slow down a little.', 429);
-    if ((await prisma.message.count({ where: { fromName: me, createdAt: { gt: new Date(Date.now() - 60_000) } } })) >= 30) return err('You are sending too fast. Wait a minute.', 429);
-    if (ph.maxChats < 999) { // basic phone: only a few chats
-      const rows = await prisma.message.findMany({ where: { OR: [{ fromName: me }, { toName: me }] }, select: { fromName: true, toName: true }, take: 500 });
-      const partners = new Set<string>(rows.map((r: { fromName: string; toName: string }) => (r.fromName === me ? r.toName : r.fromName)));
-      if (!partners.has(to.username) && partners.size >= ph.maxChats) return err(`Your ${ph.name} only holds ${ph.maxChats} chats. Upgrade your phone to chat with more people.`, 403);
-    }
+    if (recent >= 60) return err('You are sending too fast. Wait a minute.', 429);
     if (kind === 'loc') {
       const x = Number(b.x), z = Number(b.z); if (!isFinite(x) || !isFinite(z)) return err('No location.');
       const m = await prisma.message.create({ data: { fromId: u.id, fromName: me, toName: to.username, kind, body: text || '📍 My location', data: { x: Math.round(Math.max(-400, Math.min(400, x)) * 10) / 10, z: Math.round(Math.max(-400, Math.min(400, z)) * 10) / 10 } } });

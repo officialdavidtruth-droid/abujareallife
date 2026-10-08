@@ -247,5 +247,5 @@ export function useCityVoice(o: Opts) {
     stopLocal.current(); stream.current?.getTracks().forEach(t => t.stop()); stream.current = null; ctx.current?.close().catch(() => {}); ctx.current = null;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { micOn, toggleMic, setMic, msg, linked, live, turn, relayOn, mic, requestMic };
+  return { micOn, toggleMic, setMic, msg, clearMsg: () => setMsg(''), linked, live, turn, relayOn, mic, requestMic };
 }

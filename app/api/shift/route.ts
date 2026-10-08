@@ -41,6 +41,11 @@ export async function POST(req: Request) {
   const r = await prisma.save.updateMany({ where: { userId: u.id, questId: s.questId, questAt: s.questAt }, data: { questId: null, questAt: null, cash: { increment: pay }, profile: addSkillXp(st.profile, skill, 8 + Math.round(mins / 10)) } });
   if (!r.count) return err('Already paid.', 409);
   await prisma.transaction.create({ data: { userId: u.id, type: 'EARN', amount: pay, description: `shift:${biz.name}:${mine.job.title}:${mine.task.id}` } });
+  const cp = await prisma.careerProgress.findUnique({ where: { userId_profession: { userId: u.id, profession: st.profile.profession } } });
+  const careerXp = 8 + Math.round(mins / 5), nextXp = (cp?.xp || 0) + careerXp, careerRank = Math.min(7, 1 + Math.floor(nextXp / 250));
+  const careerTitles = ['Trainee','Junior','Senior','Lead','Manager','Director','Executive'];
+  await prisma.careerProgress.upsert({ where: { userId_profession: { userId: u.id, profession: st.profile.profession } }, update: { xp: nextXp, rank: careerRank, title: careerTitles[careerRank-1], completed: { increment: 1 }, salaryBonus: (careerRank-1)*2500 }, create: { userId: u.id, profession: st.profile.profession, title: careerTitles[careerRank-1], rank: careerRank, xp: careerXp, completed: 1, salaryBonus: (careerRank-1)*2500 } });
+  await prisma.reputation.upsert({ where: { userId: u.id }, update: { score: { increment: 1 }, trust: { increment: 1 }, social: { increment: 1 } }, create: { userId: u.id, score: 51, trust: 51, social: 51 } });
   const fame = await awardFame(u.id, FAME_SHIFT);
   const n = await loadState(u.id);
   return NextResponse.json({ ok: true, fame, pay, cash: n!.save.cash, profile: n!.profile });

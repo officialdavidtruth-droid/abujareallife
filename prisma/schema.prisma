@@ -59,6 +59,9 @@ model User {
   codes        EmailCode[]
   save         Save?
   management   Management?
+  businesses   PlayerBusiness[]
+  careers      CareerProgress[]
+  reputation   Reputation?
 }
 
 model Character {
@@ -124,6 +127,10 @@ model Vehicle {
   price       Int
   fuel        Int         @default(100)
   condition   Int         @default(100)
+  mileage     Int         @default(0)
+  insured     Boolean     @default(false)
+  registered  Boolean     @default(false)
+  parkedAt    String?
   purchasedAt DateTime    @default(now())
   createdAt   DateTime    @default(now())
 
@@ -301,4 +308,81 @@ model Message {
   @@index([toName, readAt])
   @@index([fromName, createdAt])
   @@index([toName, createdAt])
+}
+
+
+model PlayerBusiness {
+  id          String   @id @default(cuid())
+  userId      String
+  businessId  String   @unique
+  name        String
+  type        String
+  district    String
+  level       Int      @default(1)
+  reputation  Int      @default(50)
+  revenue     Int      @default(0)
+  expenses    Int      @default(0)
+  balance     Int      @default(0)
+  staff       Int      @default(0)
+  menu        Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([district, type])
+}
+
+model CareerProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  profession  String
+  title       String
+  rank        Int      @default(1)
+  xp          Int      @default(0)
+  completed   Int      @default(0)
+  salaryBonus Int      @default(0)
+  unlockedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, profession])
+}
+
+model Reputation {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  score     Int      @default(50)
+  trust     Int      @default(50)
+  crime    Int      @default(0)
+  social    Int      @default(50)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CityEvent {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  title       String
+  description String
+  district    String
+  kind        String
+  intensity   Int      @default(1)
+  startsAt    DateTime
+  endsAt      DateTime
+  active      Boolean  @default(true)
+  data        Json?
+  createdAt   DateTime @default(now())
+  @@index([active, startsAt, endsAt])
+  @@index([district, active])
+}
+
+model CityBusinessMetric {
+  id          String   @id @default(cuid())
+  businessId  String
+  dayKey      String
+  visitors    Int      @default(0)
+  revenue     Int      @default(0)
+  incidents   Int      @default(0)
+  rating      Int      @default(50)
+  updatedAt   DateTime @updatedAt
+  @@unique([businessId, dayKey])
 }

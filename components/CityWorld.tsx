@@ -377,12 +377,13 @@ function Traffic() {
   }, [flat]);
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
+    const wc = worldCalendar(); const wx = weatherAt(); const rainFactor = wx.storm ? .62 : wx.rain > .45 ? .78 : 1; const rush = (wc.hh >= 7 && wc.hh < 10) || (wc.hh >= 16 && wc.hh < 19) ? 1.18 : 1;
     let nearI = -1, nearD = 90;
     flat.forEach(({ l, c }, i) => {
       const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }), g = refs.current[i];
       if (c.busy) { tp.x = 1e5; tp.z = 1e5; if (g) g.visible = false; return; } // it is carrying a player (the ride has its own model)
       if (g) g.visible = true;
-      const base = l.speed * c.mul, EX = halfW(l.road) * .5 + CURB; // EX: how far the vehicle slides sideways to reach the kerb
+      const base = l.speed * c.mul * rainFactor * rush, EX = halfW(l.road) * .5 + CURB; // EX: how far the vehicle slides sideways to reach the kerb
       let v = c.v ?? base;
       if (c.hail === 1) {
         const prev = l.dir === 1 ? c.s - Math.floor(c.s / GRID) * GRID : Math.ceil(c.s / GRID) * GRID - c.s; // metres past the last junction
@@ -715,6 +716,7 @@ function Pedestrians() {
   }, [peds]);
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
+    const wc = worldCalendar(); const wx = weatherAt(); const night = wc.hh >= 20 || wc.hh < 6; const rain = wx.rain > .45;
     const part = (mesh: THREE.InstancedMesh, idx: number, tx: number, ty: number, tz: number, rz = 0, dy = 0) => {
       T.t.makeTranslation(tx, ty, tz); T.m.copy(T.base).multiply(T.t);
       if (rz) { T.r.makeRotationZ(rz); T.m.multiply(T.r); }
@@ -728,7 +730,7 @@ function Pedestrians() {
         let go = true;
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
         if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x')) go = false; } // wait at the kerb for a red light
-        if (go) { p.u += p.dir * p.sp * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
+        if (go) { const activityFactor = night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
       }
       if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }
       if (p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 3.5) { const dx = p.x - VEH.x, dz = p.z - VEH.z; if (dx * dx + dz * dz < 3.6) { p.down = 3.2; VEH.v *= .9; thud(.5); } } // clipped by the player's car

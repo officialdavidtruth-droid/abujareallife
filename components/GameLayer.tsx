@@ -10,6 +10,7 @@ import RuntimeStyle from './RuntimeStyle';
 import Market from './Market';
 import Inventory from './Inventory';
 import Messages from './Messages';
+import CityLifePanel from './CityLifePanel';
 type Tier = { id: string; label: string; e: string; at: number; next: { label: string; at: number } | null; pct: number };
 type St = { cash: number; heat: number; wanted: boolean; jailLeft: number; rank: number; profile: Profile; origin: Origin | null; hasCar: boolean; fame: number; tier: Tier };
 type Row = { rank: number; name: string; fame: number; origin: string | null; tier: string; you: boolean };
@@ -19,7 +20,7 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
 /* Everything "no rules, real consequences": quests, crime, wanted level, real police arrests, jail, building access, relationships. */
 export default function GameLayer({ username, onCash, near, role, onEnter, onDenied, open, onToggle, onCityTab, cityTab, getMinute }: { username: string; onCash: (n: number) => void; near: { name: string; type: string; id: string } | null; role: 'player' | 'police'; onEnter: (id: string) => void; onDenied?: (reason: string) => void; open: boolean; onToggle: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; getMinute?: () => number }) {
-  const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
+  const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | 'city' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
   const [quest, setQuest] = useState<{ id: string; end: number } | null>(null), [, tick] = useState(0), [bail, setBail] = useState(0), [enter, setEnter] = useState<{ ok: boolean; reason: string; name: string } | null>(null);
   const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null), [chatWith, setChatWith] = useState<string | null>(null), [unread, setUnread] = useState(0), seenMsg = useRef('');
   const [stuff, setStuff] = useState(false);
@@ -68,7 +69,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const items: [string, string, () => void][] = [
     ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🎒', 'My Stuff', () => setStuff(true)], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
     ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
-    ['❤️', 'Love', () => setTab('love')], ['📱', 'Phone', () => setTab('phone')], ['🕶️', 'Crime', () => setTab('crime')],
+    ['❤️', 'Love', () => setTab('love')], ['🌆', 'City Life', () => setTab('city')], ['📱', 'Phone', () => setTab('phone')], ['🕶️', 'Crime', () => setTab('crime')],
   ];
   if (role === 'police') items.push(['👮', 'Police', () => setTab('police')]);
   const p = st.profile, prof = PROFESSIONS.find(x => x.id === p.profession);
@@ -99,6 +100,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
       {tab === 'fame' && <FamePanel st={st} board={board} />}
       {tab === 'players' && <PlayersPanel username={username} onClose={() => setTab(null)} />}
       {tab === 'me' && <MyLifePanel username={username} st={st} prof={prof} profile={p} />}
+      {tab === 'city' && <CityLifePanel />}
     </div>}
     <RuntimeStyle css={`.glToast{position:absolute;left:50%;transform:translateX(-50%);top:calc(64px + var(--sat,0px));z-index:30;background:#000c;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;max-width:90vw;text-align:center}
 .glPanel{position:absolute;z-index:25;left:12px;right:12px;top:calc(56px + var(--sat,0px));max-width:420px;max-height:calc(100vh - 80px);overflow:auto;background:#09130ff7;border:1px solid #ffffff22;border-radius:16px;padding:16px;color:#fff;display:flex;flex-direction:column;gap:7px}.glPanel h3{margin:0}.glPanel .x{position:absolute;right:8px;top:4px;background:none;border:0;color:#fff;font-size:24px}
@@ -140,7 +142,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   .pBar{position:absolute;right:6px;top:50%;transform:translateY(-50%) rotate(90deg);height:18px;width:60px}.pBar i{width:60px}
   .phoneScreen:not(.isHome)>.phonePage,.phoneScreen:not(.isHome)>.msList,.phoneScreen:not(.isHome)>.msThreadWrap{padding-left:48px}
 }
-.phonePage{padding:0 14px 12px;overflow:auto;min-height:0}.phoneEmpty{padding:35px 15px;text-align:center;color:#9fb5aa}.phoneEmpty b{display:block;color:#fff;margin:8px}.phoneEmpty small{display:block}.phoneSectionTitle{display:flex;justify-content:space-between;align-items:center;padding:8px 4px;color:#fff}.phoneSectionTitle span{font-size:10px;color:#8fa59a}.carCard{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:9px;align-items:center;background:#10201a;border:1px solid #ffffff12;border-radius:13px;padding:9px;margin-bottom:7px}.carThumb{width:42px;height:42px;border-radius:11px;background:#1b3328;display:grid;place-items:center;font-size:23px}.carCard>div:nth-child(2){min-width:0}.carCard b,.carCard small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.carCard small{font-size:9px;color:#8fa59a;margin-top:3px}.carOwned{font-size:8px;color:#3fb98a;font-weight:900}.carBuy{background:#d99a42;color:#171008;border:0;border-radius:9px;padding:8px;font-size:9px;font-weight:900;max-width:92px}.carBuy:disabled{opacity:.5}.phoneBack{width:100%;border:0;background:#183025;color:#fff;border-radius:11px;padding:10px;margin-top:3px}.phoneNav{display:grid;grid-template-columns:repeat(3,1fr);padding:9px 12px 12px;border-top:1px solid #ffffff12;background:#09140f}.phoneNav button{background:none;border:0;color:#fff;font-size:18px}.phoneNav small{display:block;font-size:8px;color:#8fa59a}
+.phonePage{padding:0 14px 12px;overflow:auto;min-height:0}.phoneEmpty{padding:35px 15px;text-align:center;color:#9fb5aa}.phoneEmpty b{display:block;color:#fff;margin:8px}.phoneEmpty small{display:block}.phoneSectionTitle{display:flex;justify-content:space-between;align-items:center;padding:8px 4px;color:#fff}.phoneSectionTitle span{font-size:10px;color:#8fa59a}.carCard{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:9px;align-items:center;background:#10201a;border:1px solid #ffffff12;border-radius:13px;padding:9px;margin-bottom:7px}.carThumb{width:42px;height:42px;border-radius:11px;background:#1b3328;display:grid;place-items:center;font-size:23px}.carCard>div:nth-child(2){min-width:0}.carCard b,.carCard small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.carCard small{font-size:9px;color:#8fa59a;margin-top:3px}.carOwned{font-size:8px;color:#3fb98a;font-weight:900}.carActions{display:flex;gap:4px;margin-top:5px}.carActions button{border:1px solid #ffffff18;background:#183025;color:#fff;border-radius:6px;padding:4px 5px;font-size:8px}.carBuy{background:#d99a42;color:#171008;border:0;border-radius:9px;padding:8px;font-size:9px;font-weight:900;max-width:92px}.carBuy:disabled{opacity:.5}.phoneBack{width:100%;border:0;background:#183025;color:#fff;border-radius:11px;padding:10px;margin-top:3px}.phoneNav{display:grid;grid-template-columns:repeat(3,1fr);padding:9px 12px 12px;border-top:1px solid #ffffff12;background:#09140f}.phoneNav button{background:none;border:0;color:#fff;font-size:18px}.phoneNav small{display:block;font-size:8px;color:#8fa59a}
 `} />
   </>;
 }
@@ -185,7 +187,7 @@ function MyLifePanel({ username, st, prof, profile }: { username: string; st: St
 }
 
 function PhonePanel({ start, unread, onUnread, onCash, onClose, onCityTab, cityTab, onMarket }: { start: string | null; unread: number; onUnread: (n: number) => void; onCash: (n: number) => void; onClose: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; onMarket: () => void }) {
-  const [app, setApp] = useState<'home' | 'garage' | 'messages' | 'pantry'>(start ? 'messages' : 'home');
+  const [app, setApp] = useState<'home' | 'garage' | 'messages' | 'pantry' | 'city' | 'news'>(start ? 'messages' : 'home');
   useEffect(() => { if (start) setApp('messages'); }, [start]);
   const [vehicles, setVehicles] = useState<any[]>([]), [catalog, setCatalog] = useState(VEHICLE_CATALOG), [busy, setBusy] = useState('');
   const refreshVehicles = useCallback(async () => { const r = await fetch('/api/vehicles'); if (r.ok) { const d = await r.json(); setVehicles(d.vehicles || []); setCatalog(d.catalog || VEHICLE_CATALOG); } }, []);
@@ -201,13 +203,15 @@ function PhonePanel({ start, unread, onUnread, onCash, onClose, onCityTab, cityT
     { k: 'garage', e: '🚗', l: 'Garage', c: 'linear-gradient(160deg,#ff7a6b,#d1323a)', f: () => setApp('garage') },
     { k: 'market', e: '🛒', l: 'Market', c: 'linear-gradient(160deg,#ffcb52,#e8891a)', f: onMarket },
     { k: 'dealer', e: '🏪', l: 'Dealership', c: 'linear-gradient(160deg,#6aa8ff,#2c5fd6)', f: () => setApp('garage') },
+    { k: 'city', e: '🌆', l: 'City Life', c: 'linear-gradient(160deg,#6bd99c,#19734e)', f: () => setApp('city') },
+    { k: 'news', e: '📰', l: 'News', c: 'linear-gradient(160deg,#7aa8ff,#3159b8)', f: () => setApp('news') },
     { k: 'pantry', e: '🧺', l: 'Pantry', c: 'linear-gradient(160deg,#8be0b0,#2f9a6a)', f: () => setApp('pantry') },
     { k: 'life', e: '🧍', l: 'My Life', c: 'linear-gradient(160deg,#c59bff,#7a47d1)', f: () => onClose() },
     { k: 'bank', e: '🏦', l: 'Bank', c: 'linear-gradient(160deg,#4fd1c5,#1b8a82)', f: () => onClose() },
     { k: 'miss', e: '🎯', l: 'Missions', c: 'linear-gradient(160deg,#ff9bd0,#d13c8f)', f: () => onClose() },
   ];
   const dock = apps.filter(x => ['msg', 'maps', 'market', 'garage'].includes(x.k)), grid = apps.filter(x => !['msg', 'maps', 'market', 'garage'].includes(x.k));
-  const title = app === 'garage' ? 'Garage' : app === 'messages' ? 'Messages' : app === 'pantry' ? 'Pantry' : '';
+  const title = app === 'garage' ? 'Garage' : app === 'messages' ? 'Messages' : app === 'pantry' ? 'Pantry' : app === 'city' ? 'City Life' : app === 'news' ? 'Abuja News' : '';
   const icon = (x: typeof apps[number], label = true) => <button key={x.k} className="pIcon" onClick={x.f}><span className="pTile" style={{ background: x.c }}>{x.e}{!!x.badge && x.badge > 0 && <i className="dockBadge">{x.badge > 9 ? '9+' : x.badge}</i>}</span>{label && <small>{x.l}</small>}</button>;
   return <div className="phoneWrap" onClick={onClose}><div className="phoneDevice" onClick={e => e.stopPropagation()}>
     <i className="pSide pSide1" /><i className="pSide pSide2" /><i className="pSide pSide3" />
@@ -220,8 +224,10 @@ function PhonePanel({ start, unread, onUnread, onCash, onClose, onCityTab, cityT
         <div className="pGrid">{grid.map(x => icon(x))}</div>
         <div className="pDock">{dock.map(x => icon(x, false))}</div>
       </div>}
+      {app === 'city' && <div className="phonePage"><CityLifePanel /></div>}
+      {app === 'news' && <CityNewsPanel />}
       {app === 'messages' && <Messages start={start} onCash={onCash} onClose={onClose} onUnread={onUnread} />}
-    {app === 'garage' && <div className="phonePage"><div className="phoneSectionTitle"><b>My garage</b><span>{vehicles.length} owned</span></div>{vehicles.length === 0 ? <div className="phoneEmpty">🚗<b>No vehicle yet</b><small>Choose a licensed model below.</small></div> : vehicles.map(v => <div className="carCard" key={v.id}><div className="carThumb">🚘</div><div><b>{v.name}</b><small>{v.type} · {v.condition}% condition · {v.fuel}% fuel</small></div><span className="carOwned">OWNED</span></div>)}<div className="phoneSectionTitle"><b>Dealership</b><span>Licensed models</span></div>{catalog.map(v => <div className="carCard" key={v.id}><div className="carThumb">🚘</div><div><b>{v.brand} {v.model}</b><small>{v.year} · {v.type} · {v.topSpeed} km/h · handling {v.handling}</small></div><button className="carBuy" disabled={busy === v.id} onClick={() => buy(v.id)}>{busy === v.id ? '...' : naira(v.price)}</button></div>)}<button className="phoneBack" onClick={() => setApp('home')}>← Home</button></div>}
+    {app === 'garage' && <div className="phonePage"><div className="phoneSectionTitle"><b>My garage</b><span>{vehicles.length} owned</span></div>{vehicles.length === 0 ? <div className="phoneEmpty">🚗<b>No vehicle yet</b><small>Choose a licensed model below.</small></div> : vehicles.map(v => <div className="carCard" key={v.id}><div className="carThumb">🚘</div><div><b>{v.name}</b><small>{v.type} · {v.condition}% condition · {v.fuel}% fuel · {v.registered?'registered':'unregistered'} · {v.insured?'insured':'uninsured'}</small><div className="carActions"><button onClick={async()=>{const r=await post('/api/vehicles',{action:'repair',vehicleId:v.id});if(r.ok)refreshVehicles()}}>Repair</button><button onClick={async()=>{const r=await post('/api/vehicles',{action:'refuel',vehicleId:v.id});if(r.ok)refreshVehicles()}}>Fuel</button><button onClick={async()=>{const r=await post('/api/vehicles',{action:'register',vehicleId:v.id});if(r.ok)refreshVehicles()}}>Register</button><button onClick={async()=>{const r=await post('/api/vehicles',{action:'insure',vehicleId:v.id});if(r.ok)refreshVehicles()}}>Insure</button></div></div><span className="carOwned">OWNED</span></div>)}<div className="phoneSectionTitle"><b>Dealership</b><span>Licensed models</span></div>{catalog.map(v => <div className="carCard" key={v.id}><div className="carThumb">🚘</div><div><b>{v.brand} {v.model}</b><small>{v.year} · {v.type} · {v.topSpeed} km/h · handling {v.handling}</small></div><button className="carBuy" disabled={busy === v.id} onClick={() => buy(v.id)}>{busy === v.id ? '...' : naira(v.price)}</button></div>)}<button className="phoneBack" onClick={() => setApp('home')}>← Home</button></div>}
       {app === 'pantry' && <div className="phonePage"><div className="phoneSectionTitle"><b>Pantry &amp; bathroom</b><span>refill in person</span></div>
         <div className="carCard"><div className="carThumb">🍲</div><div><b>{pan ? pan.meals : '…'} meals</b><small>Cooking and eating at home uses these up</small></div><span className={pan && pan.meals < 4 ? 'carOwned low' : 'carOwned'}>{pan && pan.meals < 4 ? 'RUNNING LOW' : 'STOCKED'}</span></div>
         <div className="carCard"><div className="carThumb">🧼</div><div><b>{pan ? pan.supplies : '…'} toiletry uses</b><small>Showers and toilet visits use these up</small></div><span className={pan && pan.supplies < 4 ? 'carOwned low' : 'carOwned'}>{pan && pan.supplies < 4 ? 'RUNNING LOW' : 'STOCKED'}</span></div>
@@ -229,6 +235,11 @@ function PhonePanel({ start, unread, onUnread, onCash, onClose, onCityTab, cityT
       <button className="pBar" onClick={() => (app === 'home' ? onClose() : setApp('home'))} aria-label={app === 'home' ? 'Close phone' : 'Home'}><i /></button>
     </div>
   </div></div>;
+}
+
+function CityNewsPanel(){
+  const [d,setD]=useState<any>(null); useEffect(()=>{fetch('/api/city-life').then(r=>r.json()).then(setD).catch(()=>{});const i=setInterval(()=>fetch('/api/city-life').then(r=>r.json()).then(setD).catch(()=>{}),15000);return()=>clearInterval(i)},[]);
+  return <div className="phonePage"><div className="phoneSectionTitle"><b>Abuja Daily</b><span>{d?.clock?.clock||'—'}</span></div>{d?.events?.map((e:any)=><div className="carCard" key={e.id}><div className="carThumb">{e.kind==='fire'?'🔥':e.kind==='accident'?'🚨':e.kind==='traffic'?'🚗':'📰'}</div><div><b>{e.title}</b><small>{e.district} · {e.description}</small></div></div>)}{d?.districts?.slice(0,5).map((x:any)=><div className="carCard" key={x.name}><div className="carThumb">📍</div><div><b>{x.name}</b><small>{x.traffic}% traffic · {x.npcs} active NPCs · {x.mood}</small></div></div>)}</div>;
 }
 
 function FamePanel({ st, board }: { st: St; board: { top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null }) {

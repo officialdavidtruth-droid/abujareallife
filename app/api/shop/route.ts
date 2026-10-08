@@ -5,6 +5,7 @@ import { currentUser, err } from '../../../lib/auth';
 import { addSkillXp, insideBiz, loadState } from '../../../lib/game';
 import { SHOP } from '../../../lib/interiors';
 import { MAX_STACK, storeItem } from '../../../lib/catalog';
+import { MEALS_KEY, PANTRY_MAX, SUPPLIES_KEY } from '../../../lib/pantry';
 import { VEHICLE_CATALOG } from '../../../lib/vehicles';
 // Prices live on the server. You can only buy what the building you are inside sells.
 // Two kinds of goods: the building's own services (food, courses, the car dealer) and the big store catalog (lib/catalog.ts).
@@ -18,18 +19,23 @@ export async function POST(req: Request) {
   const item = (SHOP[biz.type] || []).find(i => i.id === want);
   if (!item) { // not a service: maybe it is something from the store catalog
     const g = storeItem(biz.type, want); if (!g) return err('Not sold here.');
-    const qty = Math.max(1, Math.min(g.use ? 10 : 20, Math.floor(Number(body.qty) || 1))), total = g.cost * qty;
-    if (!g.use) { const have = await prisma.inventoryItem.findUnique({ where: { userId_itemKey: { userId: u.id, itemKey: g.id } } }); if ((have?.quantity || 0) + qty > MAX_STACK) return err(`You can carry at most ${MAX_STACK} of those.`, 409); }
+    const qty = Math.max(1, Math.min(g.use ? 10 : g.pantry ? 10 : 20, Math.floor(Number(body.qty) || 1))), total = g.cost * qty;
+    const pKey = g.pantry === 'meals' ? MEALS_KEY : g.pantry === 'supplies' ? SUPPLIES_KEY : '', pUnits = (g.units || 0) * qty;
+    if (pKey) { const have = await prisma.inventoryItem.findUnique({ where: { userId_itemKey: { userId: u.id, itemKey: pKey } } }); if ((have?.quantity || 0) + pUnits > PANTRY_MAX) return err(`Your ${g.pantry === 'meals' ? 'pantry' : 'bathroom cupboard'} is full. Use some up first.`, 409); }
+    else if (!g.use) { const have = await prisma.inventoryItem.findUnique({ where: { userId_itemKey: { userId: u.id, itemKey: g.id } } }); if ((have?.quantity || 0) + qty > MAX_STACK) return err(`You can carry at most ${MAX_STACK} of those.`, 409); }
     const ok = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: total } }, data: { cash: { decrement: total } } }); if (!r.count) return false;
-      if (!g.use) await tx.inventoryItem.upsert({ where: { userId_itemKey: { userId: u.id, itemKey: g.id } }, create: { userId: u.id, itemKey: g.id, name: g.name, quantity: qty }, update: { quantity: { increment: qty } } });
+      if (pKey) await tx.inventoryItem.upsert({ where: { userId_itemKey: { userId: u.id, itemKey: pKey } }, create: { userId: u.id, itemKey: pKey, name: g.pantry === 'meals' ? 'Pantry meals' : 'Toiletry supplies', quantity: pUnits }, update: { quantity: { increment: pUnits } } });
+      else if (!g.use) await tx.inventoryItem.upsert({ where: { userId_itemKey: { userId: u.id, itemKey: g.id } }, create: { userId: u.id, itemKey: g.id, name: g.name, quantity: qty }, update: { quantity: { increment: qty } } });
       await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -total, description: `store:${biz.type}:${g.id}x${qty}` } });
       return true;
     });
     if (!ok) return err("You can't afford that.", 402);
     const n = await loadState(u.id), fx = g.use && g.fx ? Object.fromEntries(Object.entries(g.fx).map(([k, v]) => [k, (v as number) * qty])) : {};
-    const owned = g.use ? 0 : (await prisma.inventoryItem.findUnique({ where: { userId_itemKey: { userId: u.id, itemKey: g.id } } }))?.quantity || 0;
-    return NextResponse.json({ ok: true, hasCar: n!.save.hasCar, cash: n!.save.cash, fx, profile: n!.profile, owned, spent: total });
+    const owned = g.use || pKey ? 0 : (await prisma.inventoryItem.findUnique({ where: { userId_itemKey: { userId: u.id, itemKey: g.id } } }))?.quantity || 0;
+    const pantryRows = pKey ? await prisma.inventoryItem.findMany({ where: { userId: u.id, itemKey: { in: [MEALS_KEY, SUPPLIES_KEY] } }, select: { itemKey: true, quantity: true } }) : [];
+    const pantry = pKey ? { meals: pantryRows.find((r: { itemKey: string }) => r.itemKey === MEALS_KEY)?.quantity || 0, supplies: pantryRows.find((r: { itemKey: string }) => r.itemKey === SUPPLIES_KEY)?.quantity || 0 } : undefined;
+    return NextResponse.json({ ok: true, hasCar: n!.save.hasCar, cash: n!.save.cash, fx, profile: n!.profile, owned, spent: total, pantry, units: pUnits });
   }
 
   if (item.grant === 'car' && st.save.hasCar) return err('You already own a car.', 409);

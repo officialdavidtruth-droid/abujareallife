@@ -5,17 +5,17 @@ import { sfx } from '../lib/audio';
 
 import RuntimeStyle from './RuntimeStyle';
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
-const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kitchen: '#ff5a4d', furniture: '#a96bff', decor: '#2fc66b', tech: '#28c7d9', style: '#ffb81c', kids: '#ff7eb6' };
+const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kitchen: '#ff5a4d', furniture: '#a96bff', decor: '#2fc66b', tech: '#28c7d9', style: '#ffb81c', kids: '#ff7eb6', grocery: '#7bd34a', toiletry: '#5ad1e6', luxury: '#e7b34a' };
 
 export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: { bizName: string; bizType: string; onClose: () => void; onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void }) {
   const cats = useMemo(() => CATS.filter(c => storeCats(bizType).includes(c.id)), [bizType]), all = useMemo(() => storeItems(bizType), [bizType]);
   const [tab, setTab] = useState<CatId | 'all' | 'owned'>('all'), [q, setQ] = useState(''), [sort, setSort] = useState<'cheap' | 'pricey' | 'az'>('cheap'), [qty, setQty] = useState(1);
-  const [cash, setCash] = useState<number | null>(null), [owned, setOwned] = useState<Record<string, number>>({}), [note, setNote] = useState<{ t: string; bad?: boolean } | null>(null), [busy, setBusy] = useState('');
+  const [pantry, setPantry] = useState<{ meals: number; supplies: number } | null>(null), [cash, setCash] = useState<number | null>(null), [owned, setOwned] = useState<Record<string, number>>({}), [note, setNote] = useState<{ t: string; bad?: boolean } | null>(null), [busy, setBusy] = useState('');
   useEffect(() => { sfx('open'); return () => sfx('close'); }, []);
   useEffect(() => {
     (async () => {
-      const [s, i] = await Promise.all([fetch('/api/status').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/inventory').then(r => r.ok ? r.json() : null).catch(() => null)]);
-      if (s) setCash(s.cash); if (i) setOwned(Object.fromEntries(i.items.map((x: { id: string; qty: number }) => [x.id, x.qty])));
+      const [s, i, pn] = await Promise.all([fetch('/api/status').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/inventory').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/pantry').then(r => r.ok ? r.json() : null).catch(() => null)]);
+      if (pn) setPantry(pn); if (s) setCash(s.cash); if (i) setOwned(Object.fromEntries(i.items.map((x: { id: string; qty: number }) => [x.id, x.qty])));
     })();
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
   }, [onClose]);
@@ -36,15 +36,16 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
       const r = await fetch('/api/shop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ item: it.id, qty: n }) }), d = await r.json().catch(() => ({}));
       if (!r.ok) { sfx('error'); say(d.error || 'Could not buy that.', true); return; }
       sfx('buy'); setCash(d.cash); onCash(d.cash); if (d.fx && Object.keys(d.fx).length) onFx(d.fx);
-      if (!it.use) setOwned(o => ({ ...o, [it.id]: d.owned ?? (o[it.id] || 0) + n }));
-      say(it.use ? `Yum! ${n > 1 ? n + '× ' : ''}${it.name}` : `Added to your bag: ${n > 1 ? n + '× ' : ''}${it.name}`);
+      if (d.pantry) { setPantry(d.pantry); window.dispatchEvent(new CustomEvent('arl-pantry', { detail: d.pantry })); }
+      else if (!it.use) setOwned(o => ({ ...o, [it.id]: d.owned ?? (o[it.id] || 0) + n }));
+      say(it.use ? `Yum! ${n > 1 ? n + '× ' : ''}${it.name}` : it.pantry ? `Stocked up: ${n > 1 ? n + '× ' : ''}${it.name} (+${d.units ?? (it.units || 0) * n} ${it.pantry === 'meals' ? 'meals' : 'uses'})` : `Added to your bag: ${n > 1 ? n + '× ' : ''}${it.name}`);
     } finally { setBusy(''); }
   }
   const mine = Object.values(owned).reduce((a, b) => a + b, 0);
 
   return <div className="stoBack" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="stoBox" role="dialog" aria-label={bizName + ' store'}>
-      <div className="stoHead"><div className="stoTitle"><span>🛍️ {bizName}</span></div><div className="stoCash" title="Your cash">💵 {cash == null ? '…' : naira(cash)}</div><button className="stoX" aria-label="Close store" onClick={onClose}>✕</button></div>
+      <div className="stoHead"><div className="stoTitle"><span>🛍️ {bizName}</span></div>{pantry && <div className="stoCash stoPan" title="What is left in your pantry and bathroom cupboard">🍲 {pantry.meals} · 🧼 {pantry.supplies}</div>}<div className="stoCash" title="Your cash">💵 {cash == null ? '…' : naira(cash)}</div><button className="stoX" aria-label="Close store" onClick={onClose}>✕</button></div>
       <div className="stoTabs" role="tablist">
         <button role="tab" className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>⭐ All <small>{all.length}</small></button>
         {cats.map(c => <button key={c.id} role="tab" className={tab === c.id ? 'on' : ''} style={{ ['--t' as string]: TINT[c.id] }} onClick={() => setTab(c.id)}>{c.e} {c.label} <small>{all.filter(i => i.cat === c.id).length}</small></button>)}
@@ -62,6 +63,7 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
           return <div key={it.id} className={'stoCard' + (poor && tab !== 'owned' ? ' poor' : '')} style={{ ['--t' as string]: TINT[it.cat] }}>
             <div className="stoTile"><span>{it.e}</span>{have > 0 && <i className="stoOwn">×{have}</i>}</div>
             <b className="stoName">{it.name}</b>
+            {it.pantry && <small className="stoUnits">+{it.units} {it.pantry === 'meals' ? 'meals' : 'uses'}</small>}
             {tab === 'owned' ? <div className="stoPrice">worth {naira(it.cost)}</div>
               : <><div className="stoPrice">{naira(it.cost)}{n > 1 ? <small> ×{n}</small> : null}</div>
                 <button className="stoBuy" disabled={busy === it.id} onClick={() => buy(it)}>{busy === it.id ? '…' : it.use ? 'Eat / Drink' : 'Buy'}</button></>}
@@ -73,6 +75,7 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
 }
 
 const CSS = `
+.stoPan{font-size:13px;padding:4px 10px}.stoUnits{display:block;text-align:center;font-size:11px;color:var(--cream);opacity:.85;margin-top:-2px}
 .stoBack{position:absolute;inset:0;z-index:60;background:#0a0612cc;display:grid;place-items:center;padding:10px;backdrop-filter:blur(3px);font-family:var(--gf)}
 .stoBox{width:min(900px,100%);height:min(640px,calc(100% - 4px));display:flex;flex-direction:column;background:var(--plum);color:var(--cream);border:4px solid var(--ink);border-radius:22px;box-shadow:0 7px 0 var(--ink),0 24px 50px #000a;overflow:hidden;animation:glPop .22s cubic-bezier(.3,1.5,.5,1)}
 .stoHead{display:flex;align-items:center;gap:10px;padding:9px 12px 9px 16px;background:var(--green);border-bottom:4px solid var(--ink)}

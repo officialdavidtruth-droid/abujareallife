@@ -38,3 +38,10 @@
 - **Labels:** removed the stacked floating labels. The roof sign is now real 3D "TAXI" text; each stand has one small label that changes with distance ("Taxi" / "Tap to ride"); the destination list is a side sheet in the game style, so it never covers the vehicle or the player.
 - **Billboards were inside the buildings** (mid-block coordinates) and their text faced backwards. They now stand on the sidewalk strips facing the road, on tall posts, with lit panels. Edit `BILLBOARDS` in `components/CityWorld.tsx`.
 - Tested headlessly against the real building layout: 6 stands x 308 destinations (1,848 rides): no route enters a building, all stay on the road, all arrive, turning is smooth.
+
+## Groceries, online mall, phone, bigger home upgrades
+- **Groceries & toiletries run out.** Cooking/snacking/eating use pantry meals; showers and toilet visits use toiletries (soft: without them a shower only gives 40% hygiene). Buy them in person at the Market, Supermarket or Pharmacy (new Groceries and Toiletries tabs). Pantry stored as hidden inventory rows `pantry_meals` / `pantry_supplies` (no migration). New `/api/pantry`, `lib/pantry.ts`. Food delivery now costs ₦6,500.
+- **Catalog: 577 items** (was ~300): groceries, toiletries and a new Luxury & Fancy category, plus more furniture, decor, tech, kitchen, household and accessories.
+- **Phone > Market has an Online Mall** (always in stock, +8% delivery, everything except groceries/toiletries) next to the player marketplace. The Sell tab can also quick-sell any item to the market for 50%.
+- **Phone redesigned** as a real smartphone (bezel, island, status bar, wallpaper, app icons, dock, home bar; rotates into a landscape phone on short screens) with a new Pantry app.
+- **Home upgrades: 6 rooms (new South wing + Home gym, Home cinema, Executive office), 3 luxury items, 7 comfort upgrades** (solar = no outages, AC, smart home, hot water, surround sound, orthopaedic mattress, chef kitchen).

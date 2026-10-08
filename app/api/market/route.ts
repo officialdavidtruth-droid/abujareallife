@@ -3,7 +3,8 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
-import { MAX_STACK, itemById } from '../../../lib/catalog';
+import { MAX_STACK, isStaple, itemById } from '../../../lib/catalog';
+import { mallPrice } from '../../../lib/sell';
 export const dynamic = 'force-dynamic';
 
 // Player-to-player marketplace. The server owns every rule: items are held in escrow while listed, prices are bounded
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
     prisma.save.findUnique({ where: { userId: u.id }, select: { cash: true } }),
   ]);
   const browse = (open as Row[]).map(r => view(r, u.id)).filter((x): x is NonNullable<typeof x> => !!x)
-    .filter(x => x.cat !== 'food' && (!cat || x.cat === cat) && (!q || x.name.toLowerCase().includes(q) || x.seller.toLowerCase().includes(q)) && (!seller || x.seller.toLowerCase() === seller));
+    .filter(x => !isStaple(x) && (!cat || x.cat === cat) && (!q || x.name.toLowerCase().includes(q) || x.seller.toLowerCase().includes(q)) && (!seller || x.seller.toLowerCase() === seller));
   const b = Object.fromEntries(Array.from(new Set((open as Row[]).map(r => r.itemKey))).map(k => [k, itemById(k) ? bounds(itemById(k)!.cost) : null]));
   return NextResponse.json({ listings: browse, mine: (mine as Row[]).map(r => view(r, u.id)).filter(Boolean), sold: (sold as Row[]).map(r => view(r, u.id)).filter(Boolean), cash: save?.cash ?? 0, fee: FEE, bounds: b });
 }
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
   const b = await req.json().catch(() => ({})), action = String(b.action || '');
   try {
     if (action === 'list') {
-      const it = itemById(String(b.itemKey)); if (!it || it.use || it.cat === 'food') throw new Stop('That item cannot be sold.');
+      const it = itemById(String(b.itemKey)); if (!it || it.use || isStaple(it)) throw new Stop('That item cannot be sold.');
       const qty = Math.floor(Number(b.qty)), price = Math.floor(Number(b.price)), r = bounds(it.cost);
       if (!(qty >= 1 && qty <= MAX_STACK)) throw new Stop('Choose how many to sell.');
       if (!(price >= r.min && price <= r.max)) throw new Stop(`Price must be between ₦${r.min.toLocaleString()} and ₦${r.max.toLocaleString()} each.`);
@@ -47,6 +48,17 @@ export async function POST(req: Request) {
         const t = await tx.inventoryItem.updateMany({ where: { userId: u.id, itemKey: it.id, quantity: { gte: qty } }, data: { quantity: { decrement: qty } } });
         if (!t.count) throw new Stop("You don't have that many.", 409);
         await tx.listing.create({ data: { sellerId: u.id, sellerName: u.username, itemKey: it.id, qty, price } });
+      });
+    } else if (action === 'shop') { // the Abuja Online Mall: always in stock, delivered to your bag
+      const it = itemById(String(b.itemKey)); if (!it || it.use || isStaple(it)) throw new Stop('The mall does not sell that. Groceries and toiletries are bought in person at the Market, Supermarket or Pharmacy.');
+      const n = Math.floor(Number(b.qty) || 1); if (!(n >= 1 && n <= 20)) throw new Stop('Choose how many to buy.');
+      const total = mallPrice(it.cost) * n;
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const have = await tx.inventoryItem.findUnique({ where: { userId_itemKey: { userId: u.id, itemKey: it.id } } });
+        if ((have?.quantity || 0) + n > MAX_STACK) throw new Stop(`You can carry at most ${MAX_STACK} of those.`, 409);
+        const pay = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: total } }, data: { cash: { decrement: total } } }); if (!pay.count) throw new Stop("You can't afford that.", 402);
+        await tx.inventoryItem.upsert({ where: { userId_itemKey: { userId: u.id, itemKey: it.id } }, create: { userId: u.id, itemKey: it.id, name: it.name, quantity: n }, update: { quantity: { increment: n } } });
+        await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -total, description: `mall:${it.id}x${n}` } });
       });
     } else if (action === 'cancel') {
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {

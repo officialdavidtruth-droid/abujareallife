@@ -20,14 +20,16 @@ import Interior from './Interior';
 import { CITY } from '../lib/cityData';
 import { GAME } from './CityWorld';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
-import { DEFAULT_LOOK, OUTFITS, type Look } from '../lib/characterModels';
-import { findPath, blocked, inside, HARD, type Blk, type Box, type P, setEastLimit } from '../lib/collision';
+import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
+import Wardrobe from './Wardrobe';
+import { findPath, blocked, inside, HARD, type Blk, type Box, type P, setEastLimit, setSouthLimit } from '../lib/collision';
+import { USES } from '../lib/pantry';
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
 type Pose = 'stand' | 'sit' | 'sleep';
 type Act = { k: string; label: string; e: string; dur: number; fx: Partial<Record<N, number>>; pose: Pose; cost?: number; pay?: number; pow?: boolean; anim?: string; bond?: number; all?: 'dinner' | 'kids' };
 type Obj = { id: string; name: string; p: [number, number]; rot: number; spot: [number, number]; face: number; acts: Act[]; boxes?: Box[]; appr?: [number, number]; fam?: string }; // boxes = solid footprint, appr = free spot in front of a seat/bed/shower where the walk starts and ends
-type Task = { t: 'walk'; x: number; z: number; own?: string } | { t: 'act'; a: Act; o: Obj };
+type Task = { t: 'walk'; x: number; z: number; own?: string } | { t: 'act'; a: Act; o: Obj; low?: boolean };
 
 const NEEDS: [N, string, string][] = [['hunger', 'Hunger', '🍲'], ['energy', 'Energy', '😴'], ['hygiene', 'Hygiene', '🚿'], ['bladder', 'Bladder', '🚽'], ['fun', 'Fun', '🎮'], ['social', 'Social', '💬']];
 const DECAY: Record<N, number> = { hunger: .03, energy: .02, hygiene: .05, bladder: .09, fun: .06, social: .04 };
@@ -42,12 +44,12 @@ const OBJ: Obj[] = [
     { k: 'outfit', label: 'Change outfit', e: '👕', dur: 8, fx: { fun: 8 }, pose: 'stand', anim: 'wardrobe' },
     { k: 'mirror', label: 'Check the mirror', e: '🪞', dur: 10, fx: { fun: 10, social: 4 }, pose: 'stand', anim: 'groom' }] },
   { id: 'fridge', name: 'Kitchen', p: [-1, -4.1], rot: 0, spot: [0, -3.35], face: Math.PI, boxes: [[-1.4, 1.3, -4.6, -3.8]], acts: [
-    { k: 'cook', label: 'Cook jollof', e: '🍛', dur: 30, fx: { hunger: 60, fun: 6 }, pose: 'stand', cost: 1500, anim: 'cook' },
-    { k: 'snack', label: 'Snack', e: '🥜', dur: 10, fx: { hunger: 25 }, pose: 'stand', cost: 500, anim: 'eat' },
+    { k: 'cook', label: 'Cook jollof', e: '🍛', dur: 30, fx: { hunger: 60, fun: 6 }, pose: 'stand', anim: 'cook' },
+    { k: 'snack', label: 'Snack', e: '🥜', dur: 10, fx: { hunger: 25 }, pose: 'stand', anim: 'eat' },
     { k: 'water', label: 'Drink water', e: '💧', dur: 5, fx: { hunger: 3, bladder: -6 }, pose: 'stand', anim: 'eat' }] },
   { id: 'dining', name: 'Dining table', p: [-.3, -2.3], rot: 0, spot: [-.3, -1.5], face: Math.PI, boxes: [[-1.05, .45, -2.725, -1.875], [-.55, -.05, -1.75, -1.25], [-1.55, -1.05, -2.55, -2.05], [.45, .95, -2.55, -2.05], [-1.02, -.58, -1.75, -1.25]], appr: [-.3, -.8], acts: [
-    { k: 'meal', label: 'Sit down & eat', e: '🍽️', dur: 25, fx: { hunger: 55, fun: 8, social: 3 }, pose: 'sit', cost: 1000, anim: 'eatsit' },
-    { k: 'famdinner', label: 'Family dinner', e: '👨‍👩‍👧‍👦', dur: 40, fx: { hunger: 60, fun: 12, social: 28 }, pose: 'sit', cost: 3000, anim: 'eatsit', bond: 6, all: 'dinner' }] },
+    { k: 'meal', label: 'Sit down & eat', e: '🍽️', dur: 25, fx: { hunger: 55, fun: 8, social: 3 }, pose: 'sit', anim: 'eatsit' },
+    { k: 'famdinner', label: 'Family dinner', e: '👨‍👩‍👧‍👦', dur: 40, fx: { hunger: 60, fun: 12, social: 28 }, pose: 'sit', anim: 'eatsit', bond: 6, all: 'dinner' }] },
   { id: 'shower', name: 'Shower', p: [5.3, -3.7], rot: 0, spot: [5.3, -3.75], face: Math.PI, boxes: [[4.65, 5.95, -4.6, -3.2]], appr: [5.3, -2.7], acts: [
     { k: 'shower', label: 'Take a shower', e: '🚿', dur: 25, fx: { hygiene: 100, fun: 5 }, pose: 'stand', anim: 'wash' }] },
   { id: 'toilet', name: 'Toilet', p: [3.2, -4.1], rot: 0, spot: [3.2, -4.1], face: 0, boxes: [[2.95, 3.45, -4.6, -3.78], [3.8, 4.3, -4.6, -4.15]], appr: [3.2, -3.2], acts: [
@@ -63,7 +65,7 @@ const OBJ: Obj[] = [
   { id: 'phone', name: 'Phone', p: [-1.2, 3.2], rot: 0, spot: [-1.2, 2.4], face: 0, boxes: [[-1.5, -.9, 2.9, 3.5]], acts: [
     { k: 'call', label: 'Call a friend', e: '📞', dur: 40, fx: { social: 45, fun: 10 }, pose: 'stand', anim: 'phone' },
     { k: 'chat', label: 'Chat on WhatsApp', e: '💬', dur: 20, fx: { social: 22 }, pose: 'stand', anim: 'chat' },
-    { k: 'order', label: 'Order food delivery', e: '🛵', dur: 25, fx: { hunger: 45, fun: 5 }, pose: 'stand', cost: 2500, anim: 'phone' }] },
+    { k: 'order', label: 'Order food delivery', e: '🛵', dur: 25, fx: { hunger: 45, fun: 5 }, pose: 'stand', cost: 6500, anim: 'phone' }] },
   { id: 'mat', name: 'Workout mat', p: [1.4, -.9], rot: 0, spot: [1.4, -.9], face: 0, acts: [
     { k: 'squat', label: 'Squats workout', e: '🏋️', dur: 45, fx: { energy: -22, hunger: -12, hygiene: -15, fun: 15 }, pose: 'stand', anim: 'squat' },
     { k: 'yoga', label: 'Yoga', e: '🧘', dur: 40, fx: { energy: 8, fun: 12 }, pose: 'stand', anim: 'yoga' }] },
@@ -82,6 +84,20 @@ const OBJ: Obj[] = [
     { k: 'toys', label: 'Build blocks with the kids', e: '🧱', dur: 30, fx: { fun: 30, social: 8 }, pose: 'stand', anim: 'squat', bond: 4, all: 'kids' }] },
   { id: 'kdesk', name: "Kids' desk", p: [10.9, .5], rot: -Math.PI / 2, spot: [10.05, .5], face: Math.PI / 2, boxes: [[10.45, 11.3, -.35, 1.35], [9.8, 10.3, .25, .75]], appr: [9.2, .5], acts: [
     { k: 'kread', label: 'Read a storybook', e: '📖', dur: 25, fx: { fun: 12, social: 6 }, pose: 'sit', anim: 'read', bond: 4, all: 'kids' }] },
+  // South wing rooms (bought under Menu > Home upgrades; only present once built)
+  { id: 'gbench', name: 'Weight bench', p: [-4.6, 6.3], rot: 0, spot: [-4.6, 7.25], face: Math.PI, boxes: [[-5.35, -3.85, 5.75, 6.85]], acts: [
+    { k: 'lift', label: 'Lift weights', e: '🏋️', dur: 45, fx: { energy: -22, hunger: -10, hygiene: -14, fun: 18 }, pose: 'stand', anim: 'squat' },
+    { k: 'stretchg', label: 'Stretch & warm down', e: '🤸', dur: 15, fx: { energy: 6, fun: 6 }, pose: 'stand', anim: 'stretch' }] },
+  { id: 'gbag', name: 'Punching bag', p: [-3.0, 8.2], rot: 0, spot: [-3.0, 7.5], face: 0, boxes: [[-3.3, -2.7, 7.95, 8.5]], acts: [
+    { k: 'box', label: 'Box the punching bag', e: '🥊', dur: 35, fx: { energy: -20, hygiene: -12, fun: 22, hunger: -8 }, pose: 'stand', anim: 'cheer' }] },
+  { id: 'cinema', name: 'Home cinema', p: [.3, 6.3], rot: 0, spot: [.3, 7.6], face: Math.PI, boxes: [[-1.3, 1.9, 4.75, 5.15], [-1.3, 1.9, 7.1, 8.1]], appr: [.3, 6.6], acts: [
+    { k: 'movie', label: 'Movie night', e: '🎬', dur: 110, fx: { fun: 60, energy: -4, social: 4 }, pose: 'sit', pow: true, anim: 'tv' },
+    { k: 'cgame', label: 'Big-screen gaming', e: '🎮', dur: 80, fx: { fun: 58, energy: -8, hunger: -6 }, pose: 'sit', pow: true, anim: 'game' }] },
+  { id: 'odesk', name: 'Executive desk', p: [4.4, 5.4], rot: 0, spot: [4.4, 6.2], face: Math.PI, boxes: [[3.5, 5.3, 5.0, 5.8], [4.15, 4.65, 5.95, 6.5]], appr: [4.4, 7.0], acts: [
+    { k: 'bizplan', label: 'Run the business', e: '📈', dur: 160, fx: { energy: -22, fun: -12, hunger: -8 }, pose: 'sit', pay: 14000, pow: true, anim: 'work' },
+    { k: 'obrowse', label: 'Catch up online', e: '📱', dur: 30, fx: { fun: 20, social: 8, energy: -3 }, pose: 'sit', pow: true, anim: 'browse' }] },
+  { id: 'oshelf', name: 'Library wall', p: [5.85, 7.7], rot: 0, spot: [5.0, 7.7], face: Math.PI / 2, boxes: [[5.6, 6.1, 6.9, 8.6]], acts: [
+    { k: 'lread', label: 'Study in the library', e: '📚', dur: 60, fx: { fun: 22, energy: -5 }, pose: 'stand', anim: 'read' }] },
   // Luxury items (bought under Menu > Home upgrades; only present once owned)
   { id: 'massage', name: 'Massage chair', p: [-2.2, 4.0], rot: 0, spot: [-2.2, 3.2], face: 0, boxes: [[-2.6, -1.8, 3.6, 4.3]], acts: [
     { k: 'massage', label: 'Massage', e: '💆', dur: 30, fx: { energy: 45, fun: 12, hygiene: 3 }, pose: 'stand', pow: true, anim: 'stretch' }] },
@@ -90,7 +106,11 @@ const OBJ: Obj[] = [
   { id: 'treadmill', name: 'Treadmill', p: [1.7, 3.65], rot: 0, spot: [1.7, 2.7], face: 0, boxes: [[1.35, 2.05, 3.0, 4.3]], acts: [
     { k: 'run', label: 'Run on the treadmill', e: '🏃', dur: 40, fx: { energy: -20, hunger: -10, hygiene: -12, fun: 20 }, pose: 'stand', pow: true, anim: 'squat' }] },
 ];
-const LUX_IDS = new Set(['massage', 'aquarium', 'treadmill']);
+// Objects that only exist once the matching home upgrade is bought (object id -> upgrade id).
+const GATE: Record<string, string> = { massage: 'massage', aquarium: 'aquarium', treadmill: 'treadmill', gbench: 'gym_room', gbag: 'gym_room', cinema: 'cinema_room', odesk: 'office_room', oshelf: 'office_room' };
+const LUX_IDS = new Set(Object.keys(GATE));
+const has = (id: string) => HOME.own.has(id);
+const hasObj = (id: string) => !GATE[id] || HOME.own.has(GATE[id]);
 const EMOTES: Act[] = [
   { k: 'wave', label: 'Wave', e: '👋', dur: 6, fx: { social: 8 }, pose: 'stand', anim: 'wave' },
   { k: 'edance', label: 'Dance', e: '🕺', dur: 20, fx: { fun: 22, energy: -6 }, pose: 'stand', anim: 'dance' },
@@ -107,24 +127,28 @@ const DECOR: { id: string; p: [number, number]; rot: number; boxes: Box[]; vis: 
   { id: 'kwar', p: [11.0, -1.4], rot: -Math.PI / 2, boxes: [[10.7, 11.3, -2.1, -.7]], vis: 'kwar' },
 ];
 // Half-height wall between the flat and the kids' wing, with a doorway at z 1.0 to 2.6.
+const SWALLS: Blk[] = [{ id: 'swall', b: [6.1, 11.4, 4.65, 9.3] }]; // fills the void south of the kids' wing and walls off the east side of the south wing
 const WALLS: Blk[] = [{ id: 'wall', b: [6.1, 6.3, -4.6, 1.0] }, { id: 'wall', b: [6.1, 6.3, 2.6, 4.6] }];
 
 // Every solid footprint in the flat. Walking is planned around these (see lib/collision.ts) and re-checked every frame.
 // What your home has: rooms and luxury items bought under Menu > Home upgrades (saved on the server, see /api/home).
 const HOME = { own: new Set<string>() };
+const southOn = () => HOME.own.has('south_wing'); // the south wing extension (gym, cinema and office go in it)
 const wingOn = () => HOME.own.has('kids_room'); // the kids' wing (beds, desk, toy box, dividing wall) only exists once you build it
 const WING_IDS = new Set(['toybox', 'kdesk', 'kbedA', 'kbedB', 'nstand', 'kwar']);
 const BL_BASE: Blk[] = [...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
 let blKey = '\0', blList: Blk[] = [];
 const BL = (): Blk[] => {
-  const key = (wingOn() ? 'w' : '') + [...LUX_IDS].filter(i => HOME.own.has(i)).join(',');
-  if (key !== blKey) { blKey = key; blList = BL_BASE.filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && (!LUX_IDS.has(k.id) || HOME.own.has(k.id))); }
+  const key = (wingOn() ? 'w' : '') + (southOn() ? 's' : '') + [...LUX_IDS].filter(hasObj).join(',');
+  if (key !== blKey) { blKey = key; blList = [...BL_BASE, ...(southOn() ? SWALLS : [])].filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && hasObj(k.id)); }
   return blList;
 };
 // Apply what the server says you own: build/remove the wing, move the family in, show the luxury items.
 function applyHome(ids: string[]) {
-  HOME.own = new Set(ids); setEastLimit(wingOn());
+  HOME.own = new Set(ids); setEastLimit(wingOn()); setSouthLimit(southOn());
   if (!wingOn() && S.pos[0] > 5.5) { S.pos = [4.8, S.pos[1]]; S.q = []; S.cur = null; }
+  if (!southOn() && S.pos[1] > 4.1) { S.pos = [S.pos[0], 3.7]; S.q = []; S.cur = null; }
+  if (has('solar')) S.power = true;
   const fam = HOME.own.has('family') && wingOn(); if (fam !== F.on) F.setOn(fam);
 }
 const dist = (a: P, b: P) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -143,7 +167,7 @@ const H: { door?: () => void; outfit?: () => void } = {};
 const find = (id: string) => OBJ.find(o => o.id === id)!;
 
 const NEW = () => ({ pos: [0, .5] as [number, number], rot: 0, pose: 'stand' as Pose, needs: { hunger: 78, energy: 72, hygiene: 70, bladder: 70, fun: 55, social: 50 } as Record<N, number>,
-  min: worldMinute(), cash: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
+  min: worldMinute(), cash: 0, meals: 0, supplies: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
 const S = NEW();
 const say = (m: string) => { S.toast = m; S.toastT = Date.now(); };
 const walk = (x: number, z: number) => { S.cur = null; S.q = route(S.pos as P, [x, z]); };
@@ -302,23 +326,29 @@ function auto() {
   if (Date.now() < S.cool) return; S.cool = Date.now() + 2500;
   const [k, v] = (Object.entries(S.needs) as [N, number][]).sort((a, b) => a[1] - b[1])[0];
   if (v > 25) return;
-  const m: Record<N, [string, string]> = { hunger: ['fridge', S.cash >= 1500 ? 'cook' : 'snack'], energy: ['bed', 'sleep'], hygiene: ['shower', 'shower'], bladder: ['toilet', 'wc'], fun: ['tv', S.power ? 'tv' : 'chill'], social: ['phone', 'call'] };
+  const m: Record<N, [string, string]> = { hunger: S.meals > 0 ? ['fridge', 'cook'] : S.cash >= 6500 ? ['phone', 'order'] : ['fridge', 'water'], energy: ['bed', 'sleep'], hygiene: ['shower', 'shower'], bladder: ['toilet', 'wc'], fun: ['tv', S.power ? 'tv' : 'chill'], social: ['phone', 'call'] };
   const o = find(m[k][0]); enq(o, o.acts.find(a => a.k === m[k][1])!);
 }
 
 function tick(dt: number) {
   if (!S.speed) return;
   const gm = dt * 6; S.min = worldMinute(); // time is shared by every player: it follows the world clock and can't be paused or sped up
-  (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
+  const calm = (has('smart_home') ? .88 : 1);
+  (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * calm * (k === 'energy' && has('split_ac') ? .7 : 1) * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
   famTick(dt);
-  if (S.power && Math.random() < gm / 2200) say('⚡ NEPA took light! Fuel the generator.'), S.power = false;
+  if (S.power && !has('solar') && Math.random() < gm / 2200) say('⚡ NEPA took light! Fuel the generator.'), S.power = false;
   if (!S.cur) {
     const t = S.q.shift();
     if (t?.t === 'act') {
       if (t.a.pow && !S.power) { say('No light — fuel the generator first.'); S.q = []; }
       else if (t.a.all === 'dinner' && F.mem.every(m => m.away)) { say("Nobody's home right now."); S.q = []; }
       else if ((t.a.cost || 0) > S.cash) { say("You can't afford that."); S.q = []; }
-      else { S.cash -= t.a.cost || 0; S.cur = t; S.prog = 0; if (t.a.cost || t.a.pay) econ('start', t.a); famStart(t.o, t.a); }
+      else if ((USES[t.a.k]?.meals || 0) > S.meals) { say('🛒 No groceries left! Buy some at the Market or a Supermarket.'); S.q = []; }
+      else {
+        const u = USES[t.a.k]; let low = false;
+        if (u) { S.meals -= u.meals || 0; if (u.supplies) { if (S.supplies >= u.supplies) S.supplies -= u.supplies; else { low = true; say('🧼 Out of toiletries! Restock at the Market, Supermarket or Pharmacy.'); } } pantryUse(t.a.k); }
+        S.cash -= t.a.cost || 0; S.cur = { ...t, a: tune(t.a), ...(low ? { low } : {}) }; S.prog = 0; if (t.a.cost || t.a.pay) econ('start', t.a); famStart(t.o, t.a);
+      }
     } else if (t) S.cur = t; else if (S.free) auto();
   }
   const c = S.cur;
@@ -338,7 +368,7 @@ function tick(dt: number) {
   } else {
     S.pose = c.a.pose; S.rot = turn(S.rot, c.o.face, Math.min(1, dt * 10));
     const f = Math.min(gm, c.a.dur - S.prog) / c.a.dur; S.prog += gm;
-    (Object.entries(c.a.fx) as [N, number][]).forEach(([k, v]) => { S.needs[k] = cl(S.needs[k] + v * f); });
+    (Object.entries(c.a.fx) as [N, number][]).forEach(([k, v]) => { S.needs[k] = cl(S.needs[k] + v * f * (c.low && k === 'hygiene' && v > 0 ? .4 : 1)); });
     if (S.prog >= c.a.dur) {
       if (c.a.pay) econ('finish', c.a);
       if (c.a.k === 'gen') { S.power = true; say('💡 Light is back!'); }
@@ -349,6 +379,24 @@ function tick(dt: number) {
     }
   }
 }
+/* Home upgrades that change how an action works (see lib/homeUpgrades.ts). */
+const tune = (a: Act): Act => {
+  let fx = a.fx, dur = a.dur;
+  if (a.k === 'shower' && has('water_heater')) fx = { ...fx, fun: (fx.fun || 0) + 10 };
+  if (['tv', 'game', 'music', 'dance', 'edance', 'movie', 'cgame'].includes(a.k) && has('surround')) fx = { ...fx, fun: Math.round((fx.fun || 0) * 1.35) };
+  if (a.k === 'cook' && has('chef_kitchen')) fx = { ...fx, hunger: Math.round((fx.hunger || 0) * 1.2), fun: (fx.fun || 0) + 10 };
+  if (a.k === 'sleep' && has('ortho')) dur = 180;
+  return fx === a.fx && dur === a.dur ? a : { ...a, fx, dur };
+};
+// Tell the server a home action used up groceries / toiletries; it is the source of truth for what is left.
+const pantryUse = async (act: string) => {
+  try {
+    const r = await fetch('/api/pantry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ act }) }), d = await r.json().catch(() => ({}));
+    if (typeof d.meals === 'number') S.meals = d.meals; if (typeof d.supplies === 'number') S.supplies = d.supplies;
+    if (!r.ok && S.cur?.t === 'act' && S.cur.a.k === act) { say(d.error || 'You are out of groceries.'); S.cur = null; }
+  } catch { /* offline: keep the local count */ }
+};
+const loadPantry = async () => { try { const r = await fetch('/api/pantry', { cache: 'no-store' }); if (r.ok) { const d = await r.json(); S.meals = d.meals; S.supplies = d.supplies; } } catch { /* offline */ } };
 const econ = async (kind: 'start' | 'finish', a: Act) => {
   try {
     const r = await fetch('/api/economy/' + kind, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ act: a.k }) }), d = await r.json();
@@ -361,7 +409,7 @@ const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { '
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
 const snap = () => ({ needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
-  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on, wing: wingOn(), home: [...HOME.own] });
+  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on, wing: wingOn(), south: southOn(), meals: S.meals, supplies: S.supplies, home: [...HOME.own] });
 type UI = ReturnType<typeof snap>;
 
 type V3 = [number, number, number];
@@ -555,6 +603,44 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[0, 1.3, -.55]} s={[.7, .05, .06]} c="#9aa3a8" m={.7} ro={.3} /><B p={[0, 1.15, -.57]} s={[.44, .26, .06]} c="#111418" ro={.4} />
     <B p={[0, 1.15, -.605]} s={[.34, .16, .01]} c={ui.power ? '#7cf0b0' : '#20262b'} ro={.3} />
     {[-.34, .34].map(x => <B key={x} p={[x, .58, 0]} s={[.04, .04, 1.1]} c="#9aa3a8" m={.6} ro={.3} />)}</>,
+  gbench: () => <>
+    <B p={[0, .012, 0]} s={[1.6, .024, 1.3]} c="#1c1f23" ro={1} />
+    <B p={[0, .4, 0]} s={[.46, .12, 1.15]} c="#1d2126" ro={.5} r={.05} /><B p={[0, .46, .05]} s={[.4, .06, 1.0]} c="#c8372d" ro={.7} r={.03} />
+    {[[-.18, -.45], [.18, -.45], [-.18, .45], [.18, .45]].map(([x, z]) => <B key={x + '' + z} p={[x, .19, z]} s={[.05, .38, .05]} c="#9aa3a8" m={.7} ro={.3} />)}
+    {[-.38, .38].map(x => <B key={x} p={[x, .95, -.4]} s={[.05, 1.0, .05]} c="#9aa3a8" m={.7} ro={.3} />)}
+    <C p={[0, 1.38, -.4]} r={.018} h={1.5} c="#aeb6ba" m={.8} ro={.25} rot={[0, 0, Math.PI / 2]} />
+    {[-.62, .62].map(x => <group key={x}><C p={[x, 1.38, -.4]} r={.2} h={.06} c="#25282d" rot={[0, 0, Math.PI / 2]} /><C p={[x + Math.sign(x) * .07, 1.38, -.4]} r={.15} h={.05} c="#3a3f46" rot={[0, 0, Math.PI / 2]} /></group>)}
+    {[0, 1, 2].map(i => <C key={i} p={[.95, .08 + i * .13, .35]} r={.1} h={.07} c={['#c8372d', '#d99a42', '#3a7bd5'][i]} />)}
+  </>,
+  gbag: () => <>
+    <B p={[0, .02, 0]} s={[.9, .04, .9]} c="#1c1f23" ro={1} />
+    <B p={[0, 1.2, -.3]} s={[.07, 2.4, .07]} c="#9aa3a8" m={.7} ro={.3} /><B p={[0, 2.38, -.1]} s={[.07, .07, .5]} c="#9aa3a8" m={.7} ro={.3} />
+    <C p={[0, 2.2, .1]} r={.012} h={.4} c="#555" /><C p={[0, 1.35, .1]} r={.17} h={1.0} c="#b3302b" ro={.55} /><C p={[0, 1.88, .1]} r={.18} h={.06} c="#222" /><C p={[0, .83, .1]} r={.18} h={.06} c="#222" />
+  </>,
+  cinema: ui => <>
+    <B p={[0, .75, -1.5]} s={[3.2, 1.75, .12]} c="#0c0d10" ro={.4} r={.03} /><B p={[0, .75, -1.43]} s={[3.0, 1.55, .02]} c={ui.power ? '#6aa0ff' : '#14161a'} ro={.2} />
+    {ui.power && <B p={[0, .75, -1.415]} s={[2.6, 1.15, .01]} c="#f0c987" ro={.3} />}
+    <B p={[0, .12, -1.45]} s={[3.2, .24, .3]} c="#1a1c20" ro={.6} />
+    <Rug x={0} z={1.1} w={3.4} d={2.2} c1="#5a1620" c2="#7d2330" y={.02} />
+    {[-1.05, 0, 1.05].map(x => <group key={x} position={[x, 0, 1.3]}>
+      <B p={[0, .22, 0]} s={[.84, .36, .8]} c="#3a1218" ro={.55} r={.08} /><B p={[0, .62, .3]} s={[.82, .84, .22]} c="#4a171e" ro={.55} r={.08} rot={[-.1, 0, 0]} />
+      <B p={[-.46, .45, 0]} s={[.1, .3, .76]} c="#2a0d12" ro={.5} r={.04} /><B p={[.46, .45, 0]} s={[.1, .3, .76]} c="#2a0d12" ro={.5} r={.04} />
+      <B p={[0, .12, -.5]} s={[.6, .14, .3]} c="#3a1218" ro={.55} r={.05} /></group>)}
+    <B p={[1.9, .45, .5]} s={[.5, .9, .5]} c="#d9452b" ro={.5} r={.04} /><B p={[1.9, 1.05, .5]} s={[.42, .3, .42]} c="#fff4d6" ro={.6} r={.05} />
+  </>,
+  odesk: ui => <>
+    <B p={[0, .72, 0]} s={[1.8, .06, .8]} c="#3a2418" ro={.4} r={.02} />
+    {[[-.82, -.3], [.82, -.3], [-.82, .3], [.82, .3]].map(([x, z]) => <B key={x + '' + z} p={[x, .35, z]} s={[.06, .7, .06]} c="#2a1a10" />)}
+    <B p={[.5, .4, 0]} s={[.6, .6, .7]} c="#2f1d13" ro={.5} r={.02} />
+    <B p={[-.2, .93, -.1]} s={[.62, .36, .03]} c="#0d0f12" ro={.3} /><B p={[-.2, .93, -.083]} s={[.56, .3, .005]} c={ui.power ? '#7fb8ff' : '#14161a'} ro={.2} /><B p={[-.2, .76, -.1]} s={[.1, .06, .1]} c="#222" />
+    <B p={[.55, .76, .1]} s={[.4, .015, .14]} c="#d8d8d8" ro={.4} /><C p={[-.78, .84, .2]} r={.07} rt={.1} h={.18} c="#f2e6c9" e={ui.power ? '#ffd9a0' : undefined} ei={.4} />
+    <B p={[0, .38, .95]} s={[.6, .08, .6]} c="#14161a" ro={.5} r={.06} /><B p={[0, .85, 1.22]} s={[.58, .86, .1]} c="#14161a" ro={.5} r={.06} /><C p={[0, .16, .95]} r={.03} h={.34} c="#9aa3a8" m={.7} />
+  </>,
+  oshelf: () => <>
+    <B p={[0, .9, 0]} s={[.4, 1.8, 1.8]} c="#4a2f1d" ro={.55} r={.02} /><B p={[-.02, .9, 0]} s={[.36, 1.7, 1.7]} c="#2b1a10" ro={.8} />
+    {[.35, .75, 1.15, 1.55].map(y => <B key={y} p={[-.04, y, 0]} s={[.34, .03, 1.7]} c="#5d3b25" ro={.6} />)}
+    {[.35, .75, 1.15, 1.55].map((y, r) => Array.from({ length: 9 }, (_, i) => <B key={r + '-' + i} p={[-.05, y + .14, -.75 + i * .18]} s={[.2, .22 + ((i * 7 + r * 3) % 5) * .02, .12]} c={['#8c2f39', '#2f5d8c', '#3f7d4a', '#c8943c', '#5d3b6e', '#2b2b2b'][(i + r * 2) % 6]} ro={.8} />))}
+  </>,
   mat: () => <><B p={[0, .018, 0]} s={[.8, .035, 1.85]} c="#7b3f8a" ro={1} r={.015} /><B p={[0, .037, 0]} s={[.74, .004, 1.79]} c="#8d4f9a" ro={1} r={.002} /><C p={[0, .045, -.95]} r={.05} h={.78} c="#7b3f8a" ro={1} rot={[0, 0, Math.PI / 2]} /></>,
   radio: ui => <>
     <B p={[0, .56, 0]} s={[.38, 1.0, .34]} c="#1d2127" ro={.45} r={.04} /><B p={[0, .04, 0]} s={[.46, .05, .4]} c="#111" /><B p={[-.196, .56, 0]} s={[.015, .96, .3]} c="#14171a" />
@@ -655,6 +741,22 @@ function EastWall() {
   return <><B p={[6.2, .65, 0]} s={[.2, 1.3, 9.4]} c="#ddd2bf" ro={.95} r={.01} /><B p={[6.2, 1.32, 0]} s={[.26, .04, 9.46]} c="#f4f0e6" ro={.5} r={.01} /></>;
 }
 
+// The south wing extension: stone floor, half-height side walls (cutaway like the rest of the house), a skirting edge along the front and zone rugs.
+function SouthWing({ ui }: { ui: UI }) {
+  const own = (id: string) => ui.home.includes(id);
+  return <>
+    <mesh rotation-x={-Math.PI / 2} position={[0, .012, 6.9]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); walk(e.point.x, e.point.z); }}>
+      <planeGeometry args={[12.4, 4.7]} /><meshStandardMaterial color="#d9d1c0" roughness={.35} metalness={.05} /></mesh>
+    {Array.from({ length: 5 }, (_, i) => <B key={i} p={[-5 + i * 2.5, .016, 6.9]} s={[.03, .004, 4.7]} c="#b9b09c" ro={.6} r={.002} />)}
+    <B p={[-6.2, .65, 6.95]} s={[.2, 1.3, 4.8]} c="#ddd2bf" ro={.95} r={.01} /><B p={[-6.2, 1.32, 6.95]} s={[.26, .04, 4.86]} c="#f4f0e6" ro={.5} r={.01} />
+    <B p={[6.2, .65, 6.95]} s={[.2, 1.3, 4.8]} c="#ddd2bf" ro={.95} r={.01} /><B p={[6.2, 1.32, 6.95]} s={[.26, .04, 4.86]} c="#f4f0e6" ro={.5} r={.01} />
+    <B p={[0, .06, 9.3]} s={[12.6, .12, .12]} c="#ddd2bf" ro={.8} r={.01} />
+    <Win p={[-6.09, 1.55, 6.9]} ry={Math.PI / 2} w={1.4} h={1.1} />
+    {own('gym_room') && <><Rug x={-4.1} z={7.0} w={3.8} d={3.6} c1="#1e2226" c2="#2a3036" y={.02} /><B p={[-5.95, 1.6, 7.0]} s={[.05, 1.2, 2.4]} c="#9bb0c4" op={.55} ro={.1} /></>}
+    {own('office_room') && <Rug x={4.2} z={6.6} w={3.4} d={3.4} c1="#2a3a52" c2="#3f5a80" y={.02} />}
+  </>;
+}
+
 // The kids' wing east of the flat: walls (half-height cutaway, like the rest of the house), window, play rug, wall decor.
 function Wing() {
   return <>
@@ -692,18 +794,18 @@ function Family({ looks, ui, onPick }: { looks: Look[]; ui: UI; onPick: (id: str
 }
 
 function Lights() {
-  const sun = useRef<THREE.DirectionalLight>(null!), amb = useRef<THREE.HemisphereLight>(null!), lamp = useRef<THREE.PointLight>(null!), lamp2 = useRef<THREE.PointLight>(null!);
+  const sun = useRef<THREE.DirectionalLight>(null!), amb = useRef<THREE.HemisphereLight>(null!), lamp = useRef<THREE.PointLight>(null!), lamp2 = useRef<THREE.PointLight>(null!), lamp3 = useRef<THREE.PointLight>(null!);
   const day = new THREE.Color('#bfdcf2'), night = new THREE.Color('#0b1124');
   useFrame(({ scene }) => {
     const h = (S.min / 60) % 24, s = Math.max(0, Math.sin((h - 6) / 12 * Math.PI));
     sun.current.intensity = .15 + 2.4 * s; amb.current.intensity = .25 + 1 * s;
     sun.current.color.set(h < 8 || h > 17 ? '#ffb27a' : '#fff4e0');
-    lamp.current.intensity = S.power ? (1 - s) * 70 : 0; lamp2.current.intensity = S.power && wingOn() ? (1 - s) * 55 : 0;
+    lamp.current.intensity = S.power ? (1 - s) * 70 : 0; lamp2.current.intensity = S.power && wingOn() ? (1 - s) * 55 : 0; lamp3.current.intensity = S.power && southOn() ? (1 - s) * 60 : 0;
     (scene.background as THREE.Color).copy(night).lerp(day, s);
   });
   return <><color attach="background" args={['#bfdcf2']} /><hemisphereLight ref={amb} args={['#cfe6ff', '#6b5a48', 1]} />
     <directionalLight ref={sun} position={[7, 12, 8]} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={11} shadow-camera-bottom={-11} shadow-camera-far={45} />
-    <pointLight ref={lamp} position={[0, 3.2, 0]} color="#ffd9a0" /><pointLight ref={lamp2} position={[8.9, 3.2, 0]} color="#ffe3b8" /></>;
+    <pointLight ref={lamp} position={[0, 3.2, 0]} color="#ffd9a0" /><pointLight ref={lamp2} position={[8.9, 3.2, 0]} color="#ffe3b8" /><pointLight ref={lamp3} position={[0, 3.2, 6.9]} color="#ffe0b0" /></>;
 }
 
 function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void; look: Look }) {
@@ -715,17 +817,18 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
     <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); walk(e.point.x, e.point.z); }}>
       <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
     <Room />
+    {ui.south && <SouthWing ui={ui} />}
     {ui.wing ? <Wing /> : <EastWall />}
     <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
-    {OBJ.filter(o => (!LUX_IDS.has(o.id) || ui.home.includes(o.id)) && (ui.famOn || o.acts.some(a => !a.all))).map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
+    {OBJ.filter(o => (!GATE[o.id] || ui.home.includes(GATE[o.id])) && (ui.famOn || o.acts.some(a => !a.all))).map(o => <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
       onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(ui.famOn ? o : { ...o, acts: o.acts.filter(a => !a.all) }); }}
       onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(o.id); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(h => (h === o.id ? null : h)); }}>{VIS[o.id](ui)}</group>)}
     {DECOR.filter(d => ui.wing || !WING_IDS.has(d.id)).map(d => <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot}>{VIS[d.vis](ui)}</group>)}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]}><div className="pie"><b>{sel.name}</b>
-      {sel.acts.map(a => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : `${a.dur} min`}</small></button>)}</div></Html>}
-    <OrbitControls enablePan={false} target={[ui.wing ? 2.6 : 0, 0, 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
+      {sel.acts.map(a => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : `${a.dur} min`}</small></button>)}</div></Html>}
+    <OrbitControls enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
   </>;
 }
 
@@ -744,18 +847,18 @@ function cityExitPoint(b: (typeof CITY.buildings)[number]) {
 }
 
 export default function Sim() {
-  const [famModal, setFamModal] = useState(false), [homeUp, setHomeUp] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
+  const [famModal, setFamModal] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const r = await (await fetch('/api/save')).json();
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); loadPantry(); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }
   async function logout() {
     setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); F.reset(); setLook(null); setEditing(false); setUser(null); }
   useEffect(() => {
     H.door = () => { setSel(null); setOutside(true); };
-    H.outfit = () => setLook(l => { if (!l) return l; const i = OUTFITS.indexOf(l.outfit), n = { ...l, outfit: OUTFITS[(i + 1) % OUTFITS.length] }; saveNow(n); say('👕 New look!'); return n; });
+    H.outfit = () => setWardrobe(true);
     return () => { H.door = undefined; H.outfit = undefined; };
   }, []);
   useEffect(() => {
@@ -766,6 +869,7 @@ export default function Sim() {
   }, []);
   useEffect(() => { setMusicMood(outside && !inside ? 'city' : 'chill'); }, [outside, inside]); // lively amapiano-style loop on the streets, calm lo-fi indoors and at home
   useEffect(() => { if (ui.toast) sfx('pop'); }, [ui.toast]);
+  useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.meals === 'number') { S.meals = d.meals; S.supplies = d.supplies; } }; window.addEventListener('arl-pantry', f); return () => window.removeEventListener('arl-pantry', f); }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
   return <div className={'sim' + (outside ? ' outside' : '')}>
     {!ready && <Loader label="Checking your session" />}
@@ -775,6 +879,7 @@ export default function Sim() {
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = cityExitPoint(b); fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
+    {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
     <div className={'top' + (menu ? ' open' : '')}><div className="pill">{worldCalendar(ui.min).weekday} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>

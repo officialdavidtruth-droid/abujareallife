@@ -2,7 +2,7 @@ import type { Business } from './cityTypes';
 import { CAR_PRICE, CRIMES, QUESTS, type CrimeId, type ProfessionId, type SkillId } from './profile';
 import { storeCats, storeItems } from './catalog';
 import { hasSeat, isSenior, seatTitle, shiftJobs } from './work';
-import { OUTFITS, PANTS, HAIR_COLORS, SKIN_TONES, HAIRS, applyOutfitModel, sanitizeLook, type Look } from './characterModels';
+import { OUTFITS, PANTS, HAIR_COLORS, SKIN_TONES, hairsFor, applyOutfitModel, sanitizeLook, type Look } from './characterModels';
 
 /* Every building type gets a real room. Shared by the room scene (client) and the server (shop prices). */
 export type Item = { x: number; z: number; w: number; d: number; h: number; c: string; y?: number; solid?: boolean; round?: boolean; glow?: boolean; sphere?: boolean; lay?: boolean };
@@ -188,11 +188,13 @@ const hashStr = (str: string) => { let h = 2166136261; for (let i = 0; i < str.l
 const NAMES_M = ['Emeka', 'Tunde', 'Musa', 'Chidi', 'Ibrahim', 'Femi', 'Segun', 'Yusuf', 'Obinna', 'Kelechi'], NAMES_F = ['Ada', 'Amina', 'Ngozi', 'Funke', 'Zainab', 'Chioma', 'Bisi', 'Hauwa', 'Ife', 'Tolu'];
 export function staffLook(b: Business, post: Post): Look {
   const r = hashStr(`${b.id}:${post.idx}`), f = r % 2 === 1, names = f ? NAMES_F : NAMES_M, name = names[(r >>> 3) % names.length];
-  let l = sanitizeLook({ gender: f ? 'f' : 'm', hair: HAIRS[(r >>> 5) % HAIRS.length].id, hairColor: HAIR_COLORS[(r >>> 7) % HAIR_COLORS.length], skin: SKIN_TONES[(r >>> 9) % SKIN_TONES.length], outfit: OUTFITS[(r >>> 11) % OUTFITS.length], pants: PANTS[(r >>> 13) % PANTS.length], height: .95 + ((r >>> 15) % 9) / 100 }, name);
+  let l = sanitizeLook({ gender: f ? 'f' : 'm', hair: hairsFor(f ? 'f' : 'm')[(r >>> 5) % hairsFor(f ? 'f' : 'm').length].id, hairColor: HAIR_COLORS[(r >>> 7) % HAIR_COLORS.length], skin: SKIN_TONES[(r >>> 9) % SKIN_TONES.length], outfit: OUTFITS[(r >>> 11) % OUTFITS.length], pants: PANTS[(r >>> 13) % PANTS.length], height: .95 + ((r >>> 15) % 9) / 100 }, name);
+  const casualM = ['tee', 'polo', 'hoodie', 'bomber', 'kaftan'], casualF = ['crop', 'dress', 'ankara', 'hoodie', 'active', 'gown'];
+  { const pool = f ? casualF : casualM; l = { ...applyOutfitModel(l, pool[(r >>> 17) % pool.length]), hair: l.hair }; l = { ...l, outfit: OUTFITS[(r >>> 11) % OUTFITS.length], pants: PANTS[(r >>> 13) % PANTS.length] }; }
   const t = b.type, job = post.title;
   if (t === 'Police Station' || t === 'Jail') l = applyOutfitModel(l, 'uniform');
   else if (t === 'Hospital' || t === 'Pharmacy' || /Chef|Pharmacist/.test(job)) l = { ...l, outfit: '#f2f2f2', pants: '#cfc9bd' };
-  else if (['Bank', 'Government', 'Office', 'Tech Company', 'Estate Agency'].includes(t) || /Manager/.test(job)) l = applyOutfitModel(l, 'suit');
+  else if (['Bank', 'Government', 'Office', 'Tech Company', 'Estate Agency'].includes(t) || /Manager/.test(job)) l = applyOutfitModel(l, f ? 'blazer' : 'suit');
   else if (job === 'Security') l = { ...l, outfit: '#111111', pants: '#111111' };
   return l;
 }

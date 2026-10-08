@@ -3,7 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Suspense, useRef, useState } from 'react';
 import * as THREE from 'three';
 import Human from './Human';
-import { DEFAULT_LOOK, HAIRS, HAIR_COLORS, OUTFITS, PANTS, SKIN_TONES, applyOutfitModel, type Look } from '../lib/characterModels';
+import { DEFAULT_LOOK, HAIR_COLORS, OUTFITS, PANTS, SKIN_TONES, applyOutfitModel, defaultHair, defaultOutfitModel, hairOk, hairsFor, outfitOk, type Look } from '../lib/characterModels';
 import { DEFAULT_PROFILE, OUTFIT_MODELS, PROFESSIONS, SKILLS, STYLES, skillLevel, type Profile } from '../lib/profile';
 
 import RuntimeStyle from './RuntimeStyle';
@@ -16,9 +16,9 @@ const Swatches = ({ list, value, on }: { list: string[]; value: string; on: (c: 
   <div className="sw">{list.map(c => <button key={c} aria-label={c} className={value === c ? 'sel' : ''} style={{ background: c }} onClick={() => on(c)} />)}</div>;
 
 export default function Creator({ initial, initialProfile, onDone }: { initial: Look | null; initialProfile?: Profile | null; onDone: (l: Look, p: Profile) => void }) {
-  const [l, setL] = useState<Look>({ ...DEFAULT_LOOK, ...(initial || {}) });
   const first = !initialProfile; // onboarding (no profile yet) vs. editing from the character profile
-  const [pf, setPf] = useState<Profile>(initialProfile || DEFAULT_PROFILE);
+  const [l, setL] = useState<Look>(() => { const x = { ...DEFAULT_LOOK, ...(initial || {}) }; if (!hairOk(x.hair, x.gender)) x.hair = defaultHair(x.gender); if (!outfitOk(x.outfitModel || 'tee', x.gender)) return applyOutfitModel(x, defaultOutfitModel(x.gender)); return x; });
+  const [pf, setPf] = useState<Profile>(() => { const p0 = initialProfile || DEFAULT_PROFILE; const g = (initial?.gender || DEFAULT_LOOK.gender); return outfitOk(p0.outfitModel, g) ? p0 : { ...p0, outfitModel: defaultOutfitModel(g) as Profile['outfitModel'] }; });
   const setP = <K extends keyof Profile>(k: K, v: Profile[K]) => setPf(p => ({ ...p, [k]: v }));
   const set = <K extends keyof Look>(k: K, v: Look[K]) => setL(p => ({ ...p, [k]: v }));
   return <div className="cr">
@@ -31,13 +31,13 @@ export default function Creator({ initial, initialProfile, onDone }: { initial: 
       <p className="who">{PROFESSIONS.find(x => x.id === pf.profession)?.blurb}</p>
       <label>Skill to focus on <i>(every skill starts at 0)</i></label><div className="seg wrap">{SKILLS.map(x => <button key={x.id} className={pf.focus === x.id ? 'sel' : ''} onClick={() => setP('focus', x.id)}>{x.e} {x.label}{!first && <small> Lv {skillLevel(pf.skills[x.id])}</small>}</button>)}</div>
       <label>Style</label><div className="seg wrap">{STYLES.map(x => <button key={x.id} className={pf.style === x.id ? 'sel' : ''} onClick={() => setP('style', x.id)}>{x.label}</button>)}</div>
-      <label>Outfit model</label><div className="seg wrap">{OUTFIT_MODELS.filter(m => !('police' in m && m.police) || pf.profession === 'police').map(m => <button key={m.id} className={pf.outfitModel === m.id ? 'sel' : ''} onClick={() => { setP('outfitModel', m.id); setL(p => applyOutfitModel(p, m.id)); }}>{m.label}</button>)}</div>
-      <label>Body</label><div className="seg">{([['m', 'Man'], ['f', 'Woman']] as const).map(([k, n]) => <button key={k} className={l.gender === k ? 'sel' : ''} onClick={() => setL(p => ({ ...p, gender: k, hair: p.gender === k ? p.hair : k === 'f' ? 'braids' : 'short' }))}>{n}</button>)}</div>
-      <label>Hair style</label><div className="seg wrap">{HAIRS.map(h => <button key={h.id} className={l.hair === h.id ? 'sel' : ''} onClick={() => set('hair', h.id)}>{h.label}</button>)}</div>
+      <label>Outfit model</label><div className="seg wrap">{OUTFIT_MODELS.filter(m => outfitOk(m.id, l.gender) && (!('police' in m && m.police) || pf.profession === 'police')).map(m => <button key={m.id} className={pf.outfitModel === m.id ? 'sel' : ''} onClick={() => { setP('outfitModel', m.id); setL(p => applyOutfitModel(p, m.id)); }}>{m.label}</button>)}</div>
+      <label>Body</label><div className="seg">{([['m', 'Man'], ['f', 'Woman']] as const).map(([k, n]) => <button key={k} className={l.gender === k ? 'sel' : ''} onClick={() => { if (l.gender === k) return; const keepUniform = l.outfitModel === 'uniform', om = keepUniform ? 'uniform' : defaultOutfitModel(k); setL(p => applyOutfitModel({ ...p, gender: k, hair: hairOk(p.hair, k) && p.hair !== 'short' ? p.hair : defaultHair(k) }, om)); setP('outfitModel', om as Profile['outfitModel']); }}>{n}</button>)}</div>
+      <label>Hair style</label><div className="seg wrap">{hairsFor(l.gender).map(h => <button key={h.id} className={l.hair === h.id ? 'sel' : ''} onClick={() => set('hair', h.id)}>{h.label}</button>)}</div>
       <label>Hair colour</label><Swatches list={HAIR_COLORS} value={l.hairColor} on={c => set('hairColor', c)} />
       <label>Skin tone</label><Swatches list={SKIN_TONES} value={l.skin} on={c => set('skin', c)} />
-      <label>Top colour</label><Swatches list={OUTFITS} value={l.outfit} on={c => set('outfit', c)} />
-      <label>Trousers</label><Swatches list={PANTS} value={l.pants} on={c => set('pants', c)} />
+      <label>Outfit colour</label><Swatches list={OUTFITS} value={l.outfit} on={c => set('outfit', c)} />
+      <label>Bottoms / accent colour</label><Swatches list={PANTS} value={l.pants} on={c => set('pants', c)} />
       <label>Height<input type="range" min=".92" max="1.08" step=".01" value={l.height} onChange={e => set('height', +e.target.value)} /></label>
       <button className="go" onClick={() => onDone(l, pf)}>{first ? 'Enter Abuja →' : 'Save profile'}</button></div>
     <RuntimeStyle css={`.cr{position:fixed;inset:0;z-index:50;display:grid;grid-template-columns:1fr 340px;background:radial-gradient(circle at 40% 30%,#1c4a39,#07100d);color:#fff;font-family:Inter,system-ui,sans-serif}

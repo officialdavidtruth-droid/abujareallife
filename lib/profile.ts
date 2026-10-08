@@ -64,10 +64,15 @@ export type StyleId = (typeof STYLES)[number]['id'];
 
 // Outfit "models": each is a full-body outfit type, shown in onboarding AND in the character profile.
 export const OUTFIT_MODELS = [
-  { id: 'tee', label: 'T-shirt & trousers', style: 'casual' }, { id: 'hoodie', label: 'Hoodie', style: 'street' },
-  { id: 'suit', label: 'Suit', style: 'corporate' }, { id: 'agbada', label: 'Agbada', style: 'traditional' },
-  { id: 'jersey', label: 'Jersey', style: 'sporty' }, { id: 'designer', label: 'Designer fit', style: 'luxury' },
-  { id: 'uniform', label: 'Police uniform', style: 'corporate', police: true },
+  { id: 'tee', label: 'Tee & chinos', style: 'casual', for: 'm' }, { id: 'polo', label: 'Polo & slacks', style: 'casual', for: 'm' },
+  { id: 'hoodie', label: 'Hoodie & joggers', style: 'street', for: 'b' }, { id: 'bomber', label: 'Bomber jacket', style: 'street', for: 'm' },
+  { id: 'suit', label: 'Business suit', style: 'corporate', for: 'm' }, { id: 'agbada', label: 'Agbada & fila', style: 'traditional', for: 'm' },
+  { id: 'kaftan', label: 'Senator kaftan', style: 'traditional', for: 'm' }, { id: 'jersey', label: 'Football kit', style: 'sporty', for: 'm' },
+  { id: 'designer', label: 'Designer fit', style: 'luxury', for: 'b' },
+  { id: 'crop', label: 'Crop top & jeans', style: 'casual', for: 'f' }, { id: 'dress', label: 'Midi dress', style: 'casual', for: 'f' },
+  { id: 'gown', label: 'Evening gown', style: 'luxury', for: 'f' }, { id: 'ankara', label: 'Iro & buba + gele', style: 'traditional', for: 'f' },
+  { id: 'blazer', label: 'Power pantsuit', style: 'corporate', for: 'f' }, { id: 'active', label: 'Activewear', style: 'sporty', for: 'f' },
+  { id: 'uniform', label: 'Police uniform', style: 'corporate', for: 'b', police: true },
 ] as const;
 export type OutfitModelId = (typeof OUTFIT_MODELS)[number]['id'];
 

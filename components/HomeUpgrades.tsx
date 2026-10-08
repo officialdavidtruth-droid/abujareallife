@@ -25,7 +25,7 @@ export default function HomeUpgrades({ onClose, onChange }: { onClose: () => voi
     <RuntimeStyle css={CSS} id="arl-homeupg" />
     <div className="huHead"><div><h3>🏗️ Upgrade your home</h3><small>{cash == null ? 'Loading…' : `Your cash: ${naira(cash)}`}</small></div><button onClick={onClose} aria-label="Close">×</button></div>
     {note && <div className={'huNote' + (note.bad ? ' bad' : '')}>{note.t}</div>}
-    <div className="huList">{group('room', '🧱 Rooms')}{group('luxury', '💎 Luxury items')}</div>
+    <div className="huList">{group('room', '🧱 Rooms')}{group('comfort', '🔧 Comfort & utilities')}{group('luxury', '💎 Luxury items')}</div>
     <small className="huFoot">Upgrades are permanent and appear straight away in your home.</small>
   </div></div>;
 }

@@ -19,8 +19,8 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   useEffect(() => { if (sel && !net.roster.includes(sel)) setSel(null); }, [sel, net.roster, setSel]);
   useEffect(() => { const onPick = (e: Event) => { const name = String((e as CustomEvent).detail || ''); if (name && net.roster.includes(name)) setSel(name); }; window.addEventListener('arl-player-select', onPick); return () => window.removeEventListener('arl-player-select', onPick); }, [net.roster, setSel]);
   const go = () => { if (net.send(txt)) setTxt(''); };
-  const [micHide, setMicHide] = useState(false);
-  useEffect(() => { if (voice.msg) setMicHide(false); }, [voice.msg]); // a new mic problem brings the prompt back
+  const [micHide, setMicHide] = useState(() => { try { return localStorage.getItem('arl-mic-hide') === '1'; } catch { return false; } }); // Cancel stays cancelled: the 🎤 button still asks when you want voice
+  useEffect(() => { if (voice.mic.err) setMicHide(false); }, [voice.mic.err]); // only a real mic error brings the card back
   const count = net.roster.length + 1;
   const label = !net.enabled ? 'Solo' : net.status === 'online' ? `${count} online` : net.status === 'error' ? 'Offline' : 'Connecting…';
   const d = sel ? dist(sel) : Infinity, canAct = d <= INTERACT_RANGE;
@@ -34,7 +34,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
 
     <div className="cpStack">
       {voice.msg && <div className="cpNote" onClick={() => voice.clearMsg()}><span>{voice.msg}</span><button aria-label="Dismiss" onClick={e => { e.stopPropagation(); voice.clearMsg(); }}>✕</button></div>}
-      {voice.mic.perm !== 'granted' && !voice.micOn && !micHide && <div className="cpCard"><div>🎤 <b>Voice chat needs your microphone.</b>{voice.mic.perm === 'denied' && <><br /><small>It is blocked for this site: tap the 🔒 by the address bar → Microphone → Allow, then reload.</small></>}{voice.mic.inApp && <><br /><small>Open the game in Chrome or Safari: in-app browsers can't use the mic.</small></>}</div><div className="cpRow"><button className="ok" onClick={() => voice.requestMic()}>Allow microphone</button><button onClick={() => { setMicHide(true); voice.clearMsg(); }}>Cancel</button></div></div>}
+      {voice.mic.perm !== 'granted' && !voice.micOn && !micHide && <div className="cpCard"><div>🎤 <b>Voice chat needs your microphone.</b>{voice.mic.perm === 'denied' && <><br /><small>It is blocked for this site: tap the 🔒 by the address bar → Microphone → Allow, then reload.</small></>}{voice.mic.inApp && <><br /><small>Open the game in Chrome or Safari: in-app browsers can't use the mic.</small></>}</div><div className="cpRow"><button className="ok" onClick={() => voice.requestMic()}>Allow microphone</button><button onClick={() => { setMicHide(true); try { localStorage.setItem('arl-mic-hide', '1'); } catch { /* ignore */ } voice.clearMsg(); }}>Cancel</button></div></div>}
       {net.notices.map(n => <div key={n.id} className="cpCard"><div>{ACT_EMOJI[n.k]} <b>{n.from}</b> {n.text}</div><div className="cpRow">{dist(n.from) <= INTERACT_RANGE && <button className="ok" onClick={() => { net.act(n.k, n.from); net.dismissNotice(n.id); }}>{n.reply}</button>}<button onClick={() => net.dismissNotice(n.id)}>Dismiss</button></div></div>)}
     </div>
 

@@ -18,7 +18,7 @@ import { openSettings } from '../lib/settings';
 import GameLayer from './GameLayer';
 import Interior from './Interior';
 import { CITY } from '../lib/cityData';
-import { GAME } from './CityWorld';
+import { GAME, buildingExitPoint } from './CityWorld';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
@@ -38,7 +38,7 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
 const OBJ: Obj[] = [
   { id: 'bed', name: 'Bed', p: [-4.6, -3.3], rot: 0, spot: [-3.3, -1.9], face: 0, boxes: [[-5.5, -3.7, -4.6, -2], [-3.7, -3.2, -4.55, -4.05]], acts: [
-    { k: 'sleep', label: 'Sleep', e: '💤', dur: 240, fx: { energy: 100, hunger: -10 }, pose: 'sleep' },
+    { k: 'sleep', label: 'Sleep', e: '💤', dur: 120, fx: { energy: 100, hunger: -10 }, pose: 'sleep' },
     { k: 'nap', label: 'Nap', e: '😴', dur: 60, fx: { energy: 35 }, pose: 'sleep' }] },
   { id: 'wardrobe', name: 'Wardrobe & mirror', p: [-2.25, -4.3], rot: 0, spot: [-2.25, -3.4], face: Math.PI, boxes: [[-2.95, -1.55, -4.6, -4]], acts: [
     { k: 'outfit', label: 'Change outfit', e: '👕', dur: 8, fx: { fun: 8 }, pose: 'stand', anim: 'wardrobe' },
@@ -91,8 +91,8 @@ const OBJ: Obj[] = [
   { id: 'gbag', name: 'Punching bag', p: [-3.0, 8.2], rot: 0, spot: [-3.0, 7.5], face: 0, boxes: [[-3.3, -2.7, 7.95, 8.5]], acts: [
     { k: 'box', label: 'Box the punching bag', e: '🥊', dur: 35, fx: { energy: -20, hygiene: -12, fun: 22, hunger: -8 }, pose: 'stand', anim: 'cheer' }] },
   { id: 'cinema', name: 'Home cinema', p: [.3, 6.3], rot: 0, spot: [.3, 7.6], face: Math.PI, boxes: [[-1.3, 1.9, 4.75, 5.15], [-1.3, 1.9, 7.1, 8.1]], appr: [.3, 6.6], acts: [
-    { k: 'movie', label: 'Movie night', e: '🎬', dur: 110, fx: { fun: 60, energy: -4, social: 4 }, pose: 'sit', pow: true, anim: 'tv' },
-    { k: 'cgame', label: 'Big-screen gaming', e: '🎮', dur: 80, fx: { fun: 58, energy: -8, hunger: -6 }, pose: 'sit', pow: true, anim: 'game' }] },
+    { k: 'movie', label: 'Movie night', e: '🎬', dur: 55, fx: { fun: 60, energy: -4, social: 4 }, pose: 'sit', pow: true, anim: 'tv' },
+    { k: 'cgame', label: 'Big-screen gaming', e: '🎮', dur: 45, fx: { fun: 58, energy: -8, hunger: -6 }, pose: 'sit', pow: true, anim: 'game' }] },
   { id: 'odesk', name: 'Executive desk', p: [4.4, 5.4], rot: 0, spot: [4.4, 6.2], face: Math.PI, boxes: [[3.5, 5.3, 5.0, 5.8], [4.15, 4.65, 5.95, 6.5]], appr: [4.4, 7.0], acts: [
     { k: 'bizplan', label: 'Run the business', e: '📈', dur: 160, fx: { energy: -22, fun: -12, hunger: -8 }, pose: 'sit', pay: 14000, pow: true, anim: 'work' },
     { k: 'obrowse', label: 'Catch up online', e: '📱', dur: 30, fx: { fun: 20, social: 8, energy: -3 }, pose: 'sit', pow: true, anim: 'browse' }] },
@@ -212,7 +212,7 @@ const F = {
   all: [mkMem('spouse', 'Ada', false, 1), mkMem('chidi', 'Chidi', true, .62), mkMem('amara', 'Amara', true, .48)],
   get mem(): Mem[] { return this.on ? this.all : []; },
   setOn(v: boolean) { this.on = v; setEastLimit(wingOn()); this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, hold: null, stuck: 0, init: false })); },
-  reset() { this.on = false; HOME.own = new Set(); setEastLimit(false); this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false })); },
+  reset() { this.on = false; HOME.own = new Set(); setEastLimit(false); setSouthLimit(false); this.last = 0; this.all.forEach(m => Object.assign(m, { pos: [0, 0] as P, rot: 0, pose: 'stand' as Pose, anim: undefined, q: [], cur: null, dest: null, at: null, away: false, bond: 30, hold: null, stuck: 0, init: false })); },
   load(b: unknown, on?: unknown) { this.on = on === true; setEastLimit(wingOn()); const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>; this.all.forEach(m => { const v = o[m.id]; m.bond = typeof v === 'number' && isFinite(v) ? cl(v) : 30; }); },
   bonds() { return Object.fromEntries(this.all.map(m => [m.id, Math.round(m.bond * 10) / 10])); },
   hold(id: string, key: string, mins: number) { const m = this.mem.find(x => x.id === id); if (m) m.hold = { key, until: S.min + mins }; },
@@ -334,9 +334,9 @@ function tick(dt: number) {
   if (!S.speed) return;
   const gm = dt * 6; S.min = worldMinute(); // time is shared by every player: it follows the world clock and can't be paused or sped up
   const calm = (has('smart_home') ? .88 : 1);
-  (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * calm * (k === 'energy' && has('split_ac') ? .7 : 1) * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
+  (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * calm * (k === 'energy' && has('split_ac') ? .7 : 1) * (k === 'hygiene' && has('borehole') ? .75 : 1) * (k === 'hunger' && has('fridge') ? .88 : 1) * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
   famTick(dt);
-  if (S.power && !has('solar') && Math.random() < gm / 2200) say('⚡ NEPA took light! Fuel the generator.'), S.power = false;
+  if (S.power && !has('solar') && Math.random() < gm / (has('inverter') ? 9000 : 2200)) say('⚡ NEPA took light! Fuel the generator.'), S.power = false;
   if (!S.cur) {
     const t = S.q.shift();
     if (t?.t === 'act') {
@@ -385,7 +385,9 @@ const tune = (a: Act): Act => {
   if (a.k === 'shower' && has('water_heater')) fx = { ...fx, fun: (fx.fun || 0) + 10 };
   if (['tv', 'game', 'music', 'dance', 'edance', 'movie', 'cgame'].includes(a.k) && has('surround')) fx = { ...fx, fun: Math.round((fx.fun || 0) * 1.35) };
   if (a.k === 'cook' && has('chef_kitchen')) fx = { ...fx, hunger: Math.round((fx.hunger || 0) * 1.2), fun: (fx.fun || 0) + 10 };
-  if (a.k === 'sleep' && has('ortho')) dur = 180;
+  if (['game', 'cgame'].includes(a.k) && has('gaming_rig')) fx = { ...fx, fun: Math.round((fx.fun || 0) * 1.3) };
+  if (['browse', 'obrowse', 'chat', 'call'].includes(a.k) && has('fibre')) fx = { ...fx, fun: Math.round((fx.fun || 0) * 1.3), social: Math.round((fx.social || 0) * 1.3) };
+  if (a.k === 'sleep' && has('ortho')) dur = 75;
   return fx === a.fx && dur === a.dur ? a : { ...a, fx, dur };
 };
 // Tell the server a home action used up groceries / toiletries; it is the source of truth for what is left.
@@ -832,19 +834,6 @@ function World({ ui, sel, setSel, look }: { ui: UI; sel: Obj | null; setSel: (o:
   </>;
 }
 
-function cityExitPoint(b: (typeof CITY.buildings)[number]) {
-  const road = CITY.roads.reduce((best, r) => {
-    const d = r.d > r.w ? Math.abs(b.x - r.x) : Math.abs(b.z - r.z);
-    const bd = best.d;
-    return d < bd ? { r, d } : best;
-  }, { r: CITY.roads[0], d: Infinity } as { r: (typeof CITY.roads)[number]; d: number }).r;
-  if (road.d > road.w) {
-    const side = road.x >= b.x ? 1 : -1;
-    return { x: b.x + side * (b.w / 2 + 1.8), z: b.z };
-  }
-  const side = road.z >= b.z ? 1 : -1;
-  return { x: b.x, z: b.z + side * (b.d / 2 + 1.8) };
-}
 
 export default function Sim() {
   const [famModal, setFamModal] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null);
@@ -876,7 +865,7 @@ export default function Sim() {
     {ready && !user && <AuthScreen onAuth={enter} />}
     {user && look && outside && !inside && <City tab={cityTab} onTab={setCityTab} look={look} getMinute={worldMinute} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
     {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} onDenied={() => setInside(null)} username={user.username} getMinute={worldMinute} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
-    {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const b = CITY.buildings.find(x => x.business?.id === inside); if (b) GAME.tp = cityExitPoint(b); fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
+    {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const ex = buildingExitPoint(inside); if (ex) GAME.tp = ex; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} /></Canvas>}
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}

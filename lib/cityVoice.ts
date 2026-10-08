@@ -11,6 +11,11 @@ export const VOICE_MAX = 30;       // metres: silent / not connected beyond this
 export const VOICE_DROP = 40;      // links are only dropped past this (a little hysteresis, so walking at the edge does not flap)
 export const VOICE_REQ_RANGE = VOICE_MAX; // kept for older imports
 const MAX_LINKS = 6;
+// Phones (iOS Safari, many Android browsers) cannot tell us whether the mic is already allowed, so we remember it ourselves.
+// Without this the "Allow microphone" card came back every time you stepped outside.
+const MIC_OK = 'arl-mic-granted', MIC_ASKED = 'arl-mic-asked';
+const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k: string, v: string | null) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode */ } };
 /* ── Relay voice: the part that makes voice work on ANY network. ──
    Direct WebRTC fails on most phone networks without a TURN server. So while a nearby player has no live direct link to you,
    your voice is also sent as small compressed audio chunks through the same Supabase channel (only while you are actually speaking),
@@ -43,8 +48,8 @@ export function useCityVoice(o: Opts) {
   const [micOn, setMicOnS] = useState(false), [msg, setMsg] = useState(''), [linked, setLinked] = useState(0);
   const op = useRef(o); op.current = o;
   const dist = (n: string) => (op.current.dist || cityDist)(n); // open city: world distance · inside a building: distance inside the room
-  const [live, setLive] = useState(0), lastFail = useRef(0), [turn, setTurn] = useState<{ ok: boolean | null; provider: string; error: string }>({ ok: null, provider: '', error: '' }), [relayOn, setRelayOn] = useState(false), [mic, setMicState] = useState<{ perm: string; secure: boolean; inApp: boolean; err: string }>({ perm: 'unknown', secure: true, inApp: false, err: '' });
-  const readPerm = () => { try { const ua = navigator.userAgent || ''; const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|MicroMessenger|TikTok|Snapchat|; wv\)/i.test(ua); const secure = window.isSecureContext !== false && !!navigator.mediaDevices?.getUserMedia; (navigator as any).permissions?.query({ name: 'microphone' }).then((r: any) => { setMicState(m => ({ ...m, perm: r.state, secure, inApp })); r.onchange = () => setMicState(m => ({ ...m, perm: r.state })); }).catch(() => setMicState(m => ({ ...m, secure, inApp }))); setMicState(m => ({ ...m, secure, inApp })); } catch { /* ignore */ } };
+  const [live, setLive] = useState(0), lastFail = useRef(0), [turn, setTurn] = useState<{ ok: boolean | null; provider: string; error: string }>({ ok: null, provider: '', error: '' }), [relayOn, setRelayOn] = useState(false), [mic, setMicState] = useState<{ perm: string; secure: boolean; inApp: boolean; err: string }>(() => ({ perm: lsGet(MIC_OK) === '1' ? 'granted' : 'unknown', secure: true, inApp: false, err: '' }));
+  const readPerm = () => { try { const ua = navigator.userAgent || ''; const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|MicroMessenger|TikTok|Snapchat|; wv\)/i.test(ua); const secure = window.isSecureContext !== false && !!navigator.mediaDevices?.getUserMedia; (navigator as any).permissions?.query({ name: 'microphone' }).then((r: any) => { const sync = () => { lsSet(MIC_OK, r.state === 'granted' ? '1' : null); setMicState(m => ({ ...m, perm: r.state })); }; setMicState(m => ({ ...m, perm: r.state, secure, inApp })); lsSet(MIC_OK, r.state === 'granted' ? '1' : null); r.onchange = sync; }).catch(() => setMicState(m => ({ ...m, secure, inApp, perm: lsGet(MIC_OK) === '1' ? 'granted' : m.perm }))); /* no Permissions API for the mic (iPhone): use what we remembered */ setMicState(m => ({ ...m, secure, inApp })); } catch { /* ignore */ } };
   useEffect(readPerm, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { // what does the SERVER say about the TURN setup? (the same check as opening /api/turn)
     let dead = false;
@@ -88,15 +93,16 @@ export function useCityVoice(o: Opts) {
       src.connect(sp); sp.connect(z); z.connect(c.destination); proc.current = { sp, src, z };
     } catch { /* no relay on this browser: direct links still work */ }
   };
-  const micError = (e: unknown) => { const n = (e as DOMException)?.name; const m = n === 'NotFoundError' ? 'No microphone found on this device.' : n === 'NotReadableError' ? 'The microphone is being used by another app. Close it and try again.' : 'Microphone blocked. Tap the lock icon next to the address, set Microphone to Allow, then reload the page.'; note(m); setMicState(s => ({ ...s, err: m })); readPerm(); };
+  const micError = (e: unknown) => { const n = (e as DOMException)?.name; if (n === 'NotAllowedError' || n === 'SecurityError') lsSet(MIC_OK, null); const m = n === 'NotFoundError' ? 'No microphone found on this device.' : n === 'NotReadableError' ? 'The microphone is being used by another app. Close it and try again.' : 'Microphone blocked. Tap the lock icon next to the address, set Microphone to Allow, then reload the page.'; note(m); setMicState(s => ({ ...s, err: m })); readPerm(); };
   // Ask the browser for the microphone RIGHT NOW (shows the permission prompt if it has not been answered). Used on the first tap and by the "Allow microphone" button.
   const requestMic = useCallback(async () => {
+    try { audioCtx(); } catch { /* ignore */ }
     if (!navigator.mediaDevices?.getUserMedia) { setMicState(m => ({ ...m, err: 'This browser cannot use the microphone here. Open the game in Chrome or Safari (not inside WhatsApp / Instagram / Facebook).' })); return false; }
-    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); setMicState(m => ({ ...m, perm: 'granted', err: '' })); return true; } catch (e) { micError(e); return false; }
+    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); lsSet(MIC_OK, '1'); lsSet('arl-mic-hide', null); setMicState(m => ({ ...m, perm: 'granted', err: '' })); return true; } catch (e) { micError(e); return false; }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const permRef = useRef('unknown'), primed = useRef(false); permRef.current = mic.perm;
   useEffect(() => { // first tap or key press anywhere in the game: if permission was never granted, ask for it
-    const first = () => { if (primed.current) return; primed.current = true; window.removeEventListener('pointerdown', first); window.removeEventListener('keydown', first); if (permRef.current !== 'granted') requestMic(); };
+    const first = () => { if (primed.current) return; primed.current = true; window.removeEventListener('pointerdown', first); window.removeEventListener('keydown', first); if (permRef.current !== 'granted' && !lsGet(MIC_ASKED) && !(window.matchMedia?.('(pointer:coarse)').matches)) { lsSet(MIC_ASKED, '1'); requestMic(); } }; // asked once ever, and never from a random touch on a phone (the Allow card / 🎤 button ask there)
     window.addEventListener('pointerdown', first); window.addEventListener('keydown', first);
     return () => { window.removeEventListener('pointerdown', first); window.removeEventListener('keydown', first); };
   }, [requestMic]);
@@ -106,7 +112,7 @@ export function useCityVoice(o: Opts) {
     if (!navigator.mediaDevices?.getUserMedia) { note('Voice needs a secure (https) page and a browser with microphone support.'); setMicState(m => ({ ...m, err: 'This browser cannot use the microphone here. Open the game in Chrome or Safari (not inside WhatsApp / Instagram / Facebook).' })); return false; }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
-      stream.current = s; syncTrack(); stopLocal.current = watch(s, op.current.me); startRelay();
+      stream.current = s; lsSet(MIC_OK, '1'); lsSet('arl-mic-hide', null); setMicState(m => ({ ...m, perm: 'granted', err: '' })); syncTrack(); stopLocal.current = watch(s, op.current.me); startRelay();
       const t = s.getAudioTracks()[0]; links.current.forEach(L => L.pc.getSenders().forEach(x => { if (!x.track || x.track.kind === 'audio') x.replaceTrack(t).catch(() => {}); })); // start sending on links that already exist
       return true;
     } catch (e) { micError(e); return false; }
@@ -219,6 +225,8 @@ export function useCityVoice(o: Opts) {
   }, [connect, drop]);
 
   const setMic = useCallback(async (on: boolean) => {
+    if (on) audioCtx(); // phones only let audio start inside the tap itself, so do it BEFORE awaiting the permission prompt
+    links.current.forEach(L => L.audio?.play().catch(() => {}));
     if (on && !(await getMic())) return;
     audioCtx(); micRef.current = on; setMicOnS(on); syncTrack(); if (on) setMicState(s => ({ ...s, err: '' }));
     if (on) note('🎤 Mic on: nearby players can hear you.');
@@ -238,7 +246,7 @@ export function useCityVoice(o: Opts) {
   // some browsers need one tap before audio plays
   useEffect(() => {
     const f = () => { links.current.forEach(L => L.audio?.play().catch(() => {})); ctx.current?.resume?.().catch(() => {}); };
-    window.addEventListener('pointerdown', f); return () => window.removeEventListener('pointerdown', f);
+    ['pointerdown', 'touchend', 'click'].forEach(ev => window.addEventListener(ev, f)); return () => ['pointerdown', 'touchend', 'click'].forEach(ev => window.removeEventListener(ev, f));
   }, []);
 
   useEffect(() => () => {

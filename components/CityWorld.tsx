@@ -39,6 +39,12 @@ const BUILDS: CityBuilding[] = CITY.buildings.map((b: CityBuilding) => {
   const bx = Math.round((b.x - 5.5) / 11), bz = Math.round((b.z - 5.5) / 11);
   return { ...b, x: bx * GRID + 11 + (ev(bx) ? .5 : -.5), z: bz * GRID + 11 + (ev(bz) ? .5 : -.5), w: b.w * 1.15, d: b.d * 1.4 };
 });
+/** Where a player appears when they walk out of a building: on the frontage sidewalk, straight in front of the door (doors face +z).
+ *  Uses the same scaled world layout as BUILDS (the raw CITY coordinates are on a different, smaller grid, so they must never be used for positions). */
+export function buildingExitPoint(businessId: string | null | undefined): { x: number; z: number } | null {
+  const b = BUILDS.find(x => x.business?.id === businessId); if (!b) return null;
+  return { x: b.x, z: b.z + b.d / 2 + 1.8 };
+}
 const INTER: { x: number; z: number; hv: number; hh: number }[] = [];
 for (let i = -5; i <= 5; i++) for (let j = -5; j <= 5; j++) INTER.push({ x: i * GRID, z: j * GRID, hv: halfW(i), hh: halfW(j) });
 
@@ -1365,7 +1371,8 @@ const CSS = `
 
 export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void; onOpenMap?: () => void }) {
   useState(() => { // stepping out of the house: appear on a sidewalk, somewhere different each time and not on top of another player (building exits set GAME.tp instead)
-    if (!GAME.tp) { const s = sidewalkSpawn(Math.random, (x, z) => Object.values(NET.peers).some(q => Math.hypot(q.x - x, q.z - z) < 3)); START.x = s.x; START.z = s.z; START.r = s.r; GAME.player.x = s.x; GAME.player.z = s.z; }
+    if (GAME.tp) { START.x = GAME.tp.x; START.z = GAME.tp.z; START.r = 0; GAME.player.x = GAME.tp.x; GAME.player.z = GAME.tp.z; } // arriving from a building / jail / ride: start the camera right there, not at the old default
+    else { const s = sidewalkSpawn(Math.random, (x, z) => Object.values(NET.peers).some(q => Math.hypot(q.x - x, q.z - z) < 3)); START.x = s.x; START.z = s.z; START.r = s.r; GAME.player.x = s.x; GAME.player.z = s.z; }
     return 0;
   });
   const net = useCityNet(look, onSocial);

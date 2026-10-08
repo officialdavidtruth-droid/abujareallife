@@ -5,9 +5,10 @@ export type P = [number, number];
 
 export const R = 0.24; // body radius used when planning routes
 export const HARD = 0.18; // body radius used for the hard "you cannot enter this" check every frame
-export const FULL_X1 = 10.95, FLAT_X1 = 5.95;
-export const BOUNDS = { x0: -5.85, x1: FULL_X1, z0: -4.3, z1: 4.3 }; // walkable area inside the walls. Only the main flat by default; the kids' wing to the east is added when a family starts.
+export const FULL_X1 = 10.95, FLAT_X1 = 5.95, FLAT_Z1 = 4.3, FULL_Z1 = 9.1;
+export const BOUNDS = { x0: -5.85, x1: FULL_X1, z0: -4.3, z1: FLAT_Z1 }; // walkable area inside the walls. Only the main flat by default; the kids' wing to the east is added when a family starts.
 export const setEastLimit = (wing: boolean) => { BOUNDS.x1 = wing ? FULL_X1 : FLAT_X1; };
+export const setSouthLimit = (south: boolean) => { BOUNDS.z1 = south ? FULL_Z1 : FLAT_Z1; }; // the south wing (gym, cinema, office) extends the walkable floor to the south
 const G = 0.15; // grid cell size for path-finding
 
 export const inside = (p: P, k: Box, r = 0) => p[0] > k[0] - r && p[0] < k[1] + r && p[1] > k[2] - r && p[1] < k[3] + r;

@@ -32,9 +32,9 @@ export async function POST(req: Request) {
   if (action !== 'buy') {
     const vehicle = await prisma.vehicle.findFirst({ where: { userId: u.id, id: String(body.vehicleId || '') } });
     if (!vehicle) return err('Vehicle not found.', 404);
-    const costs: Record<string,number> = { register: 250000, insure: 180000, repair: Math.max(50000, Math.round((100-vehicle.condition)*vehicle.price*.012)), refuel: Math.max(15000, Math.round((100-vehicle.fuel)*1200)), wash: 8000 };
+    const costs: Record<string,number> = { register: 250000, insure: 180000, repair: Math.max(50000, Math.round((100-vehicle.condition)*vehicle.price*.012)), refuel: Math.max(15000, Math.round((100-vehicle.fuel)*1200)), wash: 8000, paint: 35000, rims: 60000, tint: 25000, steal: 0 };
     const cost = costs[action]; if (!cost) return err('Unknown vehicle action.',400); if (save.cash < cost) return err(`You need ₦${cost.toLocaleString()}.`,402);
-    const data:any = action==='register'?{registered:true}:action==='insure'?{insured:true}:action==='repair'?{condition:100}:action==='refuel'?{fuel:100}:action==='wash'?{condition:Math.min(100,vehicle.condition+3)}:{};
+    const data:any = action==='register'?{registered:true}:action==='insure'?{insured:true}:action==='repair'?{condition:100}:action==='refuel'?{fuel:100}:action==='wash'?{condition:Math.min(100,vehicle.condition+3)}:action==='paint'?{paint:String(body.paint||'factory').slice(0,30)}:action==='rims'?{rims:String(body.rims||'factory').slice(0,30)}:action==='tint'?{tint:Math.max(0,Math.min(80,Number(body.tint)||0))}:action==='steal'?{stolen:true,registered:false,insured:false}:{};
     const row = await prisma.$transaction(async tx=>{await tx.save.update({where:{userId:u.id},data:{cash:{decrement:cost}}});await tx.transaction.create({data:{userId:u.id,type:'SPEND',amount:-cost,description:`vehicle-${action}:${vehicle.name}`}});return tx.vehicle.update({where:{id:vehicle.id},data});});
     return NextResponse.json({ok:true,vehicle:row,cash:save.cash-cost});
   }

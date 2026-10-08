@@ -315,31 +315,31 @@ function carKit(): Kit {
 }
 const BODYMATS = new Map<string, THREE.MeshStandardMaterial>();
 const bodyMat = (c: string) => { let m = BODYMATS.get(c); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, metalness: .55, roughness: .32 }); BODYMATS.set(c, m); } return m; };
-function CarModel({ kit, color, kind, model }: { kit: Kit; color: string; kind: number; model?: string }) {
+function CarModel({ kit, color, kind, model, style }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number } }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
-  const grille = premium ? '#c7ccd1' : '#20252a';
+  const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims==='sport' ? '#d8dde3' : style?.rims==='black' ? '#111' : '#141619'; const glassColor = style?.tint ? '#0b1117' : '#16222c';
   return <group scale={sc}>
-    <mesh geometry={kit.body} material={bodyMat(color)} castShadow />
-    <mesh geometry={kit.cabin} material={kit.glass} />
+    <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
+    <mesh geometry={kit.cabin} material={style?.tint ? new THREE.MeshStandardMaterial({color:glassColor,metalness:.8,roughness:.08}) : kit.glass} />
     <mesh position={[-.17, suv ? 1.43 : 1.38, 0]} material={bodyMat(color)}><boxGeometry args={[suv ? 1.48 : 1.32, .07, suv ? 1.56 : 1.5]} /></mesh>
     <mesh position={[2.14, .62, 0]} material={new THREE.MeshStandardMaterial({ color: grille, metalness: .75, roughness: .2 })}><boxGeometry args={[.08, .28, suv ? .95 : .78]} /></mesh>
     <mesh position={[1.8, .55, 0]} material={new THREE.MeshStandardMaterial({ color: '#111820', metalness: .3, roughness: .4 })}><boxGeometry args={[.18, .08, suv ? 1.05 : .9]} /></mesh>
-    <mesh geometry={kit.wheels} material={kit.tire} />
+    <mesh geometry={kit.wheels} material={style?.rims ? new THREE.MeshStandardMaterial({color:rimColor,metalness:.75,roughness:.25}) : kit.tire} />
     <mesh geometry={kit.head} material={kit.headM} /><mesh geometry={kit.tail} material={kit.tailM} />
     <mesh position={[-1.55, .58, .91]} material={new THREE.MeshStandardMaterial({ color: '#111', metalness: .25, roughness: .55 })}><boxGeometry args={[.5, .05, .05]} /></mesh>
   </group>;
 }
-type Role = 'car' | 'taxi' | 'bike' | 'police';
+type Role = 'car' | 'taxi' | 'bike' | 'police' | 'bus';
 // Every road user lives in the same lane simulation, so taxis, bikes and police keep gaps / obey lights exactly like normal traffic.
 // hail: 0 = driving, 1 = pulling over for a player, 2 = stopped at the kerb waiting.   busy = carrying a player right now.
-type SimCar = { s: number; color: string; kind: number; model: string; role: Role; mul: number; v?: number; off: number; hail: 0 | 1 | 2; stopping?: boolean; readyAt?: number; busy?: boolean };
+type SimCar = { s: number; color: string; kind: number; model: string; role: Role; mul: number; v?: number; off: number; laneShift: number; hail: 0 | 1 | 2; stopping?: boolean; readyAt?: number; busy?: boolean };
 type Lane = { axis: 'x' | 'z'; dir: 1 | -1; fixed: number; speed: number; rot: number; road: number; cars: SimCar[] };
 const ROAM = { cars: [] as { l: Lane; c: SimCar }[], sel: -1, rideIdx: -1, openSheet: (_i: number) => {}, tap: (_i: number) => {} };
-const roleOf = (n: number): Role => (n % 4 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
-const ROLE_MUL: Record<Role, number> = { car: 1, taxi: 1, bike: .8, police: 1.15 };
+const roleOf = (n: number): Role => (n % 17 === 7 ? 'bus' : n % 4 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
+const ROLE_MUL: Record<Role, number> = { car: 1, taxi: 1, bike: .8, police: 1.15, bus: .72 };
 const COLORS = ['#c0392b', '#e8e8ea', '#1f2933', '#2c5aa0', '#8e949a', '#b7791f', '#0f766e', '#7c2d12', '#d9d9dc', '#1e9e55'];
 function makeLanes(): Lane[] {
   const lanes: Lane[] = []; let n = 0;
@@ -348,7 +348,7 @@ function makeLanes(): Lane[] {
     for (const axis of ['x', 'z'] as const) for (const dir of [1, -1] as const) {
       const fixed = axis === 'x' ? i * GRID + (dir === 1 ? off : -off) : i * GRID + (dir === 1 ? -off : off); // drive on the right
       const rot = axis === 'x' ? (dir === 1 ? 0 : Math.PI) : (dir === 1 ? -Math.PI / 2 : Math.PI / 2);
-      const cars = Array.from({ length: major ? 2 : 1 }, (_, k): SimCar => { const role = roleOf(n); return { s: -100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id, role, mul: ROLE_MUL[role], off: 0, hail: 0 }; });
+      const cars = Array.from({ length: major ? 2 : 1 }, (_, k): SimCar => { const role = roleOf(n); return { s: -100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id, role, mul: ROLE_MUL[role], off: 0, laneShift: 0, hail: 0 }; });
       lanes.push({ axis, dir, fixed, speed: major ? 9 : 6.5, rot, road: i, cars });
     }
   }
@@ -403,11 +403,12 @@ function Traffic() {
       let adv = v * dt, gap = Infinity;
       for (const o of l.cars) if (o !== c && !o.busy) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) gap = d; }
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
+      if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += (0-c.laneShift)*Math.min(1,dt*3);
       for (const o of OBS) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
       const ls = lightState(t, l.axis); if (Math.abs(ci) <= 5 && signalised(ci, l.road) && (ls === 'r' || (ls === 'y' && d - (halfW(ci) + 5.2) > 9)) && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
       c.s += adv * l.dir; if (c.s > 118) c.s = -118; else if (c.s < -118) c.s = 118;
-      const px = l.axis === 'x' ? c.s : l.fixed - l.dir * c.off, pz = l.axis === 'x' ? l.fixed + l.dir * c.off : c.s;
+      const px = l.axis === 'x' ? c.s : l.fixed - l.dir * c.off + c.laneShift, pz = l.axis === 'x' ? l.fixed + l.dir * c.off + c.laneShift : c.s;
       tp.x = px; tp.z = pz; tp.r = l.rot;
       if (g) { g.position.set(px, 0, pz); g.rotation.y = l.rot; }
       if ((c.role === 'taxi' || c.role === 'bike') && !GAME.ride && !VEH.drv && !GAME.jailed) {
@@ -432,7 +433,7 @@ function Traffic() {
     {flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}
       onClick={c.role === 'taxi' || c.role === 'bike' ? (e => { if (e.delta > 6) return; e.stopPropagation(); ROAM.tap(i); }) : undefined}>
       {(c.role === 'taxi' || c.role === 'bike') && <mesh position={[0, 1.1, 0]}><boxGeometry args={[3.4, 2.6, 5.6]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>}
-      {c.role === 'taxi' ? <TaxiBody kit={kit} /> : c.role === 'bike' ? <BikeBody scale={.95} rider /> : c.role === 'police' ? <PoliceBody kit={kit} /> : <CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} />}
+      {c.role === 'taxi' ? <TaxiBody kit={kit} /> : c.role === 'bike' ? <BikeBody scale={.95} rider /> : c.role === 'police' ? <PoliceBody kit={kit} /> : c.role === 'bus' ? <BusBody /> : <CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} />}
     </group>)}
     <group ref={lbl}><Html center zIndexRange={[4, 0]}><div ref={lblEl} className="hailTag" style={{ display: 'none' }} onClick={() => { const i = Number(lblEl.current?.dataset.i); if (i >= 0) ROAM.tap(i); }} /></Html></group>
   </>;
@@ -466,6 +467,7 @@ const TRANSPORT_SOLIDS = [
   ...BILLBOARDS.flatMap(b => [-1.7, 1.7].map(o => ({ x: b.x + b.ax * o, z: b.z + b.az * o, r: .1 }))),
 ];
 
+function BusBody(){return <group scale={[1.25,1.25,1.25]}><mesh position={[0,1.1,0]}><boxGeometry args={[4.8,1.8,1.8]}/><meshStandardMaterial color="#d99a42"/></mesh><mesh position={[0,1.45,0]}><boxGeometry args={[4.5,.55,1.85]}/><meshStandardMaterial color="#1b2d38" metalness={.5}/></mesh>{[-1.7,1.7].map(x=><mesh key={x} position={[x,.45,.95]} rotation-x={Math.PI/2}><cylinderGeometry args={[.35,.35,.22,16]}/><meshStandardMaterial color="#111"/></mesh>)}</group>}
 function TaxiBody({ kit, driver }: { kit: Kit; driver?: boolean }) {
   return <group>
     <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" />
@@ -688,7 +690,7 @@ function LampGlow() {
 }
 
 /* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
-type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string };
+type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number] };
 const SHIRTS = ['#c0392b', '#2c5aa0', '#e8e8ea', '#1e9e55', '#f1c40f', '#7c3aed', '#0f766e', '#d97706', '#111827', '#be185d'];
 const PANTS = ['#1f2937', '#374151', '#4b5563', '#111827', '#2b3a55', '#5b4636'];
 const SKINS = ['#3b2417', '#4a2e1c', '#5a3825', '#6b4429', '#7a4f32', '#8d5f3d'];
@@ -697,7 +699,7 @@ const pick = <T,>(a: T[], k: string) => a[Math.floor(hs(k) * a.length) % a.lengt
 function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {
     const ri = Math.floor(hs('pi' + n) * 11) - 5, side = hs('ps' + n) < .5 ? 1 : -1, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
-    return { axis, line: ri * GRID + side * (halfW(ri) + 2), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n) };
+    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0] };
   });
 }
 const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 0 : 32 - c) : (c >= 16 && c < 30 ? 0 : c < 16 ? 16 - c : 48 - c); };
@@ -723,11 +725,22 @@ function Pedestrians() {
       if (dy) { T.t.makeTranslation(0, dy, 0); T.m.multiply(T.t); }
       mesh.setMatrixAt(idx, T.m);
     };
+    const eventActive = (wc.hh >= 0 && wc.hh % 6 === 0) || wx.storm;
     peds.forEach((p, i) => {
-      let fall = 0; p.moving = false;
+      let fall = 0; p.moving = false; p.hidden = false;
+      const hour=wc.hh + wc.mm/60;
+      p.mode = (hour < 6 || hour >= 22) ? 'home' : (hour < 10 || (hour >= 16 && hour < 19)) ? 'commute' : hour >= 19 ? 'social' : 'work';
+      if (eventActive && i % 11 === 0) p.mode='flee';
+      const prof = CITY.districts.find(d=>d.name===((p.mode==='home'||p.mode==='social')?p.home:p.work));
+      if(prof) p.target=[prof.x,prof.z];
+      if(p.mode==='flee'){ const dx=p.x-(p.target[0]||0),dz=p.z-(p.target[1]||0),len=Math.hypot(dx,dz)||1;p.target=[p.x+dx/len*18,p.z+dz/len*18]; if(i%11===0 && Math.random()<.002) window.dispatchEvent(new CustomEvent('arl-npc-alert',{detail:`🚨 NPC ${i+1} reported an incident to police.`})); }
+      const td=Math.hypot(p.x-p.target[0],p.z-p.target[1]);
+      if(td<3.5 && (p.mode==='home'||p.mode==='work')) { p.hidden=true; p.moving=false; }
+      if(p.hidden && td>5) p.hidden=false;
       if (p.down > 0) { p.down -= dt; fall = Math.min(1, (3.2 - p.down) / .25) * Math.min(1, Math.max(0, p.down) / .35); }
       else {
         let go = true;
+        if(!p.hidden && td>4){ const tx=p.target[0],tz=p.target[1]; if(p.axis==='x'){ if(Math.abs(tz-p.z)>4){p.axis='z';p.line=p.x;} else p.dir=tx>p.x?1:-1; } else { if(Math.abs(tx-p.x)>4){p.axis='x';p.line=p.z;} else p.dir=tz>p.z?1:-1; } p.sp = p.mode==='flee'?2.8:(p.mode==='commute'?1.8:p.mode==='social'?1.35:1.1); }
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
         if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x')) go = false; } // wait at the kerb for a red light
         if (go) { const activityFactor = night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
@@ -754,10 +767,10 @@ function Pedestrians() {
 /* ───────────── the player's car ───────────── */
 const CAR_COLOR = '#ff6a00';
 function PlayerCar({ carRef, tagRef, spotRef, model }: { carRef: React.MutableRefObject<THREE.Group>; tagRef: React.MutableRefObject<HTMLDivElement | null>; spotRef: React.MutableRefObject<THREE.SpotLight>; model: string }) {
-  const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []);
+  const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []); const [style,setStyle]=useState<any>(null); useEffect(()=>{fetch('/api/vehicles').then(r=>r.ok?r.json():null).then(d=>setStyle(d?.vehicles?.[0]||null)).catch(()=>{});},[model]);
   useLayoutEffect(() => { spotRef.current.target = tgt; }, [tgt, spotRef]);
   return <group ref={carRef} visible={false}>
-    <CarModel kit={kit} color={vehicleByName(model).color || CAR_COLOR} kind={0} model={model} />
+    <CarModel kit={kit} color={vehicleByName(model).color || CAR_COLOR} kind={0} model={model} style={style||undefined} />
     <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
     <primitive object={tgt} position={[16, .2, 0]} />
     <Html position={[0, 2.4, 0]} center><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
@@ -922,6 +935,16 @@ function JailCell() {
   </group>;
 }
 const CAR_R = 1, CAR_OFFS = [-1.35, 0, 1.35];
+function WeatherEffects(){
+ const puddles=useMemo(()=>Array.from({length:36},(_,i)=>({x:(hs('px'+i)*2-1)*125,z:(hs('pz'+i)*2-1)*125,s:.7+hs('ps'+i)*1.8})),[]);
+ const umb=useRef<THREE.Group>(null!);
+ useFrame(()=>{const w=weatherAt(); if(umb.current) umb.current.visible=w.rain>.45;});
+ return <><group>{puddles.map((p,i)=><mesh key={i} position={[p.x,.025,p.z]} rotation-x={-Math.PI/2} scale={[p.s,p.s,1]}><circleGeometry args={[1,20]}/><meshBasicMaterial color="#5b7180" transparent opacity={.18} depthWrite={false}/></mesh>)}</group><group ref={umb}>{Array.from({length:12},(_,i)=><group key={i} position={[(hs('ux'+i)*2-1)*45,1.6,(hs('uz'+i)*2-1)*45]}><mesh rotation-x={-Math.PI/2}><cylinderGeometry args={[.45,.45,.03,16]}/><meshStandardMaterial color={['#d99a42','#2c5aa0','#c0392b','#1e9e55'][i%4]} /></mesh><mesh position={[0,-.45,0]}><cylinderGeometry args={[.025,.025,.9,6]}/><meshStandardMaterial color="#222"/></mesh></group>)}</group></>;
+}
+function WorldEventVisuals(){
+ const [events,setEvents]=useState<any[]>([]); useEffect(()=>{let dead=false;const load=()=>fetch('/api/city-life').then(r=>r.ok?r.json():null).then(d=>{if(!dead)setEvents(d?.events||[])}).catch(()=>{});load();const i=setInterval(load,12000);return()=>{dead=true;clearInterval(i)}},[]);
+ return <>{events.map(e=>{const d=CITY.districts.find(x=>x.name===e.district)||CITY.districts[0], icon=e.kind==='fire'?'🔥':e.kind==='accident'?'🚨':e.kind==='robbery'?'🚔':e.kind==='flood'?'🌊':e.kind==='celebration'||e.kind==='concert'?'🎉':'⚠️';return <group key={e.id} position={[d.x,0,d.z]}>{e.kind==='fire'&&<pointLight color="#ff6a22" intensity={5} distance={22}/>}<Html center><div className="worldEventTag">{icon} {e.title}<small>{e.district}</small></div></Html>{e.kind==='fire'&&<mesh position={[0,2.3,0]}><sphereGeometry args={[1.2,10,10]}/><meshBasicMaterial color="#ff4b20" transparent opacity={.45}/></mesh>}{e.kind==='accident'&&<group rotation-y={.4}><mesh position={[0,.5,0]}><boxGeometry args={[3.2,.7,1.7]}/><meshStandardMaterial color="#7b2d2d"/></mesh><mesh position={[0,1.3,0]}><boxGeometry args={[2,.15,1.1]}/><meshStandardMaterial color="#ffb000" emissive="#ff5a00" emissiveIntensity={2}/></mesh></group>}{(e.kind==='celebration'||e.kind==='concert')&&Array.from({length:8},(_,i)=><mesh key={i} position={[(hs(e.id+i)*2-1)*5,.5,(hs(e.id+'z'+i)*2-1)*5]}><sphereGeometry args={[.18,8,8]}/><meshStandardMaterial color="#d99a42"/></mesh>)}</group>})}</>;
+}
 function Rain() {
   const N = 520, g = useRef<THREE.Group>(null!), ls = useRef<THREE.LineSegments>(null!), seed = useMemo(() => Float32Array.from({ length: N * 3 }, (_, i) => (i % 3 === 1 ? Math.random() * 22 : (Math.random() - .5) * 38)), []), pos = useMemo(() => new Float32Array(N * 6), []);
   useFrame((st, dtRaw) => {
@@ -946,12 +969,13 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   const sunTarget = useMemo(() => new THREE.Object3D(), []);
   const moving = useRef(false), running = useRef(false), nearId = useRef<string | null>(null);
   const drag = useRef({ on: false, end: 0 }), lastN = useRef(-1), fov = useRef(52), hitCool = useRef(0), shown = useRef({ drv: false, placed: false });
-  const firstCam = useRef(true);
+  const firstCam = useRef(true); const driveKm=useRef(0); const lastDrivePost=useRef(0);
   const nav = useRef<{ key: string; points: [number, number][]; i: number } | null>(null);
   const [near, setN] = useState<any>(null);
   const [touchDevice, setTouchDevice] = useState(false);
   const [vehicleModel, setVehicleModel] = useState(GAME.vehicleModel);
-  useEffect(() => { let dead = false; const load = async () => { try { const r = await fetch('/api/vehicles'); if (!r.ok) return; const d = await r.json(); const m = d.active || GAME.vehicleModel; if (!dead) { GAME.vehicleModel = m; setVehicleModel(m); } } catch {} }; load(); const id = setInterval(load, 8000); return () => { dead = true; clearInterval(id); }; }, []);
+  useEffect(() => { let dead = false; const load = async () => { try { const r = await fetch('/api/vehicles'); if (!r.ok) return; const d = await r.json(); const m = d.active || GAME.vehicleModel; if (d.vehicles?.[0]) (window as any).__arlVehicleId=d.vehicles[0].id; if (!dead) { GAME.vehicleModel = m; setVehicleModel(m); } } catch {} }; load(); const id = setInterval(load, 8000); return () => { dead = true; clearInterval(id); }; }, []);
+  useEffect(() => { let dead=false; const push=()=>{ if(dead)return; const p=GAME.player; const district=CITY.districts.reduce((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)<Math.hypot(b.x-p.x,b.z-p.z)?a:b); fetch('/api/position',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({x:p.x,z:p.z,r:p.r,district:district.name,driving:VEH.drv})}).catch(()=>{}); }; push(); const id=setInterval(push,5000); return()=>{dead=true;clearInterval(id)}; }, []);
   useEffect(() => { const m = window.matchMedia('(pointer: coarse), (max-width: 700px)'); const sync = () => setTouchDevice(m.matches); sync(); m.addEventListener?.('change', sync); return () => m.removeEventListener?.('change', sync); }, []);
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
   useEffect(() => { sun.current.target = sunTarget; }, [sunTarget]);
@@ -1103,6 +1127,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const auth = THREE.MathUtils.clamp(V.v / 4, -1, 1) * (1 - Math.min(.55, Math.abs(V.v) / 55));
       V.r -= ix * 2.1 * auth * (wantJump ? 1.5 : 1) * dt;
       V.x += Math.cos(V.r) * V.v * dt; V.z -= Math.sin(V.r) * V.v * dt;
+      driveKm.current += Math.abs(V.v*dt)/1000; if(VEH.drv && driveKm.current >= .5 && performance.now()-lastDrivePost.current>5000){ const km=driveKm.current; driveKm.current=0; lastDrivePost.current=performance.now(); fetch('/api/vehicles',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'drive',vehicleId:(window as any).__arlVehicleId||'',km})}).catch(()=>{}); }
       hitCool.current -= dt;
       let hit = 0; const fxw = Math.cos(V.r), fzw = -Math.sin(V.r);
       for (const o of CAR_OFFS) { // buildings
@@ -1219,6 +1244,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Pedestrians />
       <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} />
       <TrainLine />
+      <WeatherEffects />
+      <WorldEventVisuals />
       <Rain />
       <Airport />
       <JailCell />
@@ -1366,7 +1393,7 @@ function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; i
 const CSS = `
 .cityNameTag.mini{font-size:10px!important;padding:1px 6px 0!important;border-width:2px!important;border-radius:8px!important;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:none!important}.cwTapTag{pointer-events:auto;cursor:pointer;padding:6px 10px;font-size:12px}
 .cwSay{background:#fff;color:#111;border-radius:12px;padding:5px 10px;font-size:12px;max-width:190px;text-align:center;box-shadow:0 2px 8px #0006;white-space:normal;line-height:1.25}
-.cityWorld{touch-action:none}.cwLookPad{display:none;position:absolute;right:0;top:18%;width:52%;height:64%;z-index:8;touch-action:none;border-radius:24px;background:linear-gradient(180deg,#07100d08,#07100d18);pointer-events:auto}.cwLookPad span{position:absolute;right:12px;top:12px;color:#ffffff55;font-size:9px;letter-spacing:.12em;font-weight:800}.cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
+.worldEventTag{background:#111d;color:#fff;border:1px solid #ffffff33;border-radius:999px;padding:6px 10px;font:800 11px system-ui;white-space:nowrap;box-shadow:0 3px 10px #0007}.worldEventTag small{display:block;color:#f3c56f;font-size:8px;text-align:center;margin-top:2px}.cityWorld{touch-action:none}.cwLookPad{display:none;position:absolute;right:0;top:18%;width:52%;height:64%;z-index:8;touch-action:none;border-radius:24px;background:linear-gradient(180deg,#07100d08,#07100d18);pointer-events:auto}.cwLookPad span{position:absolute;right:12px;top:12px;color:#ffffff55;font-size:9px;letter-spacing:.12em;font-weight:800}.cwStick{position:absolute;left:22px;bottom:22px;width:128px;height:128px;border-radius:50%;background:#0b1511aa;border:2px solid #ffffff3a;touch-action:none;z-index:10;display:none}
 .cwKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:#ffffffcc;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0006;pointer-events:none}
 .cwBtns{position:absolute;right:18px;bottom:22px;z-index:12;display:grid;grid-template-columns:64px 64px 80px;gap:10px;align-items:center;justify-items:center}.cwBtns .big{grid-column:3;grid-row:1 / span 2}
 .cwBtn{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}

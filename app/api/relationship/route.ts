@@ -21,9 +21,12 @@ export async function POST(req: Request) {
   if (b.action === 'propose' && isSocial(String(b.status))) {
     const other = await prisma.user.findUnique({ where: { usernameKey: String(b.to || '').toLowerCase() } });
     if (!other || other.username === me) return err('No such player.');
-    const dup = await prisma.relationship.findFirst({ where: { status: { in: [...FRIEND_STATUSES] }, OR: [{ aName: me, bName: other.username }, { aName: other.username, bName: me }] } });
-    if (dup) await prisma.relationship.delete({ where: { id: dup.id } }); // upgrading friends -> best friends replaces the old link
-    await prisma.relationship.create({ data: { aName: me, bName: other.username, status: String(b.status), accepted: false } }).catch(() => null);
+    const existing = await prisma.relationship.findFirst({ where: { OR: [{ aName: me, bName: other.username }, { aName: other.username, bName: me }] } });
+    if (existing && !isSocial(existing.status)) return err(`You already have a ${existing.status} relationship with this player.`);
+    if (existing && existing.aName === other.username && !existing.accepted) return err('This player has already sent you a friend request. Respond to it first.');
+    if (existing && existing.accepted) return err(`You are already ${existing.status}.`);
+    if (existing) await prisma.relationship.delete({ where: { id: existing.id } });
+    await prisma.relationship.create({ data: { aName: me, bName: other.username, status: String(b.status), accepted: false } });
     return NextResponse.json({ ok: true });
   }
   if (b.action === 'gift') {

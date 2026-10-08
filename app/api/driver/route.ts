@@ -1,0 +1,6 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '../../../lib/prisma';
+import { currentUser, err } from '../../../lib/auth';
+export const dynamic='force-dynamic';
+export async function GET(){const u=await currentUser();if(!u)return err('Not signed in.',401);const d=await prisma.driverProfile.findUnique({where:{userId:u.id}});return NextResponse.json({driver:d});}
+export async function POST(req:Request){const u=await currentUser();if(!u)return err('Not signed in.',401);const b=await req.json().catch(()=>({}));const action=String(b.action||'settings');const existing=await prisma.driverProfile.findUnique({where:{userId:u.id}});if(action==='toggle'){const d=await prisma.driverProfile.upsert({where:{userId:u.id},create:{userId:u.id,active:true},update:{active:!existing?.active}});return NextResponse.json({ok:true,driver:d});}if(action==='settings'){const base=Math.max(500,Math.min(10000,Math.round(Number(b.baseFare)||1500))),km=Math.max(100,Math.min(3000,Math.round(Number(b.perKm)||450)));const d=await prisma.driverProfile.upsert({where:{userId:u.id},create:{userId:u.id,baseFare:base,perKm:km},update:{baseFare:base,perKm:km,vehicleType:String(b.vehicleType||'taxi').slice(0,20)}});return NextResponse.json({ok:true,driver:d});}return err('Unknown action.',400);}

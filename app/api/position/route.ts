@@ -1,0 +1,6 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '../../../lib/prisma';
+import { currentUser, err } from '../../../lib/auth';
+export const dynamic='force-dynamic';
+export async function POST(req:Request){const u=await currentUser();if(!u)return err('Not signed in.',401);const b=await req.json().catch(()=>({}));const x=Number(b.x),z=Number(b.z),r=Number(b.r)||0;if(!Number.isFinite(x)||!Number.isFinite(z))return err('Invalid position.',400);const row=await prisma.playerPosition.upsert({where:{userId:u.id},create:{id:u.id,userId:u.id,username:u.username,x,z,r,district:String(b.district||'Wuse').slice(0,40),driving:!!b.driving},update:{x,z,r,district:String(b.district||'Wuse').slice(0,40),driving:!!b.driving}});return NextResponse.json({ok:true,position:row});}
+export async function GET(){const u=await currentUser();if(!u)return err('Not signed in.',401);const me=await prisma.playerPosition.findUnique({where:{userId:u.id}});const rows=await prisma.playerPosition.findMany({where:{updatedAt:{gt:new Date(Date.now()-30_000)},NOT:{userId:u.id}},select:{username:true,x:true,z:true,r:true,district:true,driving:true,updatedAt:true},take:100});return NextResponse.json({me,players:rows});}

@@ -62,6 +62,8 @@ model User {
   businesses   PlayerBusiness[]
   careers      CareerProgress[]
   reputation   Reputation?
+  position     PlayerPosition?
+  driver       DriverProfile?
 }
 
 model Character {
@@ -131,6 +133,10 @@ model Vehicle {
   insured     Boolean     @default(false)
   registered  Boolean     @default(false)
   parkedAt    String?
+  paint       String    @default("factory")
+  rims        String    @default("factory")
+  tint        Int       @default(0)
+  stolen      Boolean   @default(false)
   purchasedAt DateTime    @default(now())
   createdAt   DateTime    @default(now())
 
@@ -385,4 +391,31 @@ model CityBusinessMetric {
   rating      Int      @default(50)
   updatedAt   DateTime @updatedAt
   @@unique([businessId, dayKey])
+}
+
+
+model PlayerPosition {
+  id        String   @id
+  userId    String   @unique
+  username  String   @unique
+  x         Float    @default(0)
+  z         Float    @default(0)
+  r         Float    @default(0)
+  district  String   @default("Wuse")
+  driving   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  @@index([district, updatedAt])
+}
+
+model DriverProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  active      Boolean  @default(false)
+  vehicleType String   @default("taxi")
+  baseFare    Int      @default(1500)
+  perKm       Int      @default(450)
+  rating      Int      @default(50)
+  trips       Int      @default(0)
+  earnings    Int      @default(0)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

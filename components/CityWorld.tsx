@@ -20,7 +20,7 @@ import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 import RuntimeStyle from './RuntimeStyle';
 import { worldMinute, worldCalendar, weatherAt, lightningAt } from '../lib/worldClock';
 import { createPortal } from 'react-dom';
-import { GRID, CURB, halfW, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
+import { GRID, CURB, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
@@ -272,11 +272,12 @@ let PKIT: Kit | null = null;
 const pkit = (): Kit => { if (!PKIT) PKIT = carKit(); return PKIT; };
 
 /* ───────────── traffic lights + cars that obey them ───────────── */
-const lightState = (t: number, axis: 'x' | 'z') => { const c = t % 24; return axis === 'x' ? (c < 10 ? 'g' : c < 12 ? 'y' : 'r') : (c >= 12 && c < 22 ? 'g' : c >= 22 ? 'y' : 'r'); };
+// 32 s cycle with long greens: x green 0–14, amber 14–16, z green 16–30, amber 30–32. Cars only obey it at boulevard × boulevard junctions (see signalised).
+const lightState = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 'g' : c < 16 ? 'y' : 'r') : (c >= 16 && c < 30 ? 'g' : c >= 30 ? 'y' : 'r'); };
 const LCOL = { g: new THREE.Color('#2ee66b'), y: new THREE.Color('#ffc400'), r: new THREE.Color('#ff2a2a') };
 function Signals() {
   const poles = useRef<THREE.InstancedMesh>(null!), heads = useRef<THREE.InstancedMesh>(null!), last = useRef('');
-  const corners = useMemo(() => INTER.flatMap(it => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => ({ x: it.x + sx * (it.hv + 1.1), z: it.z + sz * (it.hh + 1.1), axis: (sx * sz > 0 ? 'x' : 'z') as 'x' | 'z' }))), []);
+  const corners = useMemo(() => INTER.filter(it => signalised(Math.round(it.x / GRID), Math.round(it.z / GRID))).flatMap(it => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => ({ x: it.x + sx * (it.hv + 1.1), z: it.z + sz * (it.hh + 1.1), axis: (sx * sz > 0 ? 'x' : 'z') as 'x' | 'z' }))), []);
   useLayoutEffect(() => {
     const o = new THREE.Object3D();
     corners.forEach((c, i) => { o.position.set(c.x, 2.4, c.z); o.updateMatrix(); poles.current.setMatrixAt(i, o.matrix); o.position.set(c.x, 4.95, c.z); o.updateMatrix(); heads.current.setMatrixAt(i, o.matrix); heads.current.setColorAt(i, LCOL.g); });
@@ -403,7 +404,7 @@ function Traffic() {
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
       for (const o of OBS) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
-      if (Math.abs(ci) <= 5 && lightState(t, l.axis) !== 'g' && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
+      const ls = lightState(t, l.axis); if (Math.abs(ci) <= 5 && signalised(ci, l.road) && (ls === 'r' || (ls === 'y' && d - (halfW(ci) + 5.2) > 9)) && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
       c.s += adv * l.dir; if (c.s > 118) c.s = -118; else if (c.s < -118) c.s = 118;
       const px = l.axis === 'x' ? c.s : l.fixed - l.dir * c.off, pz = l.axis === 'x' ? l.fixed + l.dir * c.off : c.s;
       tp.x = px; tp.z = pz; tp.r = l.rot;
@@ -698,7 +699,7 @@ function makePeds(): Ped[] {
     return { axis, line: ri * GRID + side * (halfW(ri) + 2), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n) };
   });
 }
-const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 24; return axis === 'x' ? (c < 10 ? 0 : 24 - c) : (c >= 12 && c < 22 ? 0 : c < 12 ? 12 - c : 36 - c); };
+const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 0 : 32 - c) : (c >= 16 && c < 30 ? 0 : c < 16 ? 16 - c : 48 - c); };
 const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis) === 'r' && timeToGreen(t, carAxis) > 5.5;
 function Pedestrians() {
   const peds = useMemo(makePeds, []);
@@ -726,7 +727,7 @@ function Pedestrians() {
       else {
         let go = true;
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
-        if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && !canCross(t, p.axis === 'x' ? 'z' : 'x')) go = false; } // wait at the kerb for a red light
+        if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x')) go = false; } // wait at the kerb for a red light
         if (go) { p.u += p.dir * p.sp * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
       }
       if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }

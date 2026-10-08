@@ -5,6 +5,8 @@
    Even roads are 7 m boulevards, odd roads 5 m streets. Traffic drives on the RIGHT, in lanes half a road-half-width off the centre line.
    Vehicle models face +x at rotation 0, so a vehicle heading (dx, dz) has rotation.y = atan2(-dz, dx)  (same as the AI traffic). */
 export const GRID = 22;
+/** Only the big boulevard × boulevard junctions have signals; everything else is free-flowing, so traffic doesn't stop at every turn. */
+export const signalised = (a: number, b: number) => ((a % 2) + 2) % 2 === 0 && ((b % 2) + 2) % 2 === 0;
 export const halfW = (i: number) => (((i % 2) + 2) % 2 === 0 ? 3.5 : 2.5);
 export type XZ = [number, number];
 export type Axis = 'x' | 'z';
@@ -84,7 +86,7 @@ export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 
     const d = unit(stops[m].p, stops[m + 1].p); dirs.push(d); segLen.push(Math.hypot(stops[m + 1].p[0] - stops[m].p[0], stops[m + 1].p[1] - stops[m].p[1]));
     const road = Math.abs(d[0]) > .5 ? Math.round(stops[m].p[1] / GRID) : Math.round(stops[m].p[0] / GRID); lane.push(halfW(road) * .5);
   }
-  const pts: XZ[] = [[st.x, st.z]], marks: { idx: number; axis: Axis; ci: number }[] = [];
+  const pts: XZ[] = [[st.x, st.z]], marks: { idx: number; axis: Axis; ci: number; cj: number }[] = [];
   for (let m = 0; m < stops.length; m++) {
     const a = m > 0 ? dirs[m - 1] : null, b = m < dirs.length ? dirs[m] : null, p = stops[m].p;
     let ox = 0, oz = 0; if (a) { const r = rightOf(a); ox += r[0] * lane[m - 1]; oz += r[1] * lane[m - 1]; }
@@ -94,10 +96,10 @@ export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 
     if (turn && a && b) { // rounded corner: quadratic curve from before the corner to after it
       const R = Math.min(CORNER_R, .45 * segLen[m - 1], .45 * segLen[m]), pin: XZ = [P[0] - a[0] * R, P[1] - a[1] * R], pout: XZ = [P[0] + b[0] * R, P[1] + b[1] * R], first = pts.length;
       for (let k = 0; k <= 8; k++) { const t = k / 8, u = 1 - t; pts.push([u * u * pin[0] + 2 * u * t * P[0] + t * t * pout[0], u * u * pin[1] + 2 * u * t * P[1] + t * t * pout[1]]); }
-      const n = stops[m].node; if (n) { const ax: Axis = Math.abs(a[0]) > .5 ? 'x' : 'z'; marks.push({ idx: first + 4, axis: ax, ci: ax === 'x' ? n.i : n.j }); }
+      const n = stops[m].node; if (n) { const ax: Axis = Math.abs(a[0]) > .5 ? 'x' : 'z'; marks.push({ idx: first + 4, axis: ax, ci: ax === 'x' ? n.i : n.j, cj: ax === 'x' ? n.j : n.i }); }
     } else {
       pts.push(P); const n = stops[m].node;
-      if (n && a) { const ax: Axis = Math.abs(a[0]) > .5 ? 'x' : 'z'; marks.push({ idx: pts.length - 1, axis: ax, ci: ax === 'x' ? n.i : n.j }); }
+      if (n && a) { const ax: Axis = Math.abs(a[0]) > .5 ? 'x' : 'z'; marks.push({ idx: pts.length - 1, axis: ax, ci: ax === 'x' ? n.i : n.j, cj: ax === 'x' ? n.j : n.i }); }
     }
   }
   // pull in to the kerb before the destination
@@ -109,7 +111,7 @@ export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 
   const drop: XZ = [qe[0] + rl[0] * (kerb + .65), qe[1] + rl[1] * (kerb + .65)];
 
   const cum = [0]; for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
-  return { pts, cum, len: cum[cum.length - 1], lights: marks.filter(m => m.idx < pts.length - 2 && Math.abs(m.ci) <= MAXI).map(m => ({ s: cum[m.idx], axis: m.axis, ci: m.ci })), drop };
+  return { pts, cum, len: cum[cum.length - 1], lights: marks.filter(m => m.idx < pts.length - 2 && Math.abs(m.ci) <= MAXI).filter(m => signalised(m.ci, m.cj)).map(m => ({ s: cum[m.idx], axis: m.axis, ci: m.ci })), drop };
 }
 
 /** position along the route at arc length s */
@@ -134,7 +136,7 @@ export function stepRide(rs: RideState, rt: Route, dt: number, env: { vmax: numb
   const rem = rt.len - rs.s; vt = Math.min(vt, Math.max(2.2, rem * .75));
   for (const L of rt.lights) { // same stop line rule as the AI traffic
     const d = L.s - rs.s, stop = halfW(L.ci) + 5.2;
-    if (d > -.5 && d < 60 && env.light(env.t, L.axis) !== 'g' && d >= stop - .05) vt = Math.min(vt, Math.sqrt(2 * 9 * Math.max(0, d - stop)));
+    const ls = env.light(env.t, L.axis); if (d > -.5 && d < 60 && (ls === 'r' || (ls === 'y' && d - stop > 9)) && d >= stop - .05) vt = Math.min(vt, Math.sqrt(2 * 9 * Math.max(0, d - stop)));
   }
   if (rs.wait < 14) { const f: XZ = [Math.cos(rs.r), -Math.sin(rs.r)]; // do not drive into the car in front
     for (const c of env.cars) { const rx = c.x - rs.x, rz = c.z - rs.z, along = rx * f[0] + rz * f[1], lat = Math.abs(-rx * f[1] + rz * f[0]); if (along > 0 && along < 16 && lat < 1.8) vt = Math.min(vt, Math.sqrt(2 * 9 * Math.max(0, along - 6.5))); } }

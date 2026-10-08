@@ -1,7 +1,7 @@
 // One shared world: time of day, calendar, seasons and weather are pure functions of the real clock, so every player
 // (and the server) sees exactly the same thing at the same moment, with nothing to sync. Safe to import on client and server.
-export const GAME_MIN_PER_SEC = 6;            // 1 real second = 6 game minutes → a game day lasts 4 real minutes
-export const DAYS_PER_MONTH = 3;              // a game month = 12 real minutes, a game year = 2.4 real hours
+export const GAME_MIN_PER_SEC = 1;            // 1 real second = 1 game minute → a game day lasts 24 real minutes (it used to race by in 4)
+export const DAYS_PER_MONTH = 3;              // a game month = 72 real minutes, a game year = 14.4 real hours
 const EPOCH = Date.UTC(2026, 0, 5);           // Monday 5 Jan 2026 (game day 0)
 const START_MIN = 8 * 60;                     // the world clock reads 08:00 at the epoch
 const DAY = 1440;
@@ -26,7 +26,7 @@ export function worldCalendar(minute: number = worldMinute()) {
 
 /* ───────── weather ───────── */
 type Kind = 'clear' | 'cloudy' | 'hazy' | 'rain' | 'storm';
-const SLOT = 720; // weather changes every 12 game hours (2 real minutes) and fades over the first 15% of each slot
+const SLOT = 720; // weather changes every 12 game hours (12 real minutes) and fades over the first 15% of each slot
 const P: Record<Kind, { cloud: number; rain: number; haze: number; storm: number; label: string; e: string }> = {
   clear: { cloud: .05, rain: 0, haze: 0, storm: 0, label: 'Clear', e: '☀️' },
   cloudy: { cloud: .6, rain: 0, haze: 0, storm: 0, label: 'Cloudy', e: '⛅' },

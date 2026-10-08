@@ -22,7 +22,7 @@ import { worldMinute, worldCalendar, weatherAt, lightningAt } from '../lib/world
 import { createPortal } from 'react-dom';
 import { GRID, CURB, halfW, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
-type Ctl = { punch: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; horn: boolean };
+type Ctl = { punch: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
 type Kind = 'glass' | 'concrete' | 'brick' | 'plaster';
 type Prof = { kind: Kind; f: [number, number]; sign: string; wall?: string; balc?: boolean };
@@ -1010,6 +1010,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       cam.position.set(ride.x - rx * lookDist, 4.6, ride.z - rz * lookDist);
       GAME.player.x = ride.x; GAME.player.z = ride.z;
       if (c.interact) c.interact = false;
+      c.taxi = false;
       return;
     } else { group.current.visible = true; }
     if (GAME.nav && (!nav.current || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
@@ -1057,6 +1058,18 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const m = Math.hypot(ix, iy); if (m > 1) { ix /= m; iy /= m; }
     const mag = Math.min(m, 1);
     let snapCam = false;
+
+    /* ── T / Taxi button: stopped taxi nearby → destination menu; otherwise hail the closest taxi or bike taxi ── */
+    if (c.taxi) {
+      c.taxi = false;
+      if (!VEH.drv && !GAME.ride && !GAME.jailed && !CINE.on) {
+        let bi = -1, bd = 1e9;
+        ROAM.cars.forEach((e, i) => { const tp = TPOS[i]; if (!tp || e.c.busy || (e.c.role !== 'taxi' && e.c.role !== 'bike')) return; const d = Math.hypot(p.x - tp.x, p.z - tp.z); if (e.c.hail === 2 && d < 18) { if (bd > -1) { bd = -1; bi = i; } } else if (e.c.hail !== 1 && bd >= 0 && d < bd) { bd = d; bi = i; } });
+        if (bi < 0) GAME.notice = ROAM.cars.some(e => e.c.hail === 1) ? '🚕 Your taxi is still pulling over...' : '🚕 No taxi nearby: wait for one to drive past.';
+        else if (ROAM.cars[bi].c.hail === 2) ROAM.openSheet(bi);
+        else ROAM.tap(bi);
+      }
+    }
 
     /* ── E: get in / get out / call car, H: horn ── */
     if (c.interact) {
@@ -1378,7 +1391,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const net = useCityNet(look, onSocial);
   const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: n => net.muted.includes(n), onSocial });
   const [sel, setSel] = useState<string | null>(null);
-  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, horn: false, punch: false });
+  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
@@ -1390,6 +1403,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       if (k === 'c') ctl.current.recenter = true;
       if (k === 'f' && !e.repeat) ctl.current.punch = true;
       if (k === 'e' && !e.repeat) { ctl.current.interact = true; unlockAudio(); }
+      if (k === 't' && !e.repeat) { ctl.current.taxi = true; unlockAudio(); }
       if (k === 'h' && !e.repeat) { ctl.current.horn = true; unlockAudio(); }
       ctl.current.keys.add(k);
     };
@@ -1418,6 +1432,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+        <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
         <MicBtn voice={voice} me={look.name} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />

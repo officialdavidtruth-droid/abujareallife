@@ -146,3 +146,17 @@ export function stepRide(rs: RideState, rt: Route, dt: number, env: { vmax: numb
   const p = routeAt(rt, rs.s); rs.x = p[0]; rs.z = p[1];
   return rs;
 }
+
+/** A random spot on a sidewalk strip (never on the carriageway), mid-block so it is clear of junctions, facing along the walkway.
+ *  Used when a player steps out of their house, so everyone appears somewhere different. `taken` lets the caller reject crowded spots. */
+export function sidewalkSpawn(rand: () => number = Math.random, taken?: (x: number, z: number) => boolean): { x: number; z: number; r: number } {
+  let out = { x: 0, z: 0, r: 0 };
+  for (let tries = 0; tries < 10; tries++) {
+    const ri = Math.floor(rand() * 5) - 2, side = rand() < .5 ? 1 : -1, axis: Axis = rand() < .5 ? 'x' : 'z', dir = rand() < .5 ? 1 : -1;
+    const along = (Math.floor(rand() * 6) - 3) * GRID + GRID / 2 + (rand() * 2 - 1) * 5; // middle of a block, +/- 5 m
+    const lat = ri * GRID + side * (halfW(ri) + 2);                                       // 2 m past the kerb: the same line the pedestrians walk
+    out = axis === 'x' ? { x: along, z: lat, r: dir * Math.PI / 2 } : { x: lat, z: along, r: dir > 0 ? 0 : Math.PI };
+    if (!taken || !taken(out.x, out.z)) break;
+  }
+  return out;
+}

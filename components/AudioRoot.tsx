@@ -42,7 +42,14 @@ function Switch({ label, icon, on, set }: { label: string; icon: string; on: boo
 }
 
 function SettingsPanel() {
-  const s = useSettings();
+  const s = useSettings(), [who, setWho] = useState<string | null>(null), [busy, setBusy] = useState(false);
+  useEffect(() => { let dead = false; fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()).then(d => { if (!dead) setWho(d?.user?.username || null); }).catch(() => {}); return () => { dead = true; }; }, []);
+  const logOut = async () => {
+    if (busy || !confirm('Log out of your account?')) return;
+    setBusy(true);
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* still reload below */ }
+    closeSettings(); window.location.reload();
+  };
   return <div className="stBack" onPointerDown={e => { if (e.target === e.currentTarget) closeSettings(); }}>
     <div className="stBox" role="dialog" aria-label="Settings">
       <div className="stTitle"><span>⚙️ Settings</span><button className="stX" aria-label="Close" onClick={closeSettings}>✕</button></div>
@@ -67,6 +74,10 @@ function SettingsPanel() {
             <Switch label="Show hints" icon="💡" on={s.showHints} set={v => setSetting({ showHints: v })} />
           </div>
         </section>
+        {who && <section><h4>Account</h4>
+          <div className="stRow"><span className="stIco">👤</span><span className="stLbl" style={{ width: 'auto', flex: 1 }}>Signed in as <b>{who}</b></span></div>
+          <button className="stOut" disabled={busy} onClick={logOut}>🚪 {busy ? 'Logging out…' : 'Log out'}</button>
+        </section>}
       </div>
       <div className="stFoot"><button className="ghost" onClick={() => sfx('success')}>▶ Test sounds</button><button className="ghost" onClick={resetSettings}>↺ Reset</button><button className="done" onClick={closeSettings}>Done</button></div>
     </div>
@@ -103,5 +114,6 @@ const CSS = `
 .stFoot button{all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:9px 14px;border:3px solid var(--ink);border-radius:13px;box-shadow:0 4px 0 var(--ink);font-size:16px;letter-spacing:.03em}
 .stFoot button:active{transform:translateY(4px);box-shadow:none}
 .stFoot .ghost{flex:1;background:var(--plum2);color:var(--cream)}.stFoot .done{flex:1.1;background:var(--green);color:#fff;-webkit-text-stroke:5px var(--ink);paint-order:stroke fill}
+.stOut{all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;text-align:center;padding:9px 14px;margin-top:6px;background:var(--red);color:#fff;border:3px solid var(--ink);border-radius:13px;box-shadow:0 4px 0 var(--ink);font-size:16px;letter-spacing:.03em}.stOut:active{transform:translateY(4px);box-shadow:none}.stOut:disabled{opacity:.6;cursor:default}
 @media (max-width:420px){.stLbl{width:70px;font-size:14px}.stGrid{grid-template-columns:1fr}}
 `;

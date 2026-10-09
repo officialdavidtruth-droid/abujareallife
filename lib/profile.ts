@@ -150,7 +150,7 @@ export type AccessRule = { rank?: number; profession?: ProfessionId[]; inviteOnl
 const OPEN: AccessRule = { open: true };
 export const ACCESS_BY_TYPE: Record<string, AccessRule> = {
   Bank: { rank: 1 }, Restaurant: OPEN, Hotel: OPEN, Hospital: OPEN, Supermarket: OPEN, Salon: OPEN, Barber: OPEN, Gym: OPEN, Mechanic: OPEN,
-  'Car Dealer': OPEN, School: OPEN, Office: { rank: 2 }, Nightclub: { minCash: 20_000 }, Market: OPEN, 'Petrol Station': OPEN, Pharmacy: OPEN,
+  'Car Dealer': OPEN, School: OPEN, Office: { rank: 2 }, Nightclub: { minCash: 20_000 }, Market: OPEN, 'Petrol Station': OPEN, Pharmacy: OPEN, 'Gun Shop': OPEN,
   Cinema: OPEN, 'Tech Company': { rank: 2 }, 'Estate Agency': { rank: 2 }, Logistics: { rank: 2 }, Government: { rank: 3 },
   Airport: OPEN, 'Rail Station': OPEN, 'Police Station': { open: true }, Jail: { profession: ['police'], rank: 2 }, Mansion: { inviteOnly: true },
 };

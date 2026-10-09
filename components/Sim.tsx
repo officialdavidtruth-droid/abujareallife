@@ -970,7 +970,7 @@ export default function Sim() {
       }
       const build = CITY.buildings.find(x => x.business?.id === biz.id), pl = GAME.player; let tx = biz.x, tz = biz.z;
       if (build) { const dx = pl.x - biz.x, dz = pl.z - biz.z; if (Math.abs(dx) >= Math.abs(dz)) tx = biz.x + (dx >= 0 ? build.w / 2 + 5.2 : -build.w / 2 - 5.2); else tz = biz.z + (dz >= 0 ? build.d / 2 + 5.2 : -build.d / 2 - 5.2); }
-      GAME.nav = { x: tx, z: tz, name: biz.name };
+      GAME.nav = { x: tx, z: tz, name: biz.name, auto: true };
     }, 2000);
     return () => clearInterval(iv);
   }, []);

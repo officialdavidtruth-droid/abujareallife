@@ -15,7 +15,7 @@ const GROUPS: Record<string, Task[]> = {
 };
 const GROUP_OF: Record<string, string> = {
   Bank: 'desk', Office: 'desk', 'Tech Company': 'desk', 'Estate Agency': 'desk', Government: 'desk', Logistics: 'desk', Restaurant: 'food', Hotel: 'food', Nightclub: 'club',
-  Supermarket: 'shop', Market: 'shop', Pharmacy: 'shop', 'Petrol Station': 'shop', 'Car Dealer': 'shop', Mechanic: 'shop',
+  Supermarket: 'shop', Market: 'shop', Pharmacy: 'shop', 'Petrol Station': 'shop', 'Car Dealer': 'shop', Mechanic: 'shop', 'Gun Shop': 'shop',
   Hospital: 'care', Salon: 'care', Barber: 'care', Gym: 'care', School: 'care', Cinema: 'care', 'Police Station': 'station', Jail: 'station', Airport: 'travel', 'Rail Station': 'travel',
 };
 export const tasksFor = (type: string, title?: string): Task[] => {

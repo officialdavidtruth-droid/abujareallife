@@ -2,12 +2,13 @@
 // Food & drinks are used on the spot (they fill your needs). Everything else goes into your inventory, ready to be
 // placed in your home (furnishing + house upgrades come with the housing update: `fp` is the footprint in metres).
 import type { BusinessType } from './cityTypes';
+import { WEAPONS, weaponItemId } from './weapons';
 
-export type CatId = 'food' | 'grocery' | 'toiletry' | 'household' | 'kitchen' | 'furniture' | 'decor' | 'tech' | 'style' | 'luxury' | 'kids';
+export type CatId = 'food' | 'grocery' | 'toiletry' | 'household' | 'kitchen' | 'furniture' | 'decor' | 'tech' | 'style' | 'luxury' | 'kids' | 'arms';
 export const CATS: { id: CatId; label: string; e: string }[] = [
   { id: 'food', label: 'Food & Drinks', e: '🍲' }, { id: 'grocery', label: 'Groceries', e: '🛒' }, { id: 'toiletry', label: 'Toiletries', e: '🧼' }, { id: 'household', label: 'Household', e: '🧺' }, { id: 'kitchen', label: 'Kitchen', e: '🍳' },
   { id: 'furniture', label: 'Furniture', e: '🛋️' }, { id: 'decor', label: 'Decor & Lights', e: '🪴' }, { id: 'tech', label: 'Tech', e: '📱' },
-  { id: 'style', label: 'Accessories', e: '⌚' }, { id: 'luxury', label: 'Luxury & Fancy', e: '💎' }, { id: 'kids', label: 'Kids & Baby', e: '🧸' },
+  { id: 'style', label: 'Accessories', e: '⌚' }, { id: 'luxury', label: 'Luxury & Fancy', e: '💎' }, { id: 'kids', label: 'Kids & Baby', e: '🧸' }, { id: 'arms', label: 'Firearms', e: '🔫' },
 ];
 export type Needs = Partial<Record<'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social', number>>;
 export type Item = { id: string; cat: CatId; name: string; e: string; cost: number; fx?: Needs; fp?: [number, number]; use?: boolean; tag?: string; units?: number; pantry?: 'meals' | 'supplies' };
@@ -170,6 +171,7 @@ add('kids', [
   ['Kids tablet', '📲', 95000], ['Swing set', '🎠', 380000, [2.5, 2]], ['Paddling pool', '🏊', 60000, [1.8, 1.8]],
 ]);
 
+WEAPONS.forEach(w => out.push({ id: weaponItemId(w.id), cat: 'arms', name: w.name, e: w.icon, cost: w.price, tag: 'weapon' }));
 export const CATALOG: Item[] = out;
 const BY_ID = new Map(CATALOG.map(i => [i.id, i]));
 export const itemById = (id: string) => BY_ID.get(id);
@@ -182,6 +184,7 @@ export const STORE_CATS: Partial<Record<BusinessType, CatId[]>> = {
   Pharmacy: ['toiletry', 'household', 'kids'],
   Salon: ['style', 'toiletry'],
   Barber: ['style', 'toiletry'],
+  'Gun Shop': ['arms'],
 };
 export const storeCats = (type: string): CatId[] => STORE_CATS[type as BusinessType] || [];
 export const storeItems = (type: string): Item[] => { const c = storeCats(type); return CATALOG.filter(i => c.includes(i.cat)); };

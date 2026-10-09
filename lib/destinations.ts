@@ -17,7 +17,7 @@ export type Dest = { id: string; name: string; type: string; district: string; x
 const ICONS: Record<string, string> = {
   Bank: '🏦', Restaurant: '🍽️', Hotel: '🏨', Hospital: '🏥', Supermarket: '🛒', Salon: '💇', Barber: '💈', Gym: '🏋️', Mechanic: '🔧', 'Car Dealer': '🚘',
   School: '🏫', Office: '🏢', Nightclub: '🪩', Market: '🧺', 'Petrol Station': '⛽', Pharmacy: '💊', Cinema: '🎬', 'Tech Company': '💻', 'Estate Agency': '🏠',
-  Logistics: '📦', Government: '🏛️', Airport: '✈️', 'Rail Station': '🚉', 'Police Station': '🚓', Jail: '⛓️', District: '📍',
+  Logistics: '📦', Government: '🏛️', Airport: '✈️', 'Rail Station': '🚉', 'Police Station': '🚓', Jail: '⛓️', 'Gun Shop': '🔫', District: '📍',
 };
 export const destIcon = (type: string) => ICONS[type] || '🏢';
 

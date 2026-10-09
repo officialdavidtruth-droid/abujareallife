@@ -1128,7 +1128,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16, r: Math.PI }; // overwritten with a random sidewalk spot each time a player steps outside (see CityWorld)
-export const GAME = { jailed: false, heat: 0, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string; mission?: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
+export const GAME = { jailed: false, heat: 0, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string; mission?: string; auto?: boolean } | null, route: null as { pts: [number, number][]; i: number } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const WX = { over: new THREE.Color('#7d8791'), dust: new THREE.Color('#d6bf9b'), flash: new THREE.Color('#e8f0ff'), tmp: new THREE.Color() };
@@ -1175,7 +1175,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   const moving = useRef(false), running = useRef(false), nearId = useRef<string | null>(null);
   const drag = useRef({ on: false, end: 0 }), lastN = useRef(-1), fov = useRef(52), hitCool = useRef(0), shown = useRef({ drv: false, placed: false });
   const firstCam = useRef(true); const driveKm=useRef(0); const lastDrivePost=useRef(0);
-  const nav = useRef<{ key: string; points: [number, number][]; i: number } | null>(null);
+  const nav = useRef<{ key: string; points: [number, number][]; i: number; at: number } | null>(null);
   const [near, setN] = useState<any>(null);
   const [touchDevice, setTouchDevice] = useState(false);
   const [vehicleModel, setVehicleModel] = useState(GAME.vehicleModel);
@@ -1245,23 +1245,29 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       c.taxi = false;
       return;
     } else { group.current.visible = true; }
-    if (GAME.nav && (!nav.current || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
+    const stray = !!(GAME.nav && nav.current && Date.now() - nav.current.at > 1500 && Math.hypot(p.x - (nav.current.points[nav.current.i]?.[0] ?? p.x), p.z - (nav.current.points[nav.current.i]?.[1] ?? p.z)) > 22); // wandered off the route: plan a new one
+    if (GAME.nav && (!nav.current || stray || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
       const pts = findPath(BL, [p.x, p.z], [GAME.nav.x, GAME.nav.z]);
-      nav.current = { key: `${GAME.nav.x}:${GAME.nav.z}`, points: pts.length ? pts : [[GAME.nav.x, GAME.nav.z]], i: 0 };
+      nav.current = { key: `${GAME.nav.x}:${GAME.nav.z}`, points: pts.length ? pts : [[GAME.nav.x, GAME.nav.z]], i: 0, at: Date.now() };
     } else if (!GAME.nav) nav.current = null;
     let ix = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0) + c.joy.x;
     let iy = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0) - c.joy.y;
-    if (nav.current && !VEH.drv && !ix && !iy && GAME.nav) {
-      while (nav.current.i < nav.current.points.length - 1 && Math.hypot(p.x - nav.current.points[nav.current.i][0], p.z - nav.current.points[nav.current.i][1]) < 1.25) nav.current.i++;
-      const [nx, nz] = nav.current.points[nav.current.i] || [GAME.nav.x, GAME.nav.z];
-      const dx = nx - p.x, dz = nz - p.z, len = Math.hypot(dx, dz) || 1;
-      const wx = dx / len, wz = dz / len;
-      ix = wx * fx + wz * fz;
-      iy = wx * -fz + wz * fx;
-      if (Math.hypot(p.x - GAME.nav.x, p.z - GAME.nav.z) < 1.6 || nav.current.i >= nav.current.points.length - 1 && Math.hypot(p.x - nx, p.z - nz) < 1.2) {
-        const arrived = GAME.nav.name, missionId = GAME.nav.mission; GAME.nav = null; nav.current = null; GAME.notice = `📍 Arrived at ${arrived}`; if (missionId) window.dispatchEvent(new CustomEvent('arl-mission-arrived', { detail: { id: missionId, destination: arrived } })); ix = 0; iy = 0;
+    /* Waypoints only GUIDE the player (route line on the minimap and map). The player always steers; only the idle auto-work routine (nav.auto) may walk by itself. */
+    if (nav.current && GAME.nav) {
+      while (nav.current.i < nav.current.points.length - 1 && Math.hypot(p.x - nav.current.points[nav.current.i][0], p.z - nav.current.points[nav.current.i][1]) < 2.2) nav.current.i++;
+      GAME.route = { pts: nav.current.points, i: nav.current.i };
+      const guided = !GAME.nav.auto, reach = guided ? 4 : 1.6;
+      if (GAME.nav.auto && !VEH.drv && !ix && !iy) {
+        const [nx, nz] = nav.current.points[nav.current.i] || [GAME.nav.x, GAME.nav.z];
+        const dx = nx - p.x, dz = nz - p.z, len = Math.hypot(dx, dz) || 1;
+        const wx = dx / len, wz = dz / len;
+        ix = wx * fx + wz * fz;
+        iy = wx * -fz + wz * fx;
       }
-    }
+      if (Math.hypot(p.x - GAME.nav.x, p.z - GAME.nav.z) < reach) {
+        const arrived = GAME.nav.name, missionId = GAME.nav.mission; GAME.nav = null; nav.current = null; GAME.route = null; GAME.notice = `📍 Arrived at ${arrived}`; if (missionId) window.dispatchEvent(new CustomEvent('arl-mission-arrived', { detail: { id: missionId, destination: arrived } })); ix = 0; iy = 0;
+      }
+    } else GAME.route = null;
     let wantJump = c.jump || k.has(' '), wantRun = c.run || k.has('shift');
     const gp = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads()[0] : null;
     if (gp) {
@@ -1295,8 +1301,9 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     if (c.shoot) {
       c.shoot = false;
       if (!down && !VEH.drv && !GAME.jailed) {
-        const weapon = (window as any).__arlWeapon || 'pistol';
-        const range = (WEAPON_RULES[weapon] || WEAPON_RULES.pistol).range;
+        const weapon = (window as any).__arlWeapon as string | undefined;
+        if (!weapon || !WEAPON_RULES[weapon]) { GAME.notice = '🚫 You have no weapon. Buy one at a Gun Shop.'; return; }
+        const range = WEAPON_RULES[weapon].range;
         let tgt = '', bd = range;
         for (const [pn, q] of Object.entries(NET.peers)) {
           if (q.drv || q.ko) continue;
@@ -1562,6 +1569,13 @@ function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onOpen?: (
       g.translate(S / 2, S / 2); g.rotate(-Math.atan2(h.fx, -h.fz)); g.scale(sc, sc); g.translate(-h.x, -h.z);
       g.fillStyle = '#6a6f77'; for (let i = -5; i <= 5; i++) { g.fillRect(i * GRID - halfW(i), -125, halfW(i) * 2, 250); g.fillRect(-125, i * GRID - halfW(i), 250, halfW(i) * 2); }
       for (const b of BUILDS) { g.fillStyle = b.color; g.fillRect(b.x - b.w / 2, b.z - b.d / 2, b.w, b.d); }
+      const rt = GAME.route, nv = GAME.nav;
+      if (rt && nv) {
+        g.strokeStyle = '#ff3b30'; g.lineWidth = 1.4; g.lineJoin = 'round'; g.setLineDash([3, 2]); g.beginPath(); g.moveTo(h.x, h.z);
+        for (let i = rt.i; i < rt.pts.length; i++) g.lineTo(rt.pts[i][0], rt.pts[i][1]);
+        g.lineTo(nv.x, nv.z); g.stroke(); g.setLineDash([]);
+      }
+      if (nv) { const dd = Math.hypot(nv.x - h.x, nv.z - h.z), k = dd > 46 ? 46 / dd : 1, mx = h.x + (nv.x - h.x) * k, mz = h.z + (nv.z - h.z) * k; g.fillStyle = '#ff3b30'; g.strokeStyle = '#fff'; g.lineWidth = .5; g.beginPath(); g.arc(mx, mz, k < 1 ? 2.6 : 3.4, 0, Math.PI * 2); g.fill(); g.stroke(); }
       if (h.vp) { g.fillStyle = '#ff6a00'; g.strokeStyle = '#000'; g.lineWidth = .3; g.fillRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); g.strokeRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); }
       g.save(); g.translate(h.x, h.z); g.rotate(Math.PI - h.r); g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = .3;
       g.beginPath(); g.moveTo(0, -3); g.lineTo(2.1, 2.1); g.lineTo(0, 1); g.lineTo(-2.1, 2.1); g.closePath(); g.fill(); g.stroke(); g.restore();
@@ -1633,7 +1647,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const [sel, setSel] = useState<string | null>(null);
   const ctl = useRef<Ctl>({ shoot: false, joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
-  const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar);
+  const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) window.dispatchEvent(new Event('arl-mission-lost')); }, 800); return () => clearInterval(w); }, []);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
@@ -1649,7 +1663,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       if (!target) { GAME.notice = `Mission started: ${m.title || m.label}. Find the mission destination in the city.`; return; }
       (window as any).__arlMissionTarget = { x: target.x, z: target.z };
       GAME.nav = { x: target.x, z: target.z, name: target.name, mission: m.id } as any;
-      GAME.notice = `📍 ${m.label || 'Mission waypoint'}: ${target.name}`;
+      GAME.notice = `📍 ${m.label || 'Mission waypoint'}: ${target.name} — follow the route on your minimap or map`;
     };
     const cancelMission = () => { if ((GAME.nav as any)?.mission) GAME.nav = null; };
     window.addEventListener('arl-mission-start', startMission); window.addEventListener('arl-mission-cancel', cancelMission);
@@ -1670,7 +1684,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
     };
     const up = (e: KeyboardEvent) => { ctl.current.keys.delete(e.key.toLowerCase()); };
     const clear = () => ctl.current.keys.clear();
-    const fire = () => { ctl.current.shoot = true; }; const anim = (e: Event) => { NET.me.anim = String((e as CustomEvent).detail || ''); NET.me.animUntil = Date.now() + 700; }; const selected = (e: Event) => { (window as any).__arlWeapon = String((e as CustomEvent).detail || 'pistol'); }; window.addEventListener('arl-weapon-shoot', fire); window.addEventListener('arl-player-animation', anim); window.addEventListener('arl-weapon-selected', selected); window.addEventListener('keydown', dn); window.addEventListener('keyup', up); window.addEventListener('blur', clear);
+    const fire = () => { ctl.current.shoot = true; }; const anim = (e: Event) => { NET.me.anim = String((e as CustomEvent).detail || ''); NET.me.animUntil = Date.now() + 700; }; const selected = (e: Event) => { (window as any).__arlWeapon = String((e as CustomEvent).detail || ''); setArmed(!!(e as CustomEvent).detail); }; window.addEventListener('arl-weapon-shoot', fire); window.addEventListener('arl-player-animation', anim); window.addEventListener('arl-weapon-selected', selected); window.addEventListener('keydown', dn); window.addEventListener('keyup', up); window.addEventListener('blur', clear);
     return () => { window.removeEventListener('arl-weapon-shoot', fire); window.removeEventListener('arl-player-animation', anim); window.removeEventListener('arl-weapon-selected', selected); window.removeEventListener('keydown', dn); window.removeEventListener('keyup', up); window.removeEventListener('blur', clear); };
   }, []);
   return (
@@ -1694,12 +1708,12 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
-        <HoldBtn cls="" label="Fire" icon="🔫" down={() => { window.dispatchEvent(new Event('arl-trigger-fire')); }} />
+        {armed && <HoldBtn cls="" label="Fire" icon="🔫" down={() => { window.dispatchEvent(new Event('arl-trigger-fire')); }} />}
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter · <b>F</b> punch · <b>M</b> missions · <b>G</b> weapon · <b>R</b> reload · <b>V</b> fire<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter · <b>F</b> punch · <b>M</b> missions · <b>G</b> weapon · <b>R</b> reload · <b>V</b> fire (guns are sold at Gun Shops)<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
     </div>
   );
 }

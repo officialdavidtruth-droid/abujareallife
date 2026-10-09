@@ -7,7 +7,7 @@ export type HumanState = 'idle' | 'walk' | 'sit' | 'sleep';
 type J = Record<string, number>;
 const KEYS = ['hipY', 'sX', 'sY', 'sZ', 'hX', 'hY', 'hZ', 'laX', 'laZ', 'raX', 'raZ', 'leX', 'reX', 'llX', 'llZ', 'rlX', 'rlZ', 'lkX', 'rkX'];
 export type Rig = {
-  root: THREE.Group; hips: THREE.Group; spine: THREE.Group; head: THREE.Group; chest: THREE.Mesh; eyes: THREE.Group;
+  root: THREE.Group; hips: THREE.Group; spine: THREE.Group; head: THREE.Group; chest: THREE.Mesh; eyes: THREE.Group; weapon: THREE.Group;
   la: THREE.Group; ra: THREE.Group; le: THREE.Group; re: THREE.Group; ll: THREE.Group; rl: THREE.Group; lk: THREE.Group; rk: THREE.Group; lf: THREE.Group; rf: THREE.Group;
   cur: J; ph: number; clip: THREE.AnimationClip | null;
   sk: THREE.Group[]; skAmt: number; // skirt halves (index 0 follows the left leg, 1 the right) and how much they swing
@@ -376,9 +376,14 @@ export function buildHuman(look: Look): Rig {
   };
   const A = mkArm(1), B = mkArm(-1);
   root.traverse(o => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).receiveShadow = false; });
+  const weapon = new THREE.Group();
+  const gunBody = mesh(new THREE.BoxGeometry(.055, .07, .19), metal('#20252a', .25)); gunBody.position.set(0, -.29, .055); weapon.add(gunBody);
+  const barrel = mesh(new THREE.CylinderGeometry(.012, .012, .13, 10), metal('#4b535a', .22)); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, -.275, .19); weapon.add(barrel);
+  const grip = mesh(new THREE.BoxGeometry(.035, .085, .045), std('#171a1d', .35)); grip.position.set(0, -.355, .025); grip.rotation.x = -.22; weapon.add(grip);
+  weapon.visible = false; B.sh.add(weapon);
   const cur = Object.fromEntries(KEYS.map(k => [k, 0])) as J;
   const skAmt = M === 'gown' ? .3 : M === 'ankara' ? .38 : .48;
-  return { root, hips, spine, head, chest, eyes, la: A.sh, ra: B.sh, le: A.el, re: B.el, ll: L.up, rl: R.up, lk: L.kn, rk: R.kn, lf: L.ft, rf: R.ft, cur, ph: 0, clip: null, sk, skAmt };
+  return { root, hips, spine, head, chest, eyes, weapon, la: A.sh, ra: B.sh, le: A.el, re: B.el, ll: L.up, rl: R.up, lk: L.kn, rk: R.kn, lf: L.ft, rf: R.ft, cur, ph: 0, clip: null, sk, skAmt };
 }
 
 const sin = Math.sin, cos = Math.cos, mx = Math.max;
@@ -422,6 +427,9 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   if (k === 'think') { j.raX = .8; j.reX = 2.3; j.laX = .6; j.leX = 1.8; j.laZ = -.1; j.hX = .12; j.hY = .2; j.hZ = .08; }
   if (k === 'wardrobe') { j.raX = 1.0; j.reX = .6; j.laX = 1.0; j.leX = .6; j.sY = .3 * sin(t * 3); j.hY = .3 * sin(t * 3); }
   if (k === 'music') { const s = sin(t * 5.5); j.llX = .12 * s; j.rlX = -.12 * s; j.lkX = .2 + .15 * mx(0, s); j.rkX = .2 + .15 * mx(0, -s); j.hipY = -.02 + .02 * Math.abs(s); j.sZ = .08 * s; j.hZ = -.14 * s; j.laX = .3; j.raX = .3; j.leX = .9; j.reX = .9 + .3 * s; }
+  if (k === 'shoot') { j.sX = -.08; j.sY = -.08; j.laX = .72; j.leX = 1.1; j.laZ = .06; j.raX = .78; j.reX = 1.05; j.raZ = -.04; j.llX = .04; j.rlX = -.04; }
+  if (k === 'reload') { const s = .5 + .5 * sin(t * 10); j.sX = .08; j.hX = .12; j.raX = .9 + .15 * s; j.reX = 1.2; j.laX = .8; j.leX = 1.1; j.laZ = .18; j.raZ = -.08; }
+  if (k === 'aim') { j.sX = -.08; j.laX = .7; j.leX = 1.0; j.raX = .7; j.reX = 1.0; j.laZ = .05; j.raZ = -.05; }
   if (k === 'punch') { const s = sin(t * 21), a = mx(0, s), b = mx(0, -s); j.sX = .12; j.sY = .28 * s; j.hX = .05; j.raX = .5 + 1.0 * a; j.reX = 1.7 - 1.6 * a; j.raZ = -.05; j.laX = .5 + 1.0 * b; j.leX = 1.7 - 1.6 * b; j.laZ = .05; j.llX = .25; j.rlX = -.25; j.lkX = .3; j.rkX = .3; }
   return j;
 }
@@ -431,6 +439,7 @@ export function animateHuman(rig: Rig, state: HumanState, anim: string | undefin
   rig.ph += dt * (state === 'walk' ? 8.5 + Math.min(speed, 3) * 1.1 : 0);
   const tg = target(state, anim, t, rig.ph), c = rig.cur, k = 1 - Math.exp(-dt * 14);
   for (const key of KEYS) c[key] = lerp(c[key], tg[key] ?? 0, k);
+  rig.weapon.visible = anim === 'shoot' || anim === 'aim' || anim === 'reload';
   rig.hips.position.y = .88 + c.hipY;
   rig.hips.rotation.set(0, 0, 0);
   rig.spine.rotation.set(c.sX, c.sY, c.sZ);

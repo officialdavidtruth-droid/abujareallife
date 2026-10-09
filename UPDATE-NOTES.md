@@ -33,3 +33,33 @@
 - Added taxi stands and bike-hire stands with paid fast travel to Abuja districts.
 - Added roadside advertising billboards with a player-facing “YOUR AD HERE” placeholder.
 - Added `/api/transport` for server-side transport fares and transaction records.
+
+## Missions, weapons and combat update
+- Added a Mission Control panel (M) with four Abuja-themed mission contracts and an active objective tracker.
+- Starting a mission sets an in-world navigation waypoint toward its destination; arriving marks that objective complete.
+- Added a weapon loadout with a service pistol, compact SMG and carbine rifle, magazines, reserve ammunition, weapon switching (G), reload (R), and firing (V or the on-screen Fire control).
+- Weapon shots target the nearest multiplayer player inside the weapon's range and forward aim cone. Shot damage, cooldowns, knockouts, combat animations and the existing assault reporting flow are integrated with the current multiplayer layer.
+- Added procedural shooting and reloading body animations; existing movement, vehicles, melee combat and mobile controls remain in place.
+
+## Missions & weapons bug-fix pass
+- Missions now pay: new `/api/mission` (start / claim / abandon). Reward, minimum time and heat are decided server-side from `lib/missions.ts`; completed contracts persist (1 h cooldown) and an active one restores its waypoint after reload. No DB migration needed (tracked via Transaction rows).
+- On-screen Fire button now goes through the ammo system (was infinite ammo). A bullet is spent only when a shot actually goes out.
+- Weapon stats live in one place: `lib/weapons.ts` (used by UI, shooting, damage rules).
+- Reload/switch/key handlers use refs: no side effects in state updaters, no listener re-binding, no double notices in Strict Mode.
+- Mission auto-abandons if the waypoint is replaced (taxi, map, message). "Last Ride Out" now targets the airport.
+- Still open: damage is client-trusted, no line-of-sight check, ammo/weapons not server-owned.
+
+## Mission mechanics update
+- Missions are now multi-stage (`lib/missions.ts`): Delivery = pick up at the logistics depot, then deliver to Wuse Market; Recovery = reach Jabi, hold the area for 10 s, return goods to the depot; Chase = police heat applied at start, reach the airport; Escort = meet the VIP at the hotel (hold 5 s), then escort to Maitama.
+- Each contract has a deadline (server enforces it on claim, client shows a countdown) and fails on timeout; Escort also fails if you are knocked out.
+- Hold objectives need you to stay within 12 m of the spot; leaving resets the timer.
+- Waypoints pick the NEAREST matching building to you.
+- Known limits: stage progress is not persisted (after a reload an active contract restarts at stage 1 with its original deadline); there is no physical package/VIP/police NPC in the world yet — objectives are location- and time-based.
+
+## Server-side shot validation
+- `POST /api/shot`: the server authorizes every shot that should hurt someone. Checks: signed in, not jailed, fire-rate, target online and not jailed, both claimed positions plausible vs last reported position (no teleporting), target in weapon range. Damage comes from the server weapon table.
+- On success it returns a signed single-use **hit ticket** (`lib/shotTicket.ts`, 12 s expiry, key derived from AUTH_SECRET). Shooters can no longer forge damage, target or weapon.
+- `POST /api/shot/confirm`: only the intended victim can redeem a ticket, once; the victim's client applies the damage the server returns. Realtime `shot` broadcasts WITHOUT a valid ticket only play the animation.
+- Assault heat for shooting is now applied by the server to the shooter (first shot per target per 30 s, skipped if the target shot you in the last 20 s). The victim no longer reports shots, so false assault reports are impossible. Knockout reports still go through `/api/fight`.
+- No database migration needed.
+- Known limits: ammo/weapon ownership is still client-side; no line-of-sight/wall check; positions are client-reported every 5 s (plausibility check allows ~30 m/s + 12 m slack); a modified VICTIM client can still ignore damage (needs server-held HP); in-memory rate/replay maps are per server instance.

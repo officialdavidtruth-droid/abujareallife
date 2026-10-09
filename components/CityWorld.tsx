@@ -13,6 +13,8 @@ import type { CityBuilding } from '../lib/cityTypes';
 import { FIGHT, NET, useCityNet } from '../lib/cityNet';
 import { JAIL_CELL_POS } from '../lib/profile';
 import CityPeople from './CityPeople';
+import MissionsCombat from './MissionsCombat';
+import { WEAPON_RULES } from '../lib/weapons';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 
@@ -23,7 +25,7 @@ import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import { GRID, CURB, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
-type Ctl = { punch: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
+type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
 type Kind = 'glass' | 'concrete' | 'brick' | 'plaster';
 type Prof = { kind: Kind; f: [number, number]; sign: string; wall?: string; balc?: boolean };
@@ -1070,7 +1072,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16, r: Math.PI }; // overwritten with a random sidewalk spot each time a player steps outside (see CityWorld)
-export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
+export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string; mission?: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const WX = { over: new THREE.Color('#7d8791'), dust: new THREE.Color('#d6bf9b'), flash: new THREE.Color('#e8f0ff'), tmp: new THREE.Color() };
@@ -1109,7 +1111,7 @@ function Rain() {
   });
   return <group ref={g}><lineSegments ref={ls} frustumCulled={false} visible={false}><bufferGeometry><bufferAttribute attach="attributes-position" args={[pos, 3]} /></bufferGeometry><lineBasicMaterial color="#c4d4e2" transparent opacity={.4} depthWrite={false} fog={false} /></lineSegments></group>;
 }
-function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, fight }: { fight: (to: string) => boolean; look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
+function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, fight, shoot }: { fight: (to: string) => boolean; shoot: (to: string, weapon: string) => boolean; look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: START.r });
   const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!), hemi = useRef<THREE.HemisphereLight>(null!), stars = useRef<THREE.Group>(null!);
   const carG = useRef<THREE.Group>(null!), carTag = useRef<HTMLDivElement | null>(null), spot = useRef<THREE.SpotLight>(null!), nameTag = useRef<HTMLDivElement | null>(null);
@@ -1201,7 +1203,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       ix = wx * fx + wz * fz;
       iy = wx * -fz + wz * fx;
       if (Math.hypot(p.x - GAME.nav.x, p.z - GAME.nav.z) < 1.6 || nav.current.i >= nav.current.points.length - 1 && Math.hypot(p.x - nx, p.z - nz) < 1.2) {
-        const arrived = GAME.nav.name; GAME.nav = null; nav.current = null; GAME.notice = `📍 Arrived at ${arrived}`; ix = 0; iy = 0;
+        const arrived = GAME.nav.name, missionId = GAME.nav.mission; GAME.nav = null; nav.current = null; GAME.notice = `📍 Arrived at ${arrived}`; if (missionId) window.dispatchEvent(new CustomEvent('arl-mission-arrived', { detail: { id: missionId, destination: arrived } })); ix = 0; iy = 0;
       }
     }
     let wantJump = c.jump || k.has(' '), wantRun = c.run || k.has('shift');
@@ -1233,6 +1235,29 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const mag = Math.min(m, 1);
     let snapCam = false;
 
+    /* ── weapon fire: choose the nearest player in the forward aim cone ── */
+    if (c.shoot) {
+      c.shoot = false;
+      if (!down && !VEH.drv && !GAME.jailed) {
+        const weapon = (window as any).__arlWeapon || 'pistol';
+        const range = (WEAPON_RULES[weapon] || WEAPON_RULES.pistol).range;
+        let tgt = '', bd = range;
+        for (const [pn, q] of Object.entries(NET.peers)) {
+          if (q.drv || q.ko) continue;
+          const dx=q.x-p.x, dz=q.z-p.z, dd=Math.hypot(dx,dz); if(dd>=bd) continue;
+          const dot=(dx/Math.max(dd,.001))*Math.sin(p.r)+(dz/Math.max(dd,.001))*Math.cos(p.r);
+          if(dot>.62){bd=dd;tgt=pn;}
+        }
+        // a bullet is only spent when a shot really went out (the network layer can refuse one on cooldown)
+        let fired = true;
+        if (tgt) fired = shoot(tgt, weapon);
+        else { NET.me.anim='shoot'; NET.me.animUntil=Date.now()+360; }
+        if (fired) {
+          window.dispatchEvent(new CustomEvent('arl-shot-fired', { detail: weapon }));
+          GAME.notice = tgt ? `🎯 Fired ${weapon} at ${tgt}` : '🔫 Shot fired — no target in your aim cone';
+        }
+      }
+    }
     /* ── T / Taxi button: stopped taxi nearby → destination menu; otherwise hail the closest taxi or bike taxi ── */
     if (c.taxi) {
       c.taxi = false;
@@ -1357,6 +1382,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
+    (window as any).__arlPos = { x: p.x, z: p.z };
     hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : VEH.placed && dCar < 9 ? 'E — Get in your car' : GAME.hasCar ? 'E — Call your car' : '' };
     if (!VEH.drv) {
       let best: CityBuilding | null = null, bd = 2.6;
@@ -1548,10 +1574,30 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   });
   const net = useCityNet(look, onSocial);
   const [sel, setSel] = useState<string | null>(null);
-  const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
+  const ctl = useRef<Ctl>({ shoot: false, joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar);
+  useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) window.dispatchEvent(new Event('arl-mission-lost')); }, 800); return () => clearInterval(w); }, []);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
+  useEffect(() => {
+    const startMission = (e: Event) => {
+      const m = (e as CustomEvent).detail as { id?: string; goto?: { name?: string; type?: string; district?: string }; label?: string; title?: string };
+      if (!m?.id || !m.goto) return;
+      const g = m.goto, pos = (window as any).__arlPos as { x: number; z: number } | undefined;
+      const near = (l: typeof BUILDING_DESTS) => pos ? [...l].sort((a, b) => Math.hypot(a.x - pos.x, a.z - pos.z) - Math.hypot(b.x - pos.x, b.z - pos.z))[0] : l[0];
+      const pick = (l: typeof BUILDING_DESTS) => l.length ? near(l) : undefined;
+      const target = (g.name ? pick(BUILDING_DESTS.filter(d => d.name.toLowerCase().includes(g.name!.toLowerCase()))) : undefined)
+        || (g.type ? pick(BUILDING_DESTS.filter(d => d.type === g.type)) : undefined)
+        || (g.district ? pick(BUILDING_DESTS.filter(d => d.district.toLowerCase() === g.district!.toLowerCase())) : undefined);
+      if (!target) { GAME.notice = `Mission started: ${m.title || m.label}. Find the mission destination in the city.`; return; }
+      (window as any).__arlMissionTarget = { x: target.x, z: target.z };
+      GAME.nav = { x: target.x, z: target.z, name: target.name, mission: m.id } as any;
+      GAME.notice = `📍 ${m.label || 'Mission waypoint'}: ${target.name}`;
+    };
+    const cancelMission = () => { if ((GAME.nav as any)?.mission) GAME.nav = null; };
+    window.addEventListener('arl-mission-start', startMission); window.addEventListener('arl-mission-cancel', cancelMission);
+    return () => { window.removeEventListener('arl-mission-start', startMission); window.removeEventListener('arl-mission-cancel', cancelMission); };
+  }, []);
   useEffect(() => {
     const typing = (e: Event) => { const t = e.target as HTMLElement | null; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); };
     const dn = (e: KeyboardEvent) => {
@@ -1559,6 +1605,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
       if (k === 'c') ctl.current.recenter = true;
       if (k === 'f' && !e.repeat) ctl.current.punch = true;
+      if (k === 'v' && !e.repeat) window.dispatchEvent(new Event('arl-trigger-fire'));
       if (k === 'e' && !e.repeat) { ctl.current.interact = true; unlockAudio(); }
       if (k === 't' && !e.repeat) { ctl.current.taxi = true; unlockAudio(); }
       if (k === 'h' && !e.repeat) { ctl.current.horn = true; unlockAudio(); }
@@ -1566,15 +1613,15 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
     };
     const up = (e: KeyboardEvent) => { ctl.current.keys.delete(e.key.toLowerCase()); };
     const clear = () => ctl.current.keys.clear();
-    window.addEventListener('keydown', dn); window.addEventListener('keyup', up); window.addEventListener('blur', clear);
-    return () => { window.removeEventListener('keydown', dn); window.removeEventListener('keyup', up); window.removeEventListener('blur', clear); };
+    const fire = () => { ctl.current.shoot = true; }; const anim = (e: Event) => { NET.me.anim = String((e as CustomEvent).detail || ''); NET.me.animUntil = Date.now() + 700; }; const selected = (e: Event) => { (window as any).__arlWeapon = String((e as CustomEvent).detail || 'pistol'); }; window.addEventListener('arl-weapon-shoot', fire); window.addEventListener('arl-player-animation', anim); window.addEventListener('arl-weapon-selected', selected); window.addEventListener('keydown', dn); window.addEventListener('keyup', up); window.addEventListener('blur', clear);
+    return () => { window.removeEventListener('arl-weapon-shoot', fire); window.removeEventListener('arl-player-animation', anim); window.removeEventListener('arl-weapon-selected', selected); window.removeEventListener('keydown', dn); window.removeEventListener('keyup', up); window.removeEventListener('blur', clear); };
   }, []);
   return (
     <div className="cityWorld">
       <RuntimeStyle css={CSS} />
       <RuntimeStyle css={GAME_LABEL_CSS} />
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x - Math.sin(START.r) * 8, 4.2, START.z - Math.cos(START.r) * 8], fov: 52, far: 600 }}>
-        <Scene fight={net.punch} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
+        <Scene fight={net.punch} shoot={net.shoot} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />
       <CityPeople net={net} sel={sel} setSel={setSel} />
@@ -1582,6 +1629,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
       <FightHud />
+      <MissionsCombat />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMuted(!cfg.muteAll); }}>{cfg.muteAll ? '🔇' : '🔊'}</button>
       <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>
       <div className="cwBtns">
@@ -1589,11 +1637,12 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
+        <HoldBtn cls="" label="Fire" icon="🔫" down={() => { window.dispatchEvent(new Event('arl-trigger-fire')); }} />
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter view · <b>F</b> punch<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter · <b>F</b> punch · <b>M</b> missions · <b>G</b> weapon · <b>R</b> reload · <b>V</b> fire<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
     </div>
   );
 }

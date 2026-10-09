@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
+import { WEAPON_RULES } from './weapons';
 import { sanitizeLook, type Look } from './characterModels';
 
 /* Shared, mutable multiplayer state. The 3D scene writes NET.me every frame and reads NET.peers every frame
@@ -24,6 +25,7 @@ export const NET = {
 export type RtcMsg = { u: string; t: string; d?: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export const FIGHT = { range: 2.6, dmg: 10, cooldown: 600, koMs: 10_000 };
+export { WEAPON_RULES };
 
 export const MAX_ROOM = 40;   // players per city instance; the 41st player is moved to instance #2, etc.
 const MAX_ROOMS = 50;
@@ -61,7 +63,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
   const ch = useRef<RealtimeChannel | null>(null), muted = useRef(new Set<string>()), statusRef = useRef<NetStatus>(status);
   const lastSend = useRef(0), lastIn = useRef<Record<string, number>>({}), seq = useRef(0), lastKey = useRef(''), lastBeat = useRef(0);
   const lookRef = useRef(look), socialRef = useRef(onSocial);
-  const lastHitFrom = useRef<Record<string, number>>({}), myHits = useRef<Record<string, number>>({}), aggressor = useRef<Record<string, number>>({}), lastPunch = useRef(0);
+  const lastHitFrom = useRef<Record<string, number>>({}), myHits = useRef<Record<string, number>>({}), aggressor = useRef<Record<string, number>>({}), lastPunch = useRef(0), lastShot = useRef(0);
   lookRef.current = look; socialRef.current = onSocial; statusRef.current = status;
   const name = look.name, lk = lookKey(look);
 
@@ -87,6 +89,28 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     lastPunch.current = now; NET.me.anim = 'punch'; NET.me.animUntil = now + 450;
     if (to) myHits.current[to] = now;
     ch.current?.send({ type: 'broadcast', event: 'hit', payload: { u: name, to } });
+    return true;
+  }, [name]);
+
+  const applied = useRef(new Set<string>());   // ticket ids already applied on this client
+  const shoot = useCallback((to: string, weaponId: string) => {
+    const now = Date.now(), rules = WEAPON_RULES[weaponId] || WEAPON_RULES.pistol;
+    if (now - lastShot.current < rules.cooldown || NET.me.ko > now) return false;
+    lastShot.current = now; NET.me.anim = 'shoot'; NET.me.animUntil = now + 360;
+    // everybody sees the muzzle flash at once, but a broadcast WITHOUT a server ticket can never hurt anyone
+    ch.current?.send({ type: 'broadcast', event: 'shot', payload: { u: name, to: '', weapon: weaponId } });
+    const peer = to ? NET.peers[to] : null;
+    if (to && peer) {
+      myHits.current[to] = now;
+      fetch('/api/shot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ weapon: weaponId, target: to, sx: NET.me.x, sz: NET.me.z, tx: peer.x, tz: peer.z }) })
+        .then(r => r.json().catch(() => ({})))
+        .then(d => {
+          if (d?.ok && d.ticket) ch.current?.send({ type: 'broadcast', event: 'shot', payload: { u: name, to, weapon: weaponId, ticket: d.ticket } });
+          else if (d?.reason === 'range') NET.msg = '🎯 Target out of range.';
+          else if (d?.reason === 'position') NET.msg = '⚠️ Shot rejected: position check failed.';
+          else if (d?.error) NET.msg = String(d.error).slice(0, 100);
+        }).catch(() => {});
+    }
     return true;
   }, [name]);
 
@@ -154,6 +178,24 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
             m.ko = now + FIGHT.koMs; NET.msg = `😵 ${u} knocked you out!`;
             if (aggressor.current[u] && now - aggressor.current[u] < 120_000) report('ko', u);
           }
+        })
+        .on('broadcast', { event: 'shot' }, ({ payload }) => {
+          if (cur !== c) return;
+          const u = String(payload?.u), p = NET.peers[u]; if (!p) return;
+          const now = Date.now(); p.anim = 'shoot'; p.animUntil = now + 360;     // everybody sees the shot
+          // damage only exists if the server signed it for ME: redeem the ticket, apply what the server says
+          if (payload.to !== name || typeof payload.ticket !== 'string' || muted.current.has(u)) return;
+          fetch('/api/shot/confirm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: payload.ticket }) })
+            .then(r => r.json().catch(() => ({})))
+            .then(d => {
+              if (cur !== c || !d?.ok || typeof d.damage !== 'number' || d.shooter !== u || applied.current.has(d.jti)) return;
+              applied.current.add(d.jti); if (applied.current.size > 200) applied.current.clear();
+              const t2 = Date.now(), m = NET.me; if (m.ko > t2 || m.safe > t2) return;
+              const retaliating = (myHits.current[u] || 0) > t2 - 20_000;
+              m.hp = Math.max(0, m.hp - d.damage); m.hurt = t2;
+              if (!retaliating && !aggressor.current[u]) { aggressor.current[u] = t2; NET.msg = `🔫 ${u} shot at you!`; }   // the server already put the heat on the shooter
+              if (m.hp <= 0) { m.ko = t2 + FIGHT.koMs; NET.msg = `😵 ${u} knocked you out!`; if (aggressor.current[u] && t2 - aggressor.current[u] < 120_000) report('ko', u); }
+            }).catch(() => {});
         })
         .on('broadcast', { event: 'fx' }, ({ payload }) => {
           if (cur !== c || payload?.to !== name || typeof payload?.t !== 'string') return;
@@ -235,5 +277,5 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
   useEffect(() => { const f = () => { const a = ACTS.phone, now = Date.now(); NET.me.anim = 'phone'; NET.me.animUntil = now + a.ms; ch.current?.send({ type: 'broadcast', event: 'act', payload: { u: name, to: '', k: 'phone' } }); }; window.addEventListener('arl-phone-use', f); return () => window.removeEventListener('arl-phone-use', f); }, [name]);
   useEffect(() => { const f = (e: Event) => { const to = String((e as CustomEvent).detail || ''); if (to) ch.current?.send({ type: 'broadcast', event: 'dm', payload: { u: name, to } }); }; window.addEventListener('arl-dm-sent', f); return () => window.removeEventListener('arl-dm-sent', f); }, [name]); // tell the recipient (if in the same city) to check their messages now
   const dismissNotice = useCallback((id: number) => setNotices(l => l.filter(n => n.id !== id)), []);
-  return { name, status, room, roster, ver, log, bub, unread, clearUnread, send, muted: mutedList, toggleMute, enabled: !!supabase, act, notices, dismissNotice, punch };
+  return { name, status, room, roster, ver, log, bub, unread, clearUnread, send, muted: mutedList, toggleMute, enabled: !!supabase, act, notices, dismissNotice, punch, shoot };
 }

@@ -139,7 +139,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const items: [string, string, () => void][] = [
     ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🎒', 'My Stuff', () => setStuff(true)], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
     ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
-    ['❤️', 'Love', () => setTab('love')], ['🌆', 'City Life', () => setTab('city')], ['📱', 'Phone', () => setTab('phone')], ['💸', 'Send Money', () => setSendTo('')], ['🕶️', 'Crime', () => setTab('crime')],
+    ['❤️', 'Love', () => setTab('love')], ['🌆', 'City Life', () => setTab('city')], ['📱', 'Phone', () => setTab('phone')], ['💰', 'Wallet', () => window.dispatchEvent(new Event('arl-open-wallet'))], ['💸', 'Send Money', () => setSendTo('')], ['🕶️', 'Crime', () => setTab('crime')],
   ];
   if (role === 'police') items.push(['👮', 'Police', () => setTab('police')]);
   const p = st.profile, prof = PROFESSIONS.find(x => x.id === p.profession);

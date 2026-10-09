@@ -1,4 +1,5 @@
 'use client';
+import Wallet from './Wallet';
 import HomeUpgrades from './HomeUpgrades';
 import RuntimeStyle from './RuntimeStyle';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
@@ -986,7 +987,7 @@ export default function Sim() {
   }, []);
   useEffect(() => { setMusicMood(outside && !inside ? 'city' : 'chill'); }, [outside, inside]); // lively amapiano-style loop on the streets, calm lo-fi indoors and at home
   useEffect(() => { if (ui.toast) sfx('pop'); }, [ui.toast]);
-  useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.cash === 'number') S.cash = d.cash; }; window.addEventListener('arl-mission-paid', f); return () => window.removeEventListener('arl-mission-paid', f); }, []);
+  useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.cash === 'number') S.cash = d.cash; }; window.addEventListener('arl-mission-paid', f); window.addEventListener('arl-cash-update', f); return () => { window.removeEventListener('arl-mission-paid', f); window.removeEventListener('arl-cash-update', f); }; }, []);
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.meals === 'number') { S.meals = d.meals; S.supplies = d.supplies; } }; window.addEventListener('arl-pantry', f); return () => window.removeEventListener('arl-pantry', f); }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
   return <div className={'sim' + (outside ? ' outside' : '')}>
@@ -996,6 +997,7 @@ export default function Sim() {
     {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} onDenied={() => setInside(null)} username={user.username} getMinute={worldMinute} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const ex = buildingExitPoint(inside); if (ex) GAME.tp = ex; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
+    {user && look && <Wallet />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}

@@ -1022,11 +1022,6 @@ function Rain() {
   });
   return <group ref={g}><lineSegments ref={ls} frustumCulled={false} visible={false}><bufferGeometry><bufferAttribute attach="attributes-position" args={[pos, 3]} /></bufferGeometry><lineBasicMaterial color="#c4d4e2" transparent opacity={.4} depthWrite={false} fog={false} /></lineSegments></group>;
 }
-function WorldBadge() {
-  const [, tick] = useState(0); useEffect(() => { const t = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(t); }, []);
-  const c = worldCalendar(), w = weatherAt();
-  return <div className="cwWorld">{c.season.e} {c.season.label} · {c.weekday} {c.clock} · {w.e} {w.label}</div>;
-}
 function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, fight }: { fight: (to: string) => boolean; look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: START.r });
   const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!), hemi = useRef<THREE.HemisphereLight>(null!), stars = useRef<THREE.Group>(null!);
@@ -1464,7 +1459,7 @@ const CSS = `
 .cwBtn{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
 .cwHurt{position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,#0000 40%,#ff1010cc 100%)}.cwHp{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:12;flex-direction:column;align-items:center;gap:4px;color:#fff;font-weight:800;font-size:13px;pointer-events:none;text-shadow:0 2px 0 #000}.cwHp i{display:block;width:180px;height:12px;border:3px solid #1a1410;border-radius:99px;background:#0009;overflow:hidden}.cwHp b{display:block;height:100%;width:100%;transition:width .15s}\n.cwBtn.mic.on{background:#1d7654;border-color:#3fb98a}.cwBtn.mic.live{box-shadow:0 0 0 4px #35c46b88,0 0 18px #35c46b}.cwTalkers{position:absolute;z-index:11;left:50%;transform:translateX(-50%);top:calc(58px + env(safe-area-inset-top,0px));background:#0b1511e6;border:2px solid #35c46b;color:#fff;font-size:12px;font-weight:800;padding:5px 14px;border-radius:999px;pointer-events:none;white-space:nowrap}.cityNameTag.talking{background:#35c46b!important;color:#06210f!important}.cityNameTag.talking::before{content:'🔊 '}\n.cwBtn span{font-size:22px;line-height:1}.cwBtn small{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .cwBtn:active{background:#d99a42;color:#111}.cwBtn.big{width:78px;height:78px}.cwBtn.cam{width:50px;height:50px}.cwBtn.cam small{display:none}
-.cwWorld{position:absolute;z-index:6;left:50%;transform:translateX(-50%);top:calc(54px + env(safe-area-inset-top,0px));background:#0b1511b0;border:1px solid #ffffff22;border-radius:999px;color:#fff;font-size:11px;font-weight:700;padding:4px 12px;white-space:nowrap;pointer-events:none}.cwMap{position:absolute;left:12px;top:72px;width:140px;height:140px;border-radius:50%;border:3px solid #ffffffcc;box-shadow:0 4px 18px #0008;z-index:6;background:#35553f;pointer-events:none}
+.cwMap{position:absolute;left:12px;top:72px;width:140px;height:140px;border-radius:50%;border:3px solid #ffffffcc;box-shadow:0 4px 18px #0008;z-index:6;background:#35553f;pointer-events:none}
 .cwHint{position:absolute;right:18px;bottom:110px;z-index:6;color:#fff;font-size:11px;line-height:1.55;background:#0b1511b0;border:1px solid #ffffff22;border-radius:10px;padding:8px 11px;pointer-events:none}
 .cwHint b{color:#d99a42}
 .cwSpeed{position:absolute;right:270px;bottom:30px;z-index:7;display:none;align-items:baseline;gap:4px;color:#fff;background:#0b1511d0;border:1px solid #ffffff2a;border-radius:14px;padding:8px 14px;pointer-events:none}
@@ -1515,7 +1510,6 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         <Scene fight={net.punch} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />
-      <WorldBadge />
       <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
       <LookPad ctl={ctl} />
       <Stick ctl={ctl} />

@@ -161,6 +161,10 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
           if (cur !== c || (payload?.to !== name && payload?.to !== '*') || typeof payload?.u !== 'string') return;
           rtcSubs.current.forEach(f => f(payload as RtcMsg));
         })
+        .on('broadcast', { event: 'dm' }, ({ payload }) => { // someone just texted you: check the inbox right now instead of waiting for the next poll
+          if (cur !== c || typeof window === 'undefined') return;
+          if (String(payload?.to || '').toLowerCase() === name.toLowerCase()) window.dispatchEvent(new Event('arl-dm-ping'));
+        })
         .on('broadcast', { event: 'chat' }, ({ payload }) => {
           if (cur !== c) return;
           const u = String(payload?.u), t = String(payload?.t || '').trim().slice(0, 120), now = Date.now();
@@ -233,6 +237,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     socialRef.current?.(to ? 3 : 1); return true;
   }, [name]);
   useEffect(() => { const f = () => { const a = ACTS.phone, now = Date.now(); NET.me.anim = 'phone'; NET.me.animUntil = now + a.ms; ch.current?.send({ type: 'broadcast', event: 'act', payload: { u: name, to: '', k: 'phone' } }); }; window.addEventListener('arl-phone-use', f); return () => window.removeEventListener('arl-phone-use', f); }, [name]);
+  useEffect(() => { const f = (e: Event) => { const to = String((e as CustomEvent).detail || ''); if (to) ch.current?.send({ type: 'broadcast', event: 'dm', payload: { u: name, to } }); }; window.addEventListener('arl-dm-sent', f); return () => window.removeEventListener('arl-dm-sent', f); }, [name]); // tell the recipient (if in the same city) to check their messages now
   const dismissNotice = useCallback((id: number) => setNotices(l => l.filter(n => n.id !== id)), []);
   return { name, status, room, roster, ver, log, bub, unread, clearUnread, send, muted: mutedList, toggleMute, enabled: !!supabase, signal, subscribeRtc, act, notices, dismissNotice, punch };
 }

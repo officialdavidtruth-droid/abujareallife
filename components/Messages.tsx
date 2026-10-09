@@ -35,14 +35,14 @@ export default function Messages({ start, onCash, onClose, onUnread }: { start: 
       const tmp: Msg = { id: 'tmp-' + Date.now() + Math.random().toString(36).slice(2, 6), mine: true, kind: 'text', body, data: null, at: Date.now(), read: false, pending: true };
       local.current = [...local.current, tmp]; stick.current = true; setThread(t => [...t, tmp]); setText('');
       const to = open, r = await j('/api/messages', { to, kind, body });
-      if (r.ok) { const real: Msg = r.d.message; local.current = local.current.map(m => (m.id === tmp.id ? real : m)); setThread(t => t.map(m => (m.id === tmp.id ? real : m))); }
+      if (r.ok) { window.dispatchEvent(new CustomEvent('arl-dm-sent', { detail: to })); const real: Msg = r.d.message; local.current = local.current.map(m => (m.id === tmp.id ? real : m)); setThread(t => t.map(m => (m.id === tmp.id ? real : m))); }
       else { local.current = local.current.map(m => (m.id === tmp.id ? { ...m, pending: false, failed: true } : m)); FAILED[to.toLowerCase()] = local.current.filter(m => m.failed); setThread(t => t.map(m => (m.id === tmp.id ? { ...m, pending: false, failed: true } : m))); say(r.d.error || 'Could not send.', true); }
       return;
     }
     if (busy) return;
     setBusy(true); const r = await j('/api/messages', { to: open, kind, body: kind === 'cash' ? text.trim() : body, ...extra }); setBusy(false);
     if (!r.ok) { say(r.d.error || 'Could not send.', true); return; }
-    stick.current = true; local.current = [...local.current, r.d.message]; setThread(t => [...t, r.d.message]); setText(''); setMenu('');
+    window.dispatchEvent(new CustomEvent('arl-dm-sent', { detail: String(open) })); stick.current = true; local.current = [...local.current, r.d.message]; setThread(t => [...t, r.d.message]); setText(''); setMenu('');
     if (kind === 'cash') { setCash(r.d.cash); onCash(r.d.cash); setAmount(''); say(`💸 Sent ${naira(r.d.message.data?.amount || 0)} to ${open}`); }
     loadList();
   }

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GAME } from './CityWorld';
 import { VEHICLE_CATALOG } from '../lib/vehicles';
 import { NET } from '../lib/cityNet';
+import { sfx } from '../lib/audio';
 import { businessStatus } from '../lib/businessHours';
 import { CRIMES, FAME_TIERS, checkAccess, HELP_FAME, HELP_TIP, JAIL_CELL_POS, POLICE_ARREST_RANGE, POLICE_STATION_POS, PROFESSIONS, QUESTS, RELATIONSHIPS, SKILLS, skillLevel, type CrimeId, type Origin, type Profile } from '../lib/profile';
 
@@ -23,15 +24,38 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | 'city' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
   const [quest, setQuest] = useState<{ id: string; end: number } | null>(null), [, tick] = useState(0), [bail, setBail] = useState(0), [enter, setEnter] = useState<{ ok: boolean; reason: string; name: string } | null>(null);
   const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null), [chatWith, setChatWith] = useState<string | null>(null), [unread, setUnread] = useState(0), seenMsg = useRef('');
+  const [ping, setPing] = useState<{ from: string; text: string; n: number } | null>(null), pingT = useRef<any>(null), live = useRef<{ tab: string | null; chat: string | null }>({ tab: null, chat: null });
+  live.current = { tab, chat: chatWith };
   const [stuff, setStuff] = useState(false);
   useEffect(() => { const f = (e: Event) => setMarket({ seller: String((e as CustomEvent).detail || '') || undefined }); window.addEventListener('arl-open-market', f); return () => window.removeEventListener('arl-open-market', f); }, []);
   useEffect(() => { const f = (e: Event) => { const n = String((e as CustomEvent).detail || ''); if (n) { setChatWith(n); setTab('phone'); } }; window.addEventListener('arl-open-chat', f); return () => window.removeEventListener('arl-open-chat', f); }, []);
   useEffect(() => { const f=(e:Event)=>{ const n=String((e as CustomEvent).detail||''); if(n) { setTab(null); window.dispatchEvent(new Event('arl-close-phone')); } }; window.addEventListener('arl-npc-alert',f); return()=>window.removeEventListener('arl-npc-alert',f); }, []);
-  useEffect(() => { // unread badge + a pop-up when a new text arrives
+  useEffect(() => { // unread badge + a notification banner (sound, buzz, tap to reply) whenever a new text arrives
     let dead = false;
-    const poll = async () => { if (typeof document !== 'undefined' && document.hidden) return; try { const r = await fetch('/api/messages?count=1', { cache: 'no-store' }); if (!r.ok || dead) return; const d = await r.json(); setUnread(d.unread || 0); const l = d.latest; if (l && l.id !== seenMsg.current) { const first = seenMsg.current === ''; seenMsg.current = l.id; if (!first) say(`💬 ${l.from}: ${l.kind === 'loc' ? '📍 shared a location' : l.kind === 'cash' ? '💸 sent you money' : String(l.body).slice(0, 60)}`); } else if (!l) seenMsg.current = seenMsg.current || '-'; } catch { /* offline */ } };
-    poll(); const id = setInterval(poll, 5000); return () => { dead = true; clearInterval(id); };
+    const notify = (from: string, text: string, n: number) => {
+      const l = live.current; if (l.tab === 'phone' && l.chat && l.chat.toLowerCase() === from.toLowerCase()) return; // that chat is already open on screen
+      setPing({ from, text, n }); try { sfx('notify'); navigator.vibrate?.([60, 40, 60]); } catch { /* not supported */ }
+      clearTimeout(pingT.current); pingT.current = setTimeout(() => setPing(null), 7000);
+    };
+    const poll = async () => {
+      if (document.hidden) return;
+      try {
+        const r = await fetch('/api/messages?count=1', { cache: 'no-store' }); if (!r.ok || dead) return;
+        const d = await r.json(), n = d.unread || 0, l = d.latest; setUnread(n);
+        if (!n) setPing(null);
+        if (l && l.id !== seenMsg.current) {
+          const first = seenMsg.current === ''; seenMsg.current = l.id;
+          const txt = l.kind === 'loc' ? '📍 Shared a location' : l.kind === 'cash' ? '💸 Sent you money' : String(l.body).slice(0, 80);
+          notify(l.from, first && n > 1 ? `${n} unread messages` : txt, n);
+        } else if (!l) seenMsg.current = seenMsg.current || '-';
+      } catch { /* offline */ }
+    };
+    const now = () => { poll(); }, vis = () => { if (!document.hidden) poll(); };
+    window.addEventListener('arl-dm-ping', now); document.addEventListener('visibilitychange', vis);
+    poll(); const id = setInterval(poll, 5000);
+    return () => { dead = true; clearInterval(id); clearTimeout(pingT.current); window.removeEventListener('arl-dm-ping', now); document.removeEventListener('visibilitychange', vis); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const base = document.title.replace(/^\(\d+\)\s*/, ''); document.title = unread > 0 ? `(${unread > 9 ? '9+' : unread}) ${base}` : base; }, [unread]); // tab title shows the unread count
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
   const refresh = useCallback(async () => { const r = await fetch('/api/status'); if (r.ok) { const d = await r.json(); setSt(d); GAME.hasCar = !!d.hasCar; onCash(d.cash); } }, [onCash]);
   useEffect(() => { refresh(); const a = setInterval(refresh, 5000), b = setInterval(() => { if (GAME.notice) { say(GAME.notice); GAME.notice = ''; } tick(x => x + 1); }, 500); return () => { clearInterval(a); clearInterval(b); }; }, [refresh]);
@@ -87,6 +111,8 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
     </div>
     <RuntimeStyle id="arl-badge" css=".dockBadge{position:absolute;top:2px;right:2px;background:#e5484d;color:#fff;border-radius:999px;font-size:10px;font-weight:900;font-style:normal;padding:1px 6px;pointer-events:none;line-height:1.3}.dockGrid button,.dockToggle{position:relative}" />
     {msg && <div className="glToast">{msg}</div>}
+    {ping && <button className="glPing" onClick={() => { setChatWith(ping.from); setTab('phone'); setPing(null); }}><i>💬</i><span><b>{ping.from}{ping.n > 1 ? ` · ${ping.n} new` : ''}</b><small>{ping.text}</small></span><em>Reply</em></button>}
+    <RuntimeStyle id="arl-ping" css={`.glPing{position:absolute;left:0;right:0;margin:0 auto;width:fit-content;top:calc(8px + env(safe-area-inset-top,0px));z-index:96;display:flex;align-items:center;gap:10px;max-width:min(360px,calc(100vw - 280px));background:#0b1a13f4;border:1px solid #d99a42;border-radius:16px;padding:9px 12px;color:#fff;text-align:left;box-shadow:0 10px 30px #000a;animation:glPingIn .25s both}.glPing i{font-style:normal;font-size:22px}.glPing span{min-width:0;flex:1}.glPing b{display:block;font-size:13px}.glPing small{display:block;font-size:12px;color:#c3d6cb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.glPing em{font-style:normal;background:#d99a42;color:#1a1208;font-weight:900;font-size:11px;border-radius:999px;padding:6px 11px}@keyframes glPingIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}`} />
     {quest && <div className="glToast">⏳ {QUESTS.find(q => q.id === quest.id)?.title}: {left}s</div>}
     {enter && <div className="glModal" onClick={() => setEnter(null)}><div className="glBox" onClick={e => e.stopPropagation()}><h3>{enter.name}</h3><p>{enter.ok ? '✅ ' : '⛔ '}{enter.reason}</p><button onClick={() => setEnter(null)}>Close</button></div></div>}
     {tab === 'phone' && <PhonePanel start={chatWith} unread={unread} onUnread={setUnread} onCash={n => { onCash(n); refresh(); }} onClose={() => { setTab(null); setChatWith(null); }} onCityTab={onCityTab} cityTab={cityTab} onMarket={() => { setTab(null); setMarket({}); }} />}

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { ACT_LIST, INTERACT_RANGE, NET, type useCityNet } from '../lib/cityNet';
-import type { VoiceApi } from '../lib/cityVoice';
+import { MIC, type VoiceApi } from '../lib/cityVoice';
 
 import RuntimeStyle from './RuntimeStyle';
 type Net = ReturnType<typeof useCityNet>;
@@ -73,6 +73,12 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
   </>;
 }
 
+/* Live bar that moves when the microphone hears you. If it stays flat while you talk, the wrong microphone is selected or it is muted by the system. */
+function MicLevel() {
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => { const id = setInterval(() => { if (bar.current) bar.current.style.width = Math.round(Math.min(1, MIC.level * 1.5) * 100) + '%'; }, 80); return () => clearInterval(id); }, []);
+  return <div><small>Speak now: this bar should move</small><i style={{ display: 'block', height: 8, marginTop: 4, background: '#ffffff25', borderRadius: 4, overflow: 'hidden' }}><b ref={bar} style={{ display: 'block', height: '100%', width: 0, background: '#35e07a', transition: 'width .08s' }} /></i></div>;
+}
 function VoiceStatus({ voice }: { voice: VoiceApi }) {
   const t = voice.turn;
   return <div className="cpVs">
@@ -84,7 +90,8 @@ function VoiceStatus({ voice }: { voice: VoiceApi }) {
     {voice.mic.perm === 'prompt' && !voice.micOn && <div>👉 Tap the 🔇 Mic button on the game screen: the browser will then ask for permission.</div>}
     {voice.mic.perm === 'granted' && <div>✅ Microphone permission granted</div>}
     {voice.mic.err && <div>❌ {voice.mic.err}</div>}
-    <div>{voice.micOn ? '🎤 Mic on' : '🔇 Mic off'} · direct links {voice.live}/{voice.linked}{voice.relayOn ? ' · 📡 relay audio active' : ''}</div>
+    <div>{voice.micOn ? (voice.micLive === false ? '⏳ Mic starting…' : '🎤 Mic on and sending') : '🔇 Mic off'} · nearby talkers {voice.linked} · hearing {voice.live}{voice.relayOn ? ' · 📡 relay audio active' : ''}</div>
+    {voice.micOn && <MicLevel />}
   </div>;
 }
 

@@ -4,7 +4,7 @@ import { VerifyBox, type AccountUser } from './Account';
 import OriginWheel from './OriginWheel';
 import type { Origin } from '../lib/profile';
 
-export default function AuthScreen({ onAuth }: { onAuth: (u: AccountUser) => void }) {
+export default function AuthScreen({ onAuth }: { onAuth: (u: AccountUser) => void | Promise<void> }) {
   const [mode, setMode] = useState<'login' | 'signup'>('signup'), [username, setU] = useState(''), [password, setP] = useState(''), [email, setE] = useState('');
   const [msg, setMsg] = useState(''), [busy, setBusy] = useState(false), [pending, setPending] = useState<AccountUser | null>(null), [spin, setSpin] = useState<{ origin: Origin; user: AccountUser; verify: boolean } | null>(null);
   const submit = async () => {
@@ -15,8 +15,8 @@ export default function AuthScreen({ onAuth }: { onAuth: (u: AccountUser) => voi
       if (!r.ok) setMsg(d.error || `Server error (${r.status}). Please try again.`);
       else if (mode === 'signup' && d.origin && d.user) setSpin({ origin: d.origin, user: d.user, verify: !!d.verifyEmail });
       else if (mode === 'signup' && d.verifyEmail) setPending(d.user);
-      else onAuth(d.user);
-    } catch { setMsg('Network error. Try again.'); }
+      else await onAuth(d.user);
+    } catch (e) { setMsg(e instanceof Error && e.message ? e.message : 'Network error. Try again.'); }
     setBusy(false);
   };
   return <div className="au">{spin && <OriginWheel origin={spin.origin} onDone={() => { const sp = spin; setSpin(null); if (sp.verify) setPending(sp.user); else onAuth(sp.user); }} />}<div className="card">

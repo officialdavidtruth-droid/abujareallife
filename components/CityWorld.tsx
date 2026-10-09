@@ -838,7 +838,7 @@ function PlayerCar({ carRef, tagRef, spotRef, model }: { carRef: React.MutableRe
     <CarModel kit={kit} color={vehicleByName(model).color || CAR_COLOR} kind={0} model={model} style={style||undefined} />
     <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
     <primitive object={tgt} position={[16, .2, 0]} />
-    <Html position={[0, 2.4, 0]} center><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
+    <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
   </group>;
 }
 // put the car in the nearest lane (right-hand traffic), a few metres ahead of the player, clear of other cars
@@ -1316,7 +1316,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <JailCell />
       <group ref={group}>
         <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : m.call ? 'phone' : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />
-        <Html position={[0, 2.8, 0]} center><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
+        <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
       <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} touches={{ ONE: -1 as any, TWO: -1 as any }} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={1.45} target={[START.x, 1.62, START.z + 6]} />

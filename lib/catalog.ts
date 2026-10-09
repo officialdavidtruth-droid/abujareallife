@@ -3,12 +3,13 @@
 // placed in your home (furnishing + house upgrades come with the housing update: `fp` is the footprint in metres).
 import type { BusinessType } from './cityTypes';
 import { WEAPONS, weaponItemId } from './weapons';
+import { PARTS } from './chopData';
 
-export type CatId = 'food' | 'grocery' | 'toiletry' | 'household' | 'kitchen' | 'furniture' | 'decor' | 'tech' | 'style' | 'luxury' | 'kids' | 'arms';
+export type CatId = 'food' | 'grocery' | 'toiletry' | 'household' | 'kitchen' | 'furniture' | 'decor' | 'tech' | 'style' | 'luxury' | 'kids' | 'arms' | 'parts';
 export const CATS: { id: CatId; label: string; e: string }[] = [
   { id: 'food', label: 'Food & Drinks', e: '🍲' }, { id: 'grocery', label: 'Groceries', e: '🛒' }, { id: 'toiletry', label: 'Toiletries', e: '🧼' }, { id: 'household', label: 'Household', e: '🧺' }, { id: 'kitchen', label: 'Kitchen', e: '🍳' },
   { id: 'furniture', label: 'Furniture', e: '🛋️' }, { id: 'decor', label: 'Decor & Lights', e: '🪴' }, { id: 'tech', label: 'Tech', e: '📱' },
-  { id: 'style', label: 'Accessories', e: '⌚' }, { id: 'luxury', label: 'Luxury & Fancy', e: '💎' }, { id: 'kids', label: 'Kids & Baby', e: '🧸' }, { id: 'arms', label: 'Firearms', e: '🔫' },
+  { id: 'style', label: 'Accessories', e: '⌚' }, { id: 'luxury', label: 'Luxury & Fancy', e: '💎' }, { id: 'kids', label: 'Kids & Baby', e: '🧸' }, { id: 'arms', label: 'Firearms', e: '🔫' }, { id: 'parts', label: 'Car Parts', e: '🔩' },
 ];
 export type Needs = Partial<Record<'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social', number>>;
 export type Item = { id: string; cat: CatId; name: string; e: string; cost: number; fx?: Needs; fp?: [number, number]; use?: boolean; tag?: string; units?: number; pantry?: 'meals' | 'supplies' };
@@ -172,6 +173,8 @@ add('kids', [
 ]);
 
 WEAPONS.forEach(w => out.push({ id: weaponItemId(w.id), cat: 'arms', name: w.name, e: w.icon, cost: w.price, tag: 'weapon' }));
+/* Car parts come ONLY from a chop shop job (lib/chop.ts). No store lists the 'parts' category and the Online Mall refuses tag 'part'. */
+PARTS.forEach(p => out.push({ id: p.id, cat: 'parts', name: p.name, e: p.e, cost: p.cost, tag: 'part' }));
 export const CATALOG: Item[] = out;
 const BY_ID = new Map(CATALOG.map(i => [i.id, i]));
 export const itemById = (id: string) => BY_ID.get(id);

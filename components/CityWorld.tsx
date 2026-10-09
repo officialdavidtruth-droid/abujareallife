@@ -24,6 +24,7 @@ import { worldMinute, worldCalendar, weatherAt, lightningAt } from '../lib/world
 import { createPortal } from 'react-dom';
 import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
+import ChopYards from './ChopYards';
 import { GRID, CURB, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
@@ -1486,6 +1487,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <WorldEventVisuals />
       <Rain />
       <Airport />
+      <ChopYards />
       <JailCell />
       <group ref={group}>
         <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />

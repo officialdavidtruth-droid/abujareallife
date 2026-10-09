@@ -29,10 +29,10 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
   const sellable = useMemo(() => inv.map(x => ({ ...x, it: itemById(x.id) })).filter(x => x.it && !x.it.use && !isStaple(x.it) && x.qty > 0), [inv]);
   const chosen = sellable.find(x => x.id === pick), range = data?.bounds?.[pick] || (chosen?.it ? { min: Math.max(1, Math.floor(chosen.it.cost * .1)), max: Math.floor(chosen.it.cost * 5) } : null);
   const price = Math.floor(Number(sp) || 0);
-  const mallCats = useMemo(() => CATS.filter(c => !isStaple({ cat: c.id })), []);
+  const mallCats = useMemo(() => CATS.filter(c => !isStaple({ cat: c.id }) && c.id !== 'parts'), []);
   const mall = useMemo(() => {
     const n = shopQ.trim().toLowerCase();
-    return CATALOG.filter(i => !i.use && !isStaple(i) && (!shopCat || i.cat === shopCat) && (!n || i.name.toLowerCase().includes(n))).sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? a.cost - b.cost : b.cost - a.cost);
+    return CATALOG.filter(i => !i.use && !isStaple(i) && i.tag !== 'part' && (!shopCat || i.cat === shopCat) && (!n || i.name.toLowerCase().includes(n))).sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? a.cost - b.cost : b.cost - a.cost);
   }, [shopCat, shopQ, sort]);
   useEffect(() => setLimit(60), [shopCat, shopQ, sort]);
   const cash = data?.cash ?? cashFb; // null = not known yet, so never call someone broke before we know

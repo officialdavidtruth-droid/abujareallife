@@ -5,7 +5,7 @@ import { sfx } from '../lib/audio';
 
 import RuntimeStyle from './RuntimeStyle';
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
-const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kitchen: '#ff5a4d', furniture: '#a96bff', decor: '#2fc66b', tech: '#28c7d9', style: '#ffb81c', kids: '#ff7eb6', grocery: '#7bd34a', toiletry: '#5ad1e6', luxury: '#e7b34a', arms: '#ff3b30' };
+const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kitchen: '#ff5a4d', furniture: '#a96bff', decor: '#2fc66b', tech: '#28c7d9', style: '#ffb81c', kids: '#ff7eb6', grocery: '#7bd34a', toiletry: '#5ad1e6', luxury: '#e7b34a', arms: '#ff3b30', parts: '#9aa4b2' };
 
 export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: { bizName: string; bizType: string; onClose: () => void; onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void }) {
   const cats = useMemo(() => CATS.filter(c => storeCats(bizType).includes(c.id)), [bizType]), all = useMemo(() => storeItems(bizType), [bizType]);

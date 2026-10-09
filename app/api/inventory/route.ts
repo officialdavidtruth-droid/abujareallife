@@ -46,6 +46,7 @@ export async function POST(req: Request) {
           gain = itemSellValue(it.cost) * qty; label = `${it.name} x${qty}`;
         } else if (kind === 'vehicle') {
           const v = await tx.vehicle.findFirst({ where: { id, userId: u.id } }); if (!v) throw new Stop('Vehicle not found.', 404);
+          if (v.stolen) throw new Stop('Nobody will buy a hot car. Take it to a chop shop.', 409);
           const d = await tx.vehicle.deleteMany({ where: { id: v.id, userId: u.id } }); if (!d.count) throw new Stop('Vehicle not found.', 404);
           gain = vehicleSellValue(v.price, v.condition); label = v.name;
           if ((await tx.vehicle.count({ where: { userId: u.id } })) === 0) await tx.save.update({ where: { userId: u.id }, data: { hasCar: false } });

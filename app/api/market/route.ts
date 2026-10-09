@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         await tx.listing.create({ data: { sellerId: u.id, sellerName: u.username, itemKey: it.id, qty, price } });
       });
     } else if (action === 'shop') { // the Abuja Online Mall: always in stock, delivered to your bag
-      const it = itemById(String(b.itemKey)); if (!it || it.use || isStaple(it)) throw new Stop('The mall does not sell that. Groceries and toiletries are bought in person at the Market, Supermarket or Pharmacy.');
+      const it = itemById(String(b.itemKey)); if (!it || it.use || isStaple(it) || it.tag === 'part') throw new Stop('The mall does not sell that. Groceries and toiletries are bought in person at the Market, Supermarket or Pharmacy.');
       const n = Math.floor(Number(b.qty) || 1); if (!(n >= 1 && n <= 20)) throw new Stop('Choose how many to buy.');
       const total = mallPrice(it.cost) * n;
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {

@@ -9,7 +9,7 @@ import { CARJACK_RANGE, ROB_ANY_COOLDOWN_MS, ROB_KIND_COOLDOWN_MS, ROB_RANGE } f
    Real players: rob (on foot) / carjack (while they drive) -> /api/rob, /api/carjack (server checks reach + positions).
    NPCs: pickpocket or mug a pedestrian, carjack an AI driver -> /api/crime (loot, heat and catch chance are decided server-side).
    Street robbery has a cooldown. The SERVER enforces it (database-backed); the buttons only mirror it as a countdown. */
-type Kind = 'rob' | 'jack' | 'pick' | 'mug' | 'npcjack';
+type Kind = 'rob' | 'jack' | 'pick' | 'mug' | 'npcjack' | 'chop';
 type Act = { k: Kind; label: string; name?: string; idx?: number };
 const NPC_PED_RANGE = 2.2, NPC_CAR_RANGE = 5, PED_RETRY_MS = 180_000;
 const SERVER_KIND: Partial<Record<Kind, string>> = { rob: 'rob_player', pick: 'pickpocket', mug: 'mug_npc', npcjack: 'carjack' };   // jack (player carjack) has no cooldown here
@@ -32,7 +32,7 @@ function scan(done: Map<number, number>): Act[] {
     const p = PEDPOS[i]; if (!p || (done.get(i) || 0) > now || Math.hypot(p.x - me.x, p.z - me.z) >= NPC_PED_RANGE) continue;
     out.push({ k: 'pick', label: '🖐️ Pickpocket', idx: i }, { k: 'mug', label: '🔪 Mug', idx: i }); break;
   }
-  for (const t of TPOS) if (t && t.x < 9e4 && Math.hypot(t.x - me.x, t.z - me.z) < NPC_CAR_RANGE) { out.push({ k: 'npcjack', label: '🚘 Carjack the driver' }); break; }
+  for (const t of TPOS) if (t && t.x < 9e4 && Math.hypot(t.x - me.x, t.z - me.z) < NPC_CAR_RANGE) { out.push({ k: 'npcjack', label: '🚘 Carjack the driver' }); if (!(window as any).__arlChop) out.push({ k: 'chop', label: '🔧 Steal it for the chop shop' }); break; }
   return out;
 }
 
@@ -56,6 +56,7 @@ export default function CrimeActions({ username, say, refresh }: { username: str
   const copsNear = () => Object.values(NET.peers).filter(p => p.look.outfitModel === 'uniform' && Math.hypot(p.x - NET.me.x, p.z - NET.me.z) < 25).length;
   const go = async (a: Act) => {
     if (busy.current || left(a.k) > 0) return; busy.current = true; setTimeout(() => { busy.current = false; }, 1500);
+    if (a.k === 'chop') { const f = (window as any).__arlChopSteal as ((n: number) => void) | undefined; if (f) f(copsNear()); return; }   // the chop shop job (components/ChopShop.tsx) does the rest
     NET.me.anim = 'punch'; NET.me.animUntil = Date.now() + 450;
     if (a.k === 'rob' || a.k === 'jack') {
       const q = a.name ? NET.peers[a.name] : null; if (!q || !a.name) return say('They moved away.');

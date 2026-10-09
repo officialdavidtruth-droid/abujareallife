@@ -546,12 +546,19 @@ function PoliceBody({ kit }: { kit: Kit }) {
     {[1, -1].map(sd => <Text key={sd} position={[-.2, .78, sd * .94]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.2} color="#1d3f8f" anchorX="center" anchorY="middle">POLICE</Text>)}
   </group>;
 }
-function TransportSheet({ kind, onPick, onClose }: { kind: 'taxi' | 'bike'; onPick: (d: { name: string; x: number; z: number }) => void; onClose: () => void }) {
+function TransportSheet({ kind, onPick, onClose }: { kind: 'taxi' | 'bike'; onPick: (d: { name: string; x: number; z: number }) => Promise<string | void> | void; onClose: () => void }) {
+  const [busy, setBusy] = useState(false), [msg, setMsg] = useState(''), [fare, setFare] = useState<number | null>(null);
+  useEffect(() => { fetch('/api/transport').then(r => r.json()).then(d => { const f = d?.fares?.[kind]; if (typeof f === 'number') setFare(f); }).catch(() => {}); }, [kind]);
+  const pick = async (d: { name: string; x: number; z: number }) => {
+    if (busy) return; setBusy(true); setMsg('');
+    try { const m = await onPick(d); if (m) { setMsg(m); setBusy(false); } } catch { setMsg('Something went wrong. Try again.'); setBusy(false); }
+  };
   return createPortal(<div className="trSheet">
     <button className="trX" aria-label="Close" onClick={onClose}>✕</button>
     <h3><span>{kind === 'taxi' ? '🚕 Taxi' : '🚲 Bike taxi'}</span></h3>
-    <div className="trBody"><p>Where to? An NPC driver takes you there along the road.</p>
-      {DESTS.map(d => <button key={d.name} onClick={() => onPick(d)}><span className="tx"><b>{d.name}</b></span><em>Go</em></button>)}</div>
+    <div className="trBody"><p>Where to? An NPC driver takes you there along the road.{fare !== null ? ` Fare: ₦${fare.toLocaleString()}` : ''}</p>
+      {msg && <p style={{ background: '#ffd9d4', color: '#7a1608', fontWeight: 800 }}>{msg}</p>}
+      {DESTS.map(d => <button key={d.name} disabled={busy} style={busy ? { opacity: .6 } : undefined} onClick={() => pick(d)}><span className="tx"><b>{d.name}</b></span><em>{busy ? '…' : 'Go'}</em></button>)}</div>
   </div>, document.body);
 }
 /* ── passenger cinematic: the door swings open, the character walks up and gets in; at the destination the door opens and they step out ── */
@@ -634,14 +641,14 @@ function TransportVehicles({ look }: { look: Look }) {
     }
   });
 
-  const go = async (idx: number, d: { name: string; x: number; z: number }) => {
+  const go = async (idx: number, d: { name: string; x: number; z: number }): Promise<string | void> => {
     const e = ROAM.cars[idx], tp = TPOS[idx]; if (!e || !tp || e.c.hail !== 2 || e.c.busy) { setOpen(null); return; }
     const { l, c } = e, kind = c.role === 'bike' ? 'bike' : 'taxi';
     const rt = planRide({ x: tp.x, z: tp.z, axis: l.axis, road: l.road, along: c.s, h: l.dir }, [d.x, d.z]);
     if (!rt) { GAME.notice = 'It cannot set off from here: hail one nearer the middle of the map.'; releaseRoamer(c); setOpen(null); return; }
-    const res = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { GAME.notice = data.error || 'Transport unavailable.'; return; }
+    let res: Response, data: any;
+    try { res = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) }); data = await res.json().catch(() => ({})); } catch { return 'Network error. Try again.'; }
+    if (!res.ok) { const m = data.error || 'Transport unavailable.'; GAME.notice = m; return m; }
     if (c.hail !== 2 || c.busy) { GAME.notice = 'That ride left without you.'; setOpen(null); return; }
     const p0 = GAME.player, bike = kind === 'bike', car: CarPose = { x: tp.x, z: tp.z, r: l.rot };
     const side: 1 | -1 = ((p0.x - tp.x) * Math.sin(l.rot) + (p0.z - tp.z) * Math.cos(l.rot)) >= 0 ? 1 : -1;

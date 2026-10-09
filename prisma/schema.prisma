@@ -425,3 +425,24 @@ model DriverProfile {
   earnings    Int      @default(0)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// A ride one player orders for another. The rider must accept; the sender is charged only on acceptance.
+// status: pending -> accepted -> riding -> completed   (or declined / cancelled / expired)
+model RideRequest {
+  id         String   @id @default(cuid())
+  fromUserId String
+  fromName   String
+  toUserId   String
+  toName     String
+  kind       String   @default("taxi")
+  destName   String
+  destX      Float
+  destZ      Float
+  fare       Int      @default(0)
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([toUserId, status])
+  @@index([fromUserId, status])
+}

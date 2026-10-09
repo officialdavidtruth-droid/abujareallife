@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GAME } from './CityWorld';
+import { GAME, canDispatchRide, dispatchRide } from './CityWorld';
+import RideOrder from './RideOrder';
 import { VEHICLE_CATALOG } from '../lib/vehicles';
 import { NET } from '../lib/cityNet';
 import { sfx } from '../lib/audio';
@@ -27,6 +28,48 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const [ping, setPing] = useState<{ from: string; text: string; n: number } | null>(null), pingT = useRef<any>(null), live = useRef<{ tab: string | null; chat: string | null }>({ tab: null, chat: null });
   live.current = { tab, chat: chatWith };
   const [stuff, setStuff] = useState(false);
+  // ── rides other players order for you (you must accept) and updates on rides you ordered ──
+  type RideReq = { id: string; from: string; to: string; kind: string; destName: string; destX: number; destZ: number; fare: number; status: string; expiresIn: number };
+  const [orderFor, setOrderFor] = useState<string | null>(null), [rideReq, setRideReq] = useState<(RideReq & { until: number }) | null>(null), [rideBusy, setRideBusy] = useState(false), rideSeen = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    let dead = false;
+    const poll = async () => {
+      if (document.hidden) return;
+      try {
+        const r = await fetch('/api/rides', { cache: 'no-store' }); if (!r.ok || dead) return;
+        const d: { incoming: RideReq[]; outgoing: RideReq[] } = await r.json();
+        const first = d.incoming[0];
+        setRideReq(cur => first ? (cur && cur.id === first.id ? cur : { ...first, until: Date.now() + first.expiresIn * 1000 }) : null);
+        if (first && (!rideSeen.current || rideSeen.current['in:' + first.id] === undefined)) { try { sfx('notify'); navigator.vibrate?.([80, 50, 80]); } catch { /* not supported */ } }
+        const prev = rideSeen.current, next: Record<string, string> = {};
+        for (const o of d.outgoing) next[o.id] = o.status;
+        if (first) next['in:' + first.id] = first.status;
+        if (prev) for (const o of d.outgoing) { // tell the sender what happened to their request
+          if (prev[o.id] === o.status) continue;
+          if (o.status === 'accepted') { say(`✅ @${o.to} accepted your ride to ${o.destName}. You paid ₦${o.fare.toLocaleString()}.`); refresh(); }
+          else if (o.status === 'declined') say(`❌ @${o.to} declined your ride.`);
+          else if (o.status === 'expired' && prev[o.id] === 'pending') say(`⌛ @${o.to} did not answer your ride request.`);
+          else if (o.status === 'completed') say(`📍 @${o.to} arrived at ${o.destName}.`);
+          else if (o.status === 'cancelled' && prev[o.id] === 'accepted') say(`↩️ The ride for @${o.to} was cancelled and ₦${o.fare.toLocaleString()} came back to you.`);
+        }
+        rideSeen.current = next;
+      } catch { /* offline */ }
+    };
+    poll(); const id = setInterval(poll, 4000);
+    return () => { dead = true; clearInterval(id); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const answerRide = async (accept: boolean) => {
+    const q = rideReq; if (!q || rideBusy) return;
+    if (!accept) { setRideBusy(true); await fetch('/api/rides', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'decline', id: q.id }) }).catch(() => {}); setRideBusy(false); setRideReq(null); return; }
+    const bad = canDispatchRide(); if (bad) return say(bad); // check first, so the sender is never charged for a ride you cannot take
+    setRideBusy(true);
+    const r = await fetch('/api/rides', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'accept', id: q.id }) }).catch(() => null);
+    const j = r ? await r.json().catch(() => ({})) : {};
+    if (!r || !r.ok) { setRideBusy(false); setRideReq(null); return say(j.error || 'Could not accept the ride.'); }
+    const fail = dispatchRide({ id: q.id, name: q.destName, x: q.destX, z: q.destZ, kind: q.kind });
+    if (fail) { await fetch('/api/rides', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'refund', id: q.id }) }).catch(() => {}); say(fail + ' The fare was returned to ' + q.from + '.'); }
+    setRideBusy(false); setRideReq(null);
+  };
   useEffect(() => { const f = (e: Event) => setMarket({ seller: String((e as CustomEvent).detail || '') || undefined }); window.addEventListener('arl-open-market', f); return () => window.removeEventListener('arl-open-market', f); }, []);
   useEffect(() => { const f = (e: Event) => { const n = String((e as CustomEvent).detail || ''); if (n) { setChatWith(n); setTab('phone'); } }; window.addEventListener('arl-open-chat', f); return () => window.removeEventListener('arl-open-chat', f); }, []);
   useEffect(() => { const f=(e:Event)=>{ const n=String((e as CustomEvent).detail||''); if(n) { setTab(null); window.dispatchEvent(new Event('arl-close-phone')); } }; window.addEventListener('arl-npc-alert',f); return()=>window.removeEventListener('arl-npc-alert',f); }, []);
@@ -119,13 +162,16 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
     {stuff && <Inventory onClose={() => setStuff(false)} onCash={onCash} />}
     {market && <Market seller={market.seller} onClose={() => setMarket(null)} onCash={onCash} />}
     {st.jailLeft > 0 && <div className="glJail"><h2>🚔 In jail</h2><p>{Math.floor(st.jailLeft / 60)}:{String(st.jailLeft % 60).padStart(2, '0')} left</p><button disabled={st.cash < bail} onClick={async () => { const r = await post('/api/jail'); say(r.ok ? 'Bail paid.' : r.d.error); refresh(); }}>Pay bail {naira(bail)}</button></div>}
+      {orderFor && <RideOrder to={orderFor} me={username} onClose={() => setOrderFor(null)} onSent={say} />}
+      {rideReq && <div className="glRide" role="alert"><i>{rideReq.kind === 'bike' ? '🚲' : '🚕'}</i><span><b>@{rideReq.from} ordered you a {rideReq.kind === 'bike' ? 'bike taxi' : 'taxi'}</b><small>To {rideReq.destName} · they pay · {Math.max(0, Math.ceil((rideReq.until - Date.now()) / 1000))}s left</small></span><button className="ok" disabled={rideBusy} onClick={() => answerRide(true)}>Accept</button><button className="no" disabled={rideBusy} onClick={() => answerRide(false)}>Decline</button></div>}
+      <RuntimeStyle id="arl-ride-req" css={`.glRide{position:fixed;left:0;right:0;margin:0 auto;width:fit-content;top:calc(60px + env(safe-area-inset-top,0px));z-index:98;display:flex;align-items:center;gap:10px;max-width:min(440px,calc(100vw - 20px));background:#0b1a13f8;border:2px solid #ffb81c;border-radius:16px;padding:9px 12px;color:#fff;box-shadow:0 8px 24px #000a;font-family:system-ui,sans-serif}.glRide i{font-style:normal;font-size:26px}.glRide span{display:flex;flex-direction:column;min-width:0}.glRide b{font-size:13px}.glRide small{font-size:11px;color:#b9cfc4}.glRide button{all:unset;cursor:pointer;padding:6px 11px;border-radius:10px;font-weight:800;font-size:12px}.glRide .ok{background:#2fc66b;color:#06210f}.glRide .no{background:#3a2a2a;color:#ffb3ad}.glRide button:disabled{opacity:.5}`} />
     {tab && tab !== 'phone' && <div className="glPanel"><button className="x" onClick={() => setTab(null)}>×</button>
       {tab === 'quests' && <><h3>Quests</h3>{QUESTS.filter(q => !q.profession || q.profession.includes(p.profession)).map(q => <button key={q.id} disabled={!!quest || !!st.jailLeft || !!q.at || (!!q.minSkill && skillLevel(p.skills[q.skill]) < q.minSkill)} onClick={() => startQuest(q.id, q.secs)}><b>{q.title}</b> {!q.legal && '🔥'}<small>{q.at ? `📍 inside: ${q.at.join(' / ')} · ` : ''}{q.blurb} · {naira(q.reward)} · {q.secs}s · {q.skill} +{q.xp}{q.minSkill ? ` · needs Lv ${q.minSkill}` : ''}</small></button>)}</>}
       {tab === 'crime' && <><h3>No rules. Only consequences.</h3><p className="m">Do what you want. Heat ≥ 40 makes you WANTED: real police players can chase and arrest you, and you do jail time.</p><p className="m">Tills and vaults: go inside the shop or bank.</p>{(Object.keys(CRIMES) as CrimeId[]).filter(k => !CRIMES[k].at).map(k => <button key={k} disabled={!!st.jailLeft || p.profession === 'police'} onClick={() => crime(k)}><b>{CRIMES[k].label}</b><small>{naira(CRIMES[k].loot[0])}–{naira(CRIMES[k].loot[1])} · +{CRIMES[k].heat} heat</small></button>)}</>}
       {tab === 'police' && <><h3>Wanted (real players)</h3><p className="m">Get within {POLICE_ARREST_RANGE} m, then arrest.</p>{wanted.length === 0 && <p>Nobody is wanted right now.</p>}{wanted.map(w => <button key={w.name} onClick={() => arrest(w.name)}><b>{w.name}</b><small>heat {w.heat}</small></button>)}</>}
       {tab === 'love' && <><h3>❤️ Real-player relationships</h3><p className="muted">Meet another player in Abuja, connect, date, get engaged, then both choose marriage.</p>{reqs.map(r => <div key={r.id} className="row"><span>{r.aName} wants to be {r.status}</span><button onClick={() => love({ action: 'accept', from: r.aName })}>Accept</button></div>)}<input placeholder="Player name" value={to} onChange={e => setTo(e.target.value)} />{p.relationship === 'single' && <button disabled={!to} onClick={() => love({ action: 'propose', to, status: 'dating' })}>❤️ Ask to date</button>}{p.relationship === 'dating' && p.partner && <button disabled={!to || to !== p.partner} onClick={() => love({ action: 'propose', to, status: 'engaged' })}>💍 Ask to get engaged</button>}{p.relationship === 'engaged' && p.partner && <button disabled={!to || to !== p.partner} onClick={() => love({ action: 'propose', to, status: 'married' })}>💒 Ask to get married</button>}{p.partner && <button onClick={() => love({ action: 'end' })}>End relationship</button>}{near && <button disabled={!to} onClick={async () => { const r = await post('/api/invite', { to, building: near.id }); say(r.ok ? `Invited ${to} to ${near.name}` : r.d.error); }}>Invite {to || 'player'} to {near.name}</button>}</>}
       {tab === 'fame' && <FamePanel st={st} board={board} />}
-      {tab === 'players' && <PlayersPanel username={username} onClose={() => setTab(null)} />}
+      {tab === 'players' && <PlayersPanel username={username} onClose={() => setTab(null)} onOrder={n => { setTab(null); setOrderFor(n); }} />}
       {tab === 'me' && <MyLifePanel username={username} st={st} prof={prof} profile={p} />}
       {tab === 'city' && <CityLifePanel />}
     </div>}
@@ -174,7 +220,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   </>;
 }
 
-function PlayersPanel({ username, onClose }: { username: string; onClose: () => void }) {
+function PlayersPanel({ username, onClose, onOrder }: { username: string; onClose: () => void; onOrder: (name: string) => void }) {
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick(v => v + 1), 500); return () => clearInterval(id); }, []);
   const players = Object.entries(NET.peers).map(([name, q]) => ({ name, q, d: Math.hypot(q.x - NET.me.x, q.z - NET.me.z) })).sort((a, b) => a.d - b.d);
@@ -185,7 +231,7 @@ function PlayersPanel({ username, onClose }: { username: string; onClose: () => 
       {players.map(({ name, q, d }) => { const police = q.look.outfitModel === 'uniform'; return <div className="playerCard" key={name}>
         <div className="playerAvatar"><span>{q.look.gender === 'f' ? '👩🏽' : '👨🏽'}</span><i className={d < 20 ? 'near' : ''} /></div>
         <div className="playerInfo"><b>{name}</b><span>{police ? '👮 Police officer' : '🎮 Real player'} · {Math.round(d)}m away</span><small>{q.drv ? '🚗 Driving' : q.mv > 0 ? '🚶 Moving' : '🧍 Standing'}{q.cp ? ' · Own car' : ''}</small></div>
-        <div className="playerActions"><button onClick={() => { GAME.nav = { x: q.x, z: q.z, name }; onClose(); }}>📍</button><button onClick={() => window.dispatchEvent(new CustomEvent('arl-player-select', { detail: name }))}>👤</button></div>
+        <div className="playerActions"><button title="Order a ride for this player" onClick={() => onOrder(name)}>🚕</button><button onClick={() => { GAME.nav = { x: q.x, z: q.z, name }; onClose(); }}>📍</button><button onClick={() => window.dispatchEvent(new CustomEvent('arl-player-select', { detail: name }))}>👤</button></div>
       </div>; })}
     </div>}
   </>;

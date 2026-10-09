@@ -20,6 +20,8 @@ import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 import RuntimeStyle from './RuntimeStyle';
 import { worldMinute, worldCalendar, weatherAt, lightningAt } from '../lib/worldClock';
 import { createPortal } from 'react-dom';
+import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
+import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import { GRID, CURB, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
@@ -35,10 +37,7 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const FH = 3; // metres per floor
 const LIM = 135; // walkable limit
 const ev = (n: number) => ((n % 2) + 2) % 2 === 0;
-const BUILDS: CityBuilding[] = CITY.buildings.map((b: CityBuilding) => {
-  const bx = Math.round((b.x - 5.5) / 11), bz = Math.round((b.z - 5.5) / 11);
-  return { ...b, x: bx * GRID + 11 + (ev(bx) ? .5 : -.5), z: bz * GRID + 11 + (ev(bz) ? .5 : -.5), w: b.w * 1.15, d: b.d * 1.4 };
-});
+const BUILDS: CityBuilding[] = BUILDS_WORLD; // shared with the ride destinations (lib/destinations.ts)
 /** Where a player appears when they walk out of a building: on the frontage sidewalk, straight in front of the door (doors face +z).
  *  Uses the same scaled world layout as BUILDS (the raw CITY coordinates are on a different, smaller grid, so they must never be used for positions). */
 export function buildingExitPoint(businessId: string | null | undefined): { x: number; z: number } | null {
@@ -337,7 +336,17 @@ type Role = 'car' | 'taxi' | 'bike' | 'police' | 'bus';
 // hail: 0 = driving, 1 = pulling over for a player, 2 = stopped at the kerb waiting.   busy = carrying a player right now.
 type SimCar = { s: number; color: string; kind: number; model: string; role: Role; mul: number; v?: number; off: number; laneShift: number; hail: 0 | 1 | 2; stopping?: boolean; readyAt?: number; busy?: boolean };
 type Lane = { axis: 'x' | 'z'; dir: 1 | -1; fixed: number; speed: number; rot: number; road: number; cars: SimCar[] };
-const ROAM = { cars: [] as { l: Lane; c: SimCar }[], sel: -1, rideIdx: -1, openSheet: (_i: number) => {}, tap: (_i: number) => {} };
+/* A ride another player ordered for you (and you accepted): the taxi comes to you and sets off by itself, already paid. */
+const DISPATCH = { idx: -1, ride: null as null | { id: string; name: string; x: number; z: number } };
+/* The passengers already on a bus: they each get off at their own stop. n = how many people get off there. */
+type BusStop = { name: string; x: number; z: number; n: number; mine?: boolean };
+const MANIFEST = new Map<number, BusStop[]>();
+function busManifest(): BusStop[] {
+  const pool = [...BUILDING_DESTS].sort(() => Math.random() - .5), k = 2 + Math.floor(Math.random() * 3);
+  return pool.slice(0, k).map(d => ({ name: d.name, x: d.x, z: d.z, n: 1 + Math.floor(Math.random() * 3) }));
+}
+const ROAM = { autoGo: (_i: number) => {}, lanes: [] as Lane[], cars: [] as { l: Lane; c: SimCar }[], sel: -1, rideIdx: -1, openSheet: (_i: number) => {}, tap: (_i: number) => {} };
+const isHail = (r: Role) => r === 'taxi' || r === 'bike' || r === 'bus'; // vehicles a player can flag down
 const roleOf = (n: number): Role => (n % 17 === 7 ? 'bus' : n % 4 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
 const ROLE_MUL: Record<Role, number> = { car: 1, taxi: 1, bike: .8, police: 1.15, bus: .72 };
 const COLORS = ['#c0392b', '#e8e8ea', '#1f2933', '#2c5aa0', '#8e949a', '#b7791f', '#0f766e', '#7c2d12', '#d9d9dc', '#1e9e55'];
@@ -362,18 +371,20 @@ function Traffic() {
   const refs = useRef<(THREE.Group | null)[]>([]);
   const lbl = useRef<THREE.Group>(null!), lblEl = useRef<HTMLDivElement | null>(null), lblKey = useRef('');
   useEffect(() => {
-    ROAM.cars = flat;
+    ROAM.cars = flat; ROAM.lanes = lanes;
     ROAM.tap = (i: number) => {
       const e = ROAM.cars[i]; if (!e || e.c.busy || GAME.ride || VEH.drv || GAME.jailed) return;
       const t = TPOS[i], d = t ? Math.hypot(GAME.player.x - t.x, GAME.player.z - t.z) : 999, role = e.c.role;
-      if (e.c.hail === 2) { if (d < 18) ROAM.openSheet(i); else GAME.notice = `Walk up to the ${role === 'taxi' ? 'taxi' : 'bike'} first.`; return; }
+      const nm = role === 'taxi' ? 'taxi' : role === 'bus' ? 'bus' : 'bike';
+      if (e.c.hail === 2) { if (d < 18) ROAM.openSheet(i); else GAME.notice = `Walk up to the ${nm} first.`; return; }
       if (e.c.hail === 1) return;
       if (d > 90) { GAME.notice = 'Too far away: wait for it to come closer.'; return; }
       const old = ROAM.cars[ROAM.sel]; if (old && old.c.hail && old.c !== e.c) releaseRoamer(old.c);
       e.c.hail = 1; e.c.stopping = false; e.c.v = e.l.speed * e.c.mul; ROAM.sel = i;
-      GAME.notice = role === 'taxi' ? '🚕 Taxi is pulling over for you...' : '🚲 Bike taxi is pulling over for you...';
+      if (role === 'bus') MANIFEST.set(i, busManifest());
+      GAME.notice = role === 'taxi' ? '🚕 Taxi is pulling over for you...' : role === 'bus' ? '🚌 Bus is pulling over at the stop...' : '🚲 Bike taxi is pulling over for you...';
     };
-    return () => { ROAM.cars = []; ROAM.sel = -1; ROAM.rideIdx = -1; };
+    return () => { ROAM.cars = []; ROAM.sel = -1; ROAM.rideIdx = -1; DISPATCH.idx = -1; MANIFEST.clear(); };
   }, [flat]);
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
@@ -390,12 +401,12 @@ function Traffic() {
         if (prev >= 3 && prev <= 14) c.stopping = true; // brake only mid-block, never inside a junction
         if (c.stopping) v = Math.max(0, v - 16 * dt);
         c.off = Math.min(EX, c.off + 3.5 * dt);
-        if (c.stopping && v === 0 && c.off >= EX - .02) { c.hail = 2; c.readyAt = t; if (Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z) < 18) ROAM.openSheet(i); GAME.notice = c.role === 'taxi' ? '🚕 Taxi stopped: walk up and tap it.' : '🚲 Bike taxi stopped: walk up and tap it.'; }
+        if (c.stopping && v === 0 && c.off >= EX - .02) { c.hail = 2; c.readyAt = t; if (DISPATCH.idx === i) ROAM.autoGo(i); else { if (Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z) < 18) ROAM.openSheet(i); GAME.notice = c.role === 'taxi' ? '🚕 Taxi stopped: walk up and tap it.' : c.role === 'bus' ? '🚌 Bus stopped: walk up and tap it.' : '🚲 Bike taxi stopped: walk up and tap it.'; } }
         c.v = v;
       } else if (c.hail === 2) {
         v = 0; c.v = 0; c.off = EX;
         const d = Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z);
-        if (!CINE.on && (t - (c.readyAt || t) > 120 || d > 140) || (GAME.ride && !CINE.on) || VEH.drv) releaseRoamer(c); // you changed your mind: it drives off
+        if (DISPATCH.idx !== i && (!CINE.on && (t - (c.readyAt || t) > 120 || d > 140) || (GAME.ride && !CINE.on) || VEH.drv)) releaseRoamer(c); // you changed your mind: it drives off
       } else {
         if (c.off > 0) c.off = Math.max(0, c.off - 2.2 * dt);
         if (c.v !== undefined) { v = Math.min(base, c.v + 5 * dt); c.v = v >= base && c.off === 0 ? undefined : v; }
@@ -411,7 +422,7 @@ function Traffic() {
       const px = l.axis === 'x' ? c.s : l.fixed - l.dir * c.off + c.laneShift, pz = l.axis === 'x' ? l.fixed + l.dir * c.off + c.laneShift : c.s;
       tp.x = px; tp.z = pz; tp.r = l.rot;
       if (g) { g.position.set(px, 0, pz); g.rotation.y = l.rot; }
-      if ((c.role === 'taxi' || c.role === 'bike') && !GAME.ride && !VEH.drv && !GAME.jailed) {
+      if (isHail(c.role) && !GAME.ride && !VEH.drv && !GAME.jailed) {
         const dd = Math.hypot(GAME.player.x - px, GAME.player.z - pz);
         if (ROAM.sel === i && c.hail) { nearI = i; nearD = -1; } else if (!c.hail && dd < nearD) { nearI = i; nearD = dd; }
       }
@@ -421,8 +432,8 @@ function Traffic() {
     if (el && grp) {
       let key = '';
       if (nearI >= 0) {
-        const e = flat[nearI], tp = TPOS[nearI], d = Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z), ic = e.c.role === 'taxi' ? '🚕' : '🚲';
-        grp.position.set(tp.x, e.c.role === 'taxi' ? 2.5 : 2.1, tp.z);
+        const e = flat[nearI], tp = TPOS[nearI], d = Math.hypot(GAME.player.x - tp.x, GAME.player.z - tp.z), ic = e.c.role === 'taxi' ? '🚕' : e.c.role === 'bus' ? '🚌' : '🚲';
+        grp.position.set(tp.x, e.c.role === 'taxi' ? 2.5 : e.c.role === 'bus' ? 3.4 : 2.1, tp.z);
         key = e.c.hail === 1 ? `${ic} Pulling over...` : e.c.hail === 2 ? (d < 18 ? `${ic} Tap to ride` : `${ic} Waiting: walk up`) : `${ic} Tap to hail`;
         if (e.c.hail === 2 && d < 18) key += '|go'; else if (e.c.hail === 0) key += '|go';
       }
@@ -431,8 +442,8 @@ function Traffic() {
   });
   return <>
     {flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}
-      onClick={c.role === 'taxi' || c.role === 'bike' ? (e => { if (e.delta > 6) return; e.stopPropagation(); ROAM.tap(i); }) : undefined}>
-      {(c.role === 'taxi' || c.role === 'bike') && <mesh position={[0, 1.1, 0]}><boxGeometry args={[3.4, 2.6, 5.6]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>}
+      onClick={isHail(c.role) ? (e => { if (e.delta > 6) return; e.stopPropagation(); ROAM.tap(i); }) : undefined}>
+      {isHail(c.role) && <mesh position={[0, 1.1, 0]}><boxGeometry args={c.role === 'bus' ? [7, 3, 3.4] : [3.4, 2.6, 5.6]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>}
       {c.role === 'taxi' ? <TaxiBody kit={kit} /> : c.role === 'bike' ? <BikeBody scale={.95} rider /> : c.role === 'police' ? <PoliceBody kit={kit} /> : c.role === 'bus' ? <BusBody /> : <CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} />}
     </group>)}
     <group ref={lbl}><Html center zIndexRange={[4, 0]}><div ref={lblEl} className="hailTag" style={{ display: 'none' }} onClick={() => { const i = Number(lblEl.current?.dataset.i); if (i >= 0) ROAM.tap(i); }} /></Html></group>
@@ -448,7 +459,6 @@ function respawnRoamer(idx: number) {
 }
 
 /* ───────────── transport: roaming taxis + bike taxis (hail them in the street) ───────────── */
-const DESTS = CITY.districts.slice(0, 8).map(d => ({ name: d.name, x: d.x, z: d.z }));
 
 /* ───────────── roadside advertising billboards ───────────── */
 // On the sidewalk strip, front face towards the road, up on tall posts so they read above the traffic. (They used to sit mid-block, inside the buildings.)
@@ -467,6 +477,38 @@ const TRANSPORT_SOLIDS = [
   ...BILLBOARDS.flatMap(b => [-1.7, 1.7].map(o => ({ x: b.x + b.ax * o, z: b.z + b.az * o, r: .1 }))),
 ];
 
+/** Can this player take a dispatched ride right now? (null = yes, otherwise the reason why not.) */
+export function canDispatchRide(): string | null {
+  if (GAME.ride || CINE.on) return 'You are already on a ride.';
+  if (VEH.drv) return 'Get out of your car first.';
+  if (GAME.jailed) return 'You cannot take a ride from jail.';
+  if (DISPATCH.idx >= 0) return 'A ride is already on its way to you.';
+  if (!ROAM.cars.length) return 'The city streets are still loading: try again in a moment.';
+  return null;
+}
+/** A taxi / bike taxi drives to this player and takes them to the destination another player picked. The fare was already paid by that player. */
+export function dispatchRide(r: { id: string; name: string; x: number; z: number; kind: string }): string | null {
+  const bad = canDispatchRide(); if (bad) return bad;
+  const want: Role = r.kind === 'bike' ? 'bike' : 'taxi', P = GAME.player;
+  let bi = -1, bd = Infinity;
+  ROAM.cars.forEach((e, i) => { if (e.c.role !== want || e.c.busy || e.c.hail) return; const tp = TPOS[i]; if (!tp) return; const d = Math.hypot(P.x - tp.x, P.z - tp.z); if (d < bd) { bd = d; bi = i; } });
+  if (bi < 0) return `No free ${want === 'bike' ? 'bike taxi' : 'taxi'} right now: try again in a moment.`;
+  const e = ROAM.cars[bi];
+  if (bd > 70) { // too far to drive over in reasonable time: it joins the road beside the player, a short way back
+    let best: Lane | null = null, bp = Infinity;
+    for (const l of ROAM.lanes) { const perp = Math.abs((l.axis === 'x' ? P.z : P.x) - l.fixed); if (perp < bp) { bp = perp; best = l; } }
+    if (best) {
+      const L: Lane = best, pa = L.axis === 'x' ? P.x : P.z;
+      e.l.cars = e.l.cars.filter(o => o !== e.c); L.cars.push(e.c); e.l = L;
+      e.c.s = Math.max(-110, Math.min(110, pa - L.dir * 30)); e.c.off = 0; e.c.laneShift = 0;
+    }
+  }
+  const { l, c } = e;
+  c.hail = 1; c.stopping = false; c.v = l.speed * c.mul; ROAM.sel = bi;
+  DISPATCH.idx = bi; DISPATCH.ride = { id: r.id, name: r.name, x: r.x, z: r.z };
+  GAME.notice = want === 'bike' ? '🚲 Your bike taxi is on its way to you...' : '🚕 Your taxi is on its way to you...';
+  return null;
+}
 function BusBody() { // faces +x like every vehicle: a yellow city bus with a window band, pillars, doors, lights and a destination sign
   const Y = '#e8a923', D = '#14202a';
   return <group>
@@ -546,19 +588,25 @@ function PoliceBody({ kit }: { kit: Kit }) {
     {[1, -1].map(sd => <Text key={sd} position={[-.2, .78, sd * .94]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.2} color="#1d3f8f" anchorX="center" anchorY="middle">POLICE</Text>)}
   </group>;
 }
-function TransportSheet({ kind, onPick, onClose }: { kind: 'taxi' | 'bike'; onPick: (d: { name: string; x: number; z: number }) => Promise<string | void> | void; onClose: () => void }) {
+function TransportSheet({ kind, manifest, onPick, onClose }: { kind: 'taxi' | 'bike' | 'bus'; manifest?: BusStop[]; onPick: (d: Dest) => Promise<string | void> | void; onClose: () => void }) {
   const [busy, setBusy] = useState(false), [msg, setMsg] = useState(''), [fare, setFare] = useState<number | null>(null);
-  useEffect(() => { fetch('/api/transport').then(r => r.json()).then(d => { const f = d?.fares?.[kind]; if (typeof f === 'number') setFare(f); }).catch(() => {}); }, [kind]);
-  const pick = async (d: { name: string; x: number; z: number }) => {
+  const riders = kind === 'bus' ? 1 + (manifest || []).reduce((a, m) => a + m.n, 0) : 1;
+  useEffect(() => { fetch(`/api/transport?riders=${riders}`).then(r => r.json()).then(d => { const f = d?.fares?.[kind]; if (typeof f === 'number') setFare(f); }).catch(() => {}); }, [kind, riders]);
+  const pick = async (d: Dest) => {
     if (busy) return; setBusy(true); setMsg('');
     try { const m = await onPick(d); if (m) { setMsg(m); setBusy(false); } } catch { setMsg('Something went wrong. Try again.'); setBusy(false); }
   };
   return createPortal(<div className="trSheet">
     <button className="trX" aria-label="Close" onClick={onClose}>✕</button>
-    <h3><span>{kind === 'taxi' ? '🚕 Taxi' : '🚲 Bike taxi'}</span></h3>
-    <div className="trBody"><p>Where to? An NPC driver takes you there along the road.{fare !== null ? ` Fare: ₦${fare.toLocaleString()}` : ''}</p>
+    <h3><span>{kind === 'taxi' ? '🚕 Taxi' : kind === 'bus' ? '🚌 City bus' : '🚲 Bike taxi'}</span></h3>
+    <div className="trBody">
+      {kind === 'bus'
+        ? <p>Cheap shared ride{fare !== null ? `: ₦${fare.toLocaleString()}` : ''}. {riders - 1} other passenger{riders - 1 === 1 ? ' is' : 's are'} aboard and the bus drops each one at their own stop before yours.</p>
+        : <p>Where to? An NPC driver takes you there along the road.{fare !== null ? ` Fare: ₦${fare.toLocaleString()}` : ''}</p>}
+      {kind === 'bus' && manifest && manifest.length > 0 && <p>🧍 Stops on this bus: {manifest.map(m => m.name).join(' · ')}</p>}
       {msg && <p style={{ background: '#ffd9d4', color: '#7a1608', fontWeight: 800 }}>{msg}</p>}
-      {DESTS.map(d => <button key={d.name} disabled={busy} style={busy ? { opacity: .6 } : undefined} onClick={() => pick(d)}><span className="tx"><b>{d.name}</b></span><em>{busy ? '…' : 'Go'}</em></button>)}</div>
+      <DestPicker disabled={busy} onPick={pick} />
+    </div>
   </div>, document.body);
 }
 /* ── passenger cinematic: the door swings open, the character walks up and gets in; at the destination the door opens and they step out ── */
@@ -566,17 +614,19 @@ const CINE = { on: false };
 type CarPose = { x: number; z: number; r: number };
 const smooth = (u: number) => { const c = Math.max(0, Math.min(1, u)); return c * c * (3 - 2 * c); };
 // car faces local +x; local +z is its side. door sits on the rear-door spot of the chosen side.
-function doorPts(c: CarPose, side: 1 | -1, bike: boolean) {
+function doorPts(c: CarPose, side: 1 | -1, bike: boolean, bus = false) {
   const fx = Math.cos(c.r), fz = -Math.sin(c.r), sx = Math.sin(c.r), sz = Math.cos(c.r);
   const at = (lx: number, ls: number): [number, number] => [c.x + fx * lx + sx * ls * side, c.z + fz * lx + sz * ls * side];
+  if (bus) return { door: at(1.7, 1.15), out: at(1.7, 2.35), seat: at(1.2, .3) }; // the bus's real door is the one drawn at x = 1.7
   return bike ? { door: at(0, .55), out: at(0, 1.5), seat: at(0, 0) } : { door: at(-.6, 1.0), out: at(-.6, 2.05), seat: at(-.4, .3) };
 }
-type Cine = { ph: 'walk' | 'enter' | 'close' | 'open' | 'exit' | 'off'; t: number; side: 1 | -1; bike: boolean; ang: number; car: CarPose; ax: number; az: number; yaw: number; walk: boolean; fin: () => void; drop?: [number, number]; from?: [number, number] };
+type Cine = { ph: 'walk' | 'enter' | 'close' | 'open' | 'exit' | 'off'; t: number; side: 1 | -1; bike: boolean; bus?: boolean; ang: number; car: CarPose; ax: number; az: number; yaw: number; walk: boolean; fin: () => void; drop?: [number, number]; from?: [number, number] };
 function TransportVehicles({ look }: { look: Look }) {
   const actor = useRef<THREE.Group>(null!), doorG = useRef<THREE.Group>(null!), hinge = useRef<THREE.Group>(null!), cine = useRef<Cine | null>(null), walking = useRef(false);
   const kit = useMemo(carKit, []);
   const [open, setOpen] = useState<number | null>(null), [, setTick] = useState(0);
   const activeRef = useRef<THREE.Group>(null!), rs = useRef<RideState | null>(null), route = useRef<Route | null>(null);
+  const busTrip = useRef<{ stops: BusStop[]; k: number; dwell: number } | null>(null), rideId = useRef<string | null>(null); // bus stops still to serve / the id of a ride another player ordered for you
   useEffect(() => { ROAM.openSheet = (i: number) => { if (!GAME.ride) setOpen(i); }; return () => { ROAM.openSheet = () => {}; }; }, []);
   useEffect(() => { // walk away (or the vehicle drives off) and the destination menu closes
     const id = setInterval(() => {
@@ -591,7 +641,7 @@ function TransportVehicles({ look }: { look: Look }) {
     OBS[2].on = !!ride && !!rs.current;
     const cn = cine.current;
     if (cn && ride && g) { // ── door + walk-in / walk-out animation ──
-      const dt = Math.min(dtRaw, .05), A = actor.current, D = doorG.current, H = hinge.current, P = doorPts(cn.car, cn.side, cn.bike);
+      const dt = Math.min(dtRaw, .05), A = actor.current, D = doorG.current, H = hinge.current, P = doorPts(cn.car, cn.side, cn.bike, cn.bus);
       cn.t += dt;
       const goTo = (tx: number, tz: number, sp: number) => { const dx = tx - cn.ax, dz = tz - cn.az, d = Math.hypot(dx, dz); if (d > .02) cn.yaw = Math.atan2(dx, dz); const s = Math.min(d, sp * dt); if (d > 1e-4) { cn.ax += dx / d * s; cn.az += dz / d * s; } return d - s; };
       const door = (want: number) => { cn.ang += (want - cn.ang) * Math.min(1, dt * 16); };
@@ -615,24 +665,37 @@ function TransportVehicles({ look }: { look: Look }) {
       }
       walking.current = cn.walk;
       A.position.set(cn.ax, 0, cn.az); A.rotation.y = cn.yaw; if (cn.ph !== 'close' && cn.ph !== 'open') A.visible = true;
-      D.visible = !cn.bike && cn.ang > .01; D.position.set(cn.car.x, 0, cn.car.z); D.rotation.y = cn.car.r; H.position.set(.15, 0, cn.side * .93); H.rotation.y = cn.side * cn.ang;
+      D.visible = !cn.bike && !cn.bus && cn.ang > .01; D.position.set(cn.car.x, 0, cn.car.z); D.rotation.y = cn.car.r; H.position.set(.15, 0, cn.side * .93); H.rotation.y = cn.side * cn.ang;
       ride.x = cn.ax; ride.z = cn.az; ride.r = cn.car.r; GAME.player.x = cn.ax; GAME.player.z = cn.az;
       if (cn.ph === 'walk' || cn.ph === 'enter' || cn.ph === 'close') g.visible = false; else { g.visible = true; g.position.set(cn.car.x, 0, cn.car.z); g.rotation.y = cn.car.r; }
       return;
     }
     if (!ride || !g || !rs.current || !route.current) { if (g) g.visible = false; return; }
     const r = rs.current, rt = route.current;
-    stepRide(r, rt, Math.min(dtRaw, .05), { vmax: ride.kind === 'taxi' ? 11 : 7.5, t: st.clock.elapsedTime, light: lightState, cars: TPOS });
+    stepRide(r, rt, Math.min(dtRaw, .05), { vmax: ride.kind === 'taxi' ? 11 : ride.kind === 'bus' ? 8.5 : 7.5, t: st.clock.elapsedTime, light: lightState, cars: TPOS });
     ride.x = r.x; ride.z = r.z; ride.r = r.r;
     g.visible = true; g.position.set(r.x, 0, r.z); g.rotation.y = r.r;
     OBS[2].x = r.x; OBS[2].z = r.z; GAME.player.x = r.x; GAME.player.z = r.z;
     if (r.done) { // arrived: the door opens, the rider steps out onto the sidewalk, the door shuts and the taxi / bike goes back to roaming the city
-      const car: CarPose = { x: r.x, z: r.z, r: r.r }, bike = ride.kind === 'bike', name = ride.name, drop: [number, number] = [rt.drop[0], rt.drop[1]];
-      const side: 1 | -1 = ((drop[0] - car.x) * Math.sin(car.r) + (drop[1] - car.z) * Math.cos(car.r)) >= 0 ? 1 : -1, seat = doorPts(car, side, bike).seat;
+      const bt = busTrip.current;
+      if (bt && !bt.stops[bt.k]?.mine) { // a bus stop that is not yours: the other passengers get off, then the bus drives on to the next stop
+        const stop = bt.stops[bt.k];
+        if (bt.dwell < 0) { bt.dwell = 2.6; GAME.notice = `🚌 ${stop.name}: ${stop.n} passenger${stop.n === 1 ? '' : 's'} got off`; }
+        bt.dwell -= Math.min(dtRaw, .05);
+        if (bt.dwell > 0) return;
+        let leg: Route | null = null;
+        while (bt.k + 1 < bt.stops.length) { bt.k++; const nx = bt.stops[bt.k]; leg = planRide(rt.end, [nx.x, nx.z]); if (leg || nx.mine) break; }
+        bt.dwell = -1;
+        if (leg) { route.current = leg; rs.current = newRide(leg, r.r); ride.path = leg.pts; ride.i = 0; GAME.notice = `🚌 Next stop: ${bt.stops[bt.k].name}`; return; }
+        busTrip.current = null; GAME.notice = '🚌 The bus cannot reach your stop from here: you get off at the last stop.'; // fall through: let the player off now
+      }
+      const car: CarPose = { x: r.x, z: r.z, r: r.r }, bike = ride.kind === 'bike', bus = ride.kind === 'bus', name = ride.name, drop: [number, number] = [rt.drop[0], rt.drop[1]];
+      const side: 1 | -1 = ((drop[0] - car.x) * Math.sin(car.r) + (drop[1] - car.z) * Math.cos(car.r)) >= 0 ? 1 : -1, seat = doorPts(car, side, bike, bus).seat;
       CINE.on = true;
-      cine.current = { ph: bike ? 'exit' : 'open', t: 0, side, bike, ang: 0, car, ax: seat[0], az: seat[1], yaw: car.r, walk: false, drop, fin: () => {
+      cine.current = { ph: bike ? 'exit' : 'open', t: 0, side, bike, bus, ang: 0, car, ax: seat[0], az: seat[1], yaw: car.r, walk: false, drop, fin: () => {
         cine.current = null; CINE.on = false; walking.current = false; actor.current.visible = false; doorG.current.visible = false;
-        GAME.ride = null; rs.current = null; route.current = null; OBS[2].on = false;
+        GAME.ride = null; rs.current = null; route.current = null; OBS[2].on = false; busTrip.current = null;
+        if (rideId.current) { const id = rideId.current; rideId.current = null; fetch('/api/rides', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'complete', id }) }).catch(() => {}); }
         GAME.player.x = drop[0]; GAME.player.z = drop[1]; GAME.tp = { x: drop[0], z: drop[1] };
         GAME.notice = `📍 Arrived at ${name}`; g.visible = false;
         if (ROAM.rideIdx >= 0) { respawnRoamer(ROAM.rideIdx); ROAM.rideIdx = -1; }
@@ -641,28 +704,45 @@ function TransportVehicles({ look }: { look: Look }) {
     }
   });
 
-  const go = async (idx: number, d: { name: string; x: number; z: number }): Promise<string | void> => {
-    const e = ROAM.cars[idx], tp = TPOS[idx]; if (!e || !tp || e.c.hail !== 2 || e.c.busy) { setOpen(null); return; }
-    const { l, c } = e, kind = c.role === 'bike' ? 'bike' : 'taxi';
-    const rt = planRide({ x: tp.x, z: tp.z, axis: l.axis, road: l.road, along: c.s, h: l.dir }, [d.x, d.z]);
-    if (!rt) { GAME.notice = 'It cannot set off from here: hail one nearer the middle of the map.'; releaseRoamer(c); setOpen(null); return; }
+  const refundRide = (id: string) => { fetch('/api/rides', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'refund', id }) }).catch(() => {}); };
+  /** `pre` = the id of a ride another player already paid for: nothing is charged and the destination was chosen by them. */
+  const go = async (idx: number, d: Dest, pre?: string): Promise<string | void> => {
+    const e = ROAM.cars[idx], tp = TPOS[idx]; if (!e || !tp || e.c.hail !== 2 || e.c.busy) { setOpen(null); if (pre) refundRide(pre); return; }
+    const { l, c } = e, kind: 'taxi' | 'bike' | 'bus' = c.role === 'bus' ? 'bus' : c.role === 'bike' ? 'bike' : 'taxi';
+    const start = { x: tp.x, z: tp.z, axis: l.axis, road: l.road, along: c.s, h: l.dir };
+    const direct = planRide(start, [d.x, d.z]);
+    if (!direct) { GAME.notice = 'It cannot set off from here: hail one nearer the middle of the map.'; releaseRoamer(c); DISPATCH.idx = -1; if (pre) refundRide(pre); setOpen(null); return; }
+    let rt = direct, stops: BusStop[] | null = null, firstK = 0, riders = 1;
+    if (kind === 'bus') { // the bus visits every passenger's stop (nearest first) and ends at yours
+      const all: BusStop[] = [...(MANIFEST.get(idx) || []), { name: d.name, x: d.x, z: d.z, n: 0, mine: true }];
+      riders = all.reduce((a, m) => a + m.n, 1);
+      const order: BusStop[] = []; let cx = tp.x, cz = tp.z;
+      while (all.length) { let bi = 0, bd = Infinity; all.forEach((s2, i) => { const dd = Math.hypot(s2.x - cx, s2.z - cz); if (dd < bd) { bd = dd; bi = i; } }); const [s2] = all.splice(bi, 1); order.push(s2); cx = s2.x; cz = s2.z; if (s2.mine) break; } // passengers whose stop is after yours stay on board
+      let leg: Route | null = null; for (; firstK < order.length; firstK++) { leg = planRide(start, [order[firstK].x, order[firstK].z]); if (leg || order[firstK].mine) break; }
+      if (!leg) { leg = direct; firstK = order.length - 1; }
+      rt = leg; stops = order;
+    }
     let res: Response, data: any;
-    try { res = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind }) }); data = await res.json().catch(() => ({})); } catch { return 'Network error. Try again.'; }
-    if (!res.ok) { const m = data.error || 'Transport unavailable.'; GAME.notice = m; return m; }
+    try { res = await fetch('/api/transport', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(pre ? { rideId: pre } : { kind, riders }) }); data = await res.json().catch(() => ({})); } catch { return 'Network error. Try again.'; }
+    if (!res.ok) { const m = data.error || 'Transport unavailable.'; GAME.notice = m; if (pre) { releaseRoamer(c); DISPATCH.idx = -1; } return m; }
     if (c.hail !== 2 || c.busy) { GAME.notice = 'That ride left without you.'; setOpen(null); return; }
-    const p0 = GAME.player, bike = kind === 'bike', car: CarPose = { x: tp.x, z: tp.z, r: l.rot };
+    MANIFEST.delete(idx);
+    const p0 = GAME.player, bike = kind === 'bike', bus = kind === 'bus', car: CarPose = { x: tp.x, z: tp.z, r: l.rot };
     const side: 1 | -1 = ((p0.x - tp.x) * Math.sin(l.rot) + (p0.z - tp.z) * Math.cos(l.rot)) >= 0 ? 1 : -1;
-    CINE.on = true; ROAM.sel = -1;
-    GAME.ride = { kind, x: p0.x, z: p0.z, r: l.rot, name: d.name, path: rt.pts, i: 0, speed: kind === 'taxi' ? 11 : 7.5, stand: -1 };
-    cine.current = { ph: 'walk', t: 0, side, bike, ang: 0, car, ax: p0.x, az: p0.z, yaw: Math.atan2(tp.x - p0.x, tp.z - p0.z), walk: true, fin: () => { // door shut, passenger inside: off we go
+    CINE.on = true; ROAM.sel = -1; DISPATCH.idx = -1; DISPATCH.ride = null;
+    GAME.ride = { kind, x: p0.x, z: p0.z, r: l.rot, name: d.name, path: rt.pts, i: 0, speed: kind === 'taxi' ? 11 : kind === 'bus' ? 8.5 : 7.5, stand: -1 };
+    cine.current = { ph: 'walk', t: 0, side, bike, bus, ang: 0, car, ax: p0.x, az: p0.z, yaw: Math.atan2(tp.x - p0.x, tp.z - p0.z), walk: true, fin: () => { // door shut, passenger inside: off we go
       cine.current = null; CINE.on = false; walking.current = false; actor.current.visible = false; doorG.current.visible = false;
       route.current = rt; rs.current = newRide(rt, l.rot); c.busy = true; c.hail = 0; c.stopping = false; ROAM.rideIdx = idx;
-      GAME.notice = `${kind === 'taxi' ? '🚕 Your driver' : '🚲 Your rider'} is taking you to ${d.name}`; setTick(v => v + 1);
+      busTrip.current = stops ? { stops, k: firstK, dwell: -1 } : null; rideId.current = pre || null;
+      GAME.notice = kind === 'bus' ? `🚌 Bus to ${d.name}: ${stops && stops.length > 1 ? `${stops.length - 1} stop${stops.length === 2 ? '' : 's'} on the way` : 'no stops on the way'}` : `${kind === 'taxi' ? '🚕 Your driver' : '🚲 Your rider'} is taking you to ${d.name}`; setTick(v => v + 1);
     } };
-    GAME.notice = kind === 'taxi' ? '🚕 Getting in...' : '🚲 Hopping on...';
+    GAME.notice = kind === 'bus' ? '🚌 Getting on...' : kind === 'taxi' ? '🚕 Getting in...' : '🚲 Hopping on...';
     setOpen(null); setTick(v => v + 1);
   };
-  const openKind = open !== null ? (ROAM.cars[open]?.c.role === 'bike' ? 'bike' : 'taxi') : 'taxi';
+  // a ride another player ordered for you has pulled up: climb in and go, no menu, no payment
+  useEffect(() => { ROAM.autoGo = (i: number) => { const r = DISPATCH.ride; if (!r || DISPATCH.idx !== i) return; if (VEH.drv || GAME.ride || GAME.jailed) { refundRide(r.id); const rc = ROAM.cars[i]; if (rc) releaseRoamer(rc.c); DISPATCH.idx = -1; DISPATCH.ride = null; GAME.notice = 'Ride cancelled: you were busy. The fare was returned.'; return; } go(i, { id: 'dispatch', name: r.name, type: 'Meeting point', district: '', x: r.x, z: r.z }, r.id); }; return () => { ROAM.autoGo = () => {}; }; });
+  const openKind: 'taxi' | 'bike' | 'bus' = open !== null ? (ROAM.cars[open]?.c.role === 'bike' ? 'bike' : ROAM.cars[open]?.c.role === 'bus' ? 'bus' : 'taxi') : 'taxi';
   return <>
     <group ref={actor} visible={false}><Human look={look} getState={() => (walking.current ? 'walk' : 'idle')} getSpeed={() => 1.9} /></group>
     <group ref={doorG} visible={false}><group ref={hinge} position={[.15, 0, .93]}>
@@ -670,9 +750,9 @@ function TransportVehicles({ look }: { look: Look }) {
       <mesh position={[-.45, 1.17, 0]}><boxGeometry args={[.8, .3, .04]} /><meshStandardMaterial color="#1b2a38" metalness={.6} roughness={.15} /></mesh>
       <mesh position={[-.82, .92, .05]}><boxGeometry args={[.14, .03, .05]} /><meshStandardMaterial color="#222" /></mesh>
     </group></group>
-    <group ref={activeRef} visible={false}>{GAME.ride?.kind === 'bike' ? <BikeBody scale={1} rider /> : <TaxiBody kit={kit} driver />}</group>
-    {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={openKind} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
-    <RuntimeStyle css={`.hailTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:5px 12px 4px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;pointer-events:auto;cursor:pointer}.hailTag.go{background:var(--gold,#ffb81c)}\n.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
+    <group ref={activeRef} visible={false}>{GAME.ride?.kind === 'bike' ? <BikeBody scale={1} rider /> : GAME.ride?.kind === 'bus' ? <BusBody /> : <TaxiBody kit={kit} driver />}</group>
+    {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={openKind} manifest={MANIFEST.get(open)} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
+    <RuntimeStyle css={`${DEST_PICKER_CSS}.hailTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:5px 12px 4px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;pointer-events:auto;cursor:pointer}.hailTag.go{background:var(--gold,#ffb81c)}\n.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
 .trSheet{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(320px,40vw);display:flex;flex-direction:column;overflow:hidden;background:var(--plum,#261a36);color:var(--cream,#fff3d6);border:4px solid var(--ink,#1a1410);border-radius:22px;box-shadow:0 6px 0 var(--ink,#1a1410),0 18px 34px #000a;font-family:var(--gf,system-ui);animation:trIn .24s cubic-bezier(.3,1.4,.5,1)}
 .trSheet h3{flex:none;margin:0;padding:10px 54px 8px 16px;background:var(--gold,#ffb81c);border-bottom:4px solid var(--ink,#1a1410);font-weight:400;font-size:22px;line-height:1.1;letter-spacing:.04em;color:#fff;background-image:repeating-linear-gradient(135deg,#ffffff1c 0 10px,#0000 10px 20px)}.trSheet h3 span{display:block;-webkit-text-stroke:6px var(--ink,#1a1410);paint-order:stroke fill}
 .trX{all:unset;box-sizing:border-box;position:absolute;z-index:2;right:10px;top:8px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;cursor:pointer;background:var(--red,#ff5147);border:3px solid var(--ink,#1a1410);box-shadow:0 3px 0 var(--ink,#1a1410);color:#fff;font-size:15px}.trX:active{transform:translateY(3px);box-shadow:none}
@@ -991,7 +1071,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16, r: Math.PI }; // overwritten with a random sidewalk spot each time a player steps outside (see CityWorld)
-export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
+export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const WX = { over: new THREE.Color('#7d8791'), dust: new THREE.Color('#d6bf9b'), flash: new THREE.Color('#e8f0ff'), tmp: new THREE.Color() };
@@ -1159,8 +1239,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       c.taxi = false;
       if (!VEH.drv && !GAME.ride && !GAME.jailed && !CINE.on) {
         let bi = -1, bd = 1e9;
-        ROAM.cars.forEach((e, i) => { const tp = TPOS[i]; if (!tp || e.c.busy || (e.c.role !== 'taxi' && e.c.role !== 'bike')) return; const d = Math.hypot(p.x - tp.x, p.z - tp.z); if (e.c.hail === 2 && d < 18) { if (bd > -1) { bd = -1; bi = i; } } else if (e.c.hail !== 1 && bd >= 0 && d < bd) { bd = d; bi = i; } });
-        if (bi < 0) GAME.notice = ROAM.cars.some(e => e.c.hail === 1) ? '🚕 Your taxi is still pulling over...' : '🚕 No taxi nearby: wait for one to drive past.';
+        ROAM.cars.forEach((e, i) => { const tp = TPOS[i]; if (!tp || e.c.busy || !isHail(e.c.role)) return; const d = Math.hypot(p.x - tp.x, p.z - tp.z); if (e.c.hail === 2 && d < 18) { if (bd > -1) { bd = -1; bi = i; } } else if (e.c.hail !== 1 && bd >= 0 && d < bd) { bd = d; bi = i; } });
+        if (bi < 0) GAME.notice = ROAM.cars.some(e => e.c.hail === 1) ? '🚕 Your taxi is still pulling over...' : '🚕 No taxi, bike or bus nearby: wait for one to drive past.';
         else if (ROAM.cars[bi].c.hail === 2) ROAM.openSheet(bi);
         else ROAM.tap(bi);
       }
@@ -1169,7 +1249,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── E: get in / get out / call car, H: horn ── */
     if (c.interact) {
       c.interact = false;
-      const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => (e.c.role === 'taxi' || e.c.role === 'bike') && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
+      const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
       if (taxiI >= 0) ROAM.openSheet(taxiI);
       else if (VEH.drv) {
         VEH.drv = false; VEH.v = 0; engineStop();

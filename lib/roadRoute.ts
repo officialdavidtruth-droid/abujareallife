@@ -35,7 +35,8 @@ export function billboardSpot(axis: Axis, road: number, along: number, side: 1 |
   return { x: road * GRID + off, z: along, ry: side === 1 ? Math.PI / 2 : -Math.PI / 2 };
 }
 
-export type Route = { pts: XZ[]; cum: number[]; len: number; lights: { s: number; axis: Axis; ci: number }[]; drop: XZ };
+/** `end` is the kerb spot the vehicle finishes in, shaped so it can be passed straight to planRide() as the start of the NEXT leg (multi-stop bus routes). */
+export type Route = { pts: XZ[]; cum: number[]; len: number; lights: { s: number; axis: Axis; ci: number }[]; drop: XZ; end: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 'h'> };
 
 function snapRoad(p: XZ): { axis: Axis; road: number; t: number } {
   const ix = clampI(Math.round(p[0] / GRID)), iz = clampI(Math.round(p[1] / GRID));
@@ -111,7 +112,9 @@ export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 
   const drop: XZ = [qe[0] + rl[0] * (kerb + .65), qe[1] + rl[1] * (kerb + .65)];
 
   const cum = [0]; for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
-  return { pts, cum, len: cum[cum.length - 1], lights: marks.filter(m => m.idx < pts.length - 2 && Math.abs(m.ci) <= MAXI).filter(m => signalised(m.ci, m.cj)).map(m => ({ s: cum[m.idx], axis: m.axis, ci: m.ci })), drop };
+  const endAxis: Axis = Math.abs(dl[0]) > .5 ? 'x' : 'z', last = pts[pts.length - 1];
+  const end = { x: last[0], z: last[1], axis: endAxis, road: endRoad, along: endAxis === 'x' ? qe[0] : qe[1], h: ((endAxis === 'x' ? dl[0] : dl[1]) >= 0 ? 1 : -1) as 1 | -1 };
+  return { pts, cum, len: cum[cum.length - 1], end, lights: marks.filter(m => m.idx < pts.length - 2 && Math.abs(m.ci) <= MAXI).filter(m => signalised(m.ci, m.cj)).map(m => ({ s: cum[m.idx], axis: m.axis, ci: m.ci })), drop };
 }
 
 /** position along the route at arc length s */

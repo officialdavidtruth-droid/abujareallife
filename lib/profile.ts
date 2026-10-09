@@ -55,6 +55,10 @@ export const PROFESSIONS = [
   { id: 'police', label: 'Police Officer', e: '👮', rank: 2, blurb: 'Real officers: patrol, chase, arrest, run the station.' },
   { id: 'firefighter', label: 'Firefighter', e: '🚒', rank: 1, blurb: 'Fires, floods and rescues. First on the scene.' },
   { id: 'mechanic', label: 'Mechanic', e: '🔧', rank: 1, blurb: 'Repair breakdowns and crashed vehicles.' },
+  // Underworld roles: played by REAL players only. Their business is done with other real players inside the Nightclub (see lib/nightlife.ts).
+  { id: 'escort', label: 'Club Escort', e: '💃', rank: 1, blurb: 'Work the club: sell your company to real players. Police can sting you.' },
+  { id: 'dealer', label: 'Drug Dealer', e: '💊', rank: 1, blurb: 'Sell to real players in the club. High pay, high heat, real police.' },
+  { id: 'gang', label: 'Gang Member', e: '🔫', rank: 1, blurb: 'Run protection in the club and rule the night. Heat follows.' },
 ] as const;
 export type ProfessionId = (typeof PROFESSIONS)[number]['id'];
 
@@ -198,6 +202,9 @@ export const CAREER_LADDERS: Record<string, string[]> = {
   developer: ['Intern Dev', 'Junior Dev', 'Senior Dev', 'Tech Lead', 'CTO'],
   artist: ['Busker', 'Local Act', 'Signed Artist', 'Headliner', 'Icon'],
   criminal: ['Runner', 'Hustler', 'Fixer', 'Lieutenant', 'Kingpin'],
+  escort: ['Hostess', 'Regular', 'VIP Companion', 'Club Favorite', 'Queen of the Night'],
+  dealer: ['Corner Boy', 'Pusher', 'Plug', 'Supplier', 'Cartel Boss'],
+  gang: ['Recruit', 'Soldier', 'Enforcer', 'Captain', 'Gang Leader'],
 };
 export const careerLadder = (profession: string) => CAREER_LADDERS[profession] || GENERIC_LADDER;
 

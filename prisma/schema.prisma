@@ -446,3 +446,19 @@ model RideRequest {
   @@index([toUserId, status])
   @@index([fromUserId, status])
 }
+
+// Club underworld deals between two real players (lib/nightlife.ts). status: pending | accepted | declined | expired
+model Deal {
+  id        String   @id @default(cuid())
+  building  String
+  kind      String
+  price     Int
+  fromId    String
+  fromName  String
+  toId      String
+  toName    String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  @@index([toId, status])
+  @@index([fromId, status])
+}

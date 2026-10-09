@@ -145,7 +145,7 @@ function Player({ look, room, ctl, onSpot, onExit, frozen, snap, lock, onBlocked
 
 export default function Interior({ bizId, look, profile, onExit, onFx, onCash, getMinute }: { bizId: string; look: Look; profile: Profile; onExit: (jailed?: boolean) => void; onFx: (fx: Record<string, number>) => void; onCash: (n: number) => void; getMinute?: () => number }) {
   const biz = CITY.businesses.find(b => b.id === bizId)!, room = useMemo(() => buildInterior(biz), [biz]), net = useRoomNet(bizId, look);
-  const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: () => false, dist: n => { const p = ROOM.peers[n]; return p ? Math.hypot(p.x - ROOM.me.x, p.z - ROOM.me.z) : Infinity; } }); // voice works inside buildings too
+  const voice = useCityVoice({ room: 'bld:' + bizId, me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: () => false, dist: n => { const p = ROOM.peers[n]; return p ? Math.hypot(p.x - ROOM.me.x, p.z - ROOM.me.z) : Infinity; } }); // voice works inside buildings too
   const [talkers, setTalkers] = useState('');
   useEffect(() => { const id = setInterval(() => { const now = Date.now(), w = Object.keys(NET.talk).filter(n => n !== look.name && NET.talk[n] > now && ROOM.peers[n]); setTalkers(t => { const s = w.slice(0, 3).join(' · '); return s === t ? t : s; }); }, 200); return () => clearInterval(id); }, [look.name]);
   const ctl = useRef<Ctl>({ keys: new Set(), joy: { x: 0, y: 0 }, run: false, act: false }), snap = useRef<{ x: number; z: number; r: number } | null>(null), staff = useMemo(() => room.posts.map(p => staffLook(biz, p)), [room, biz]);

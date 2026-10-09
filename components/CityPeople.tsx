@@ -90,6 +90,8 @@ function VoiceStatus({ voice }: { voice: VoiceApi }) {
     {voice.mic.perm === 'prompt' && !voice.micOn && <div>👉 Tap the 🔇 Mic button on the game screen: the browser will then ask for permission.</div>}
     {voice.mic.perm === 'granted' && <div>✅ Microphone permission granted</div>}
     {voice.mic.err && <div>❌ {voice.mic.err}</div>}
+    {voice.mic.ios && (voice.mic.perm === 'denied' || !!voice.mic.err) && <div>📱 iPhone: tap <b>aA</b> in Safari's address bar → <b>Website Settings</b> → <b>Microphone</b> → <b>Allow</b>, then reload. Also open <b>Settings → Privacy &amp; Security → Microphone</b> and switch your browser on.</div>}
+    {voice.mic.ios && voice.mic.standalone && <div>ℹ️ Home-screen app on iPhone: it asks for the microphone each time it opens. Tap Allow, or use the game in Safari instead.</div>}
     <div>{voice.micOn ? (voice.micLive === false ? '⏳ Mic starting…' : '🎤 Mic on and sending') : '🔇 Mic off'} · nearby talkers {voice.linked} · hearing {voice.live}{voice.relayOn ? ' · 📡 relay audio active' : ''}</div>
     {voice.micOn && <MicLevel />}
   </div>;

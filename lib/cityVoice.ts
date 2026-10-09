@@ -23,6 +23,7 @@ const cityDist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 /* Live microphone level (0..1), measured on this device from the real mic signal. The mic button and the voice status card read it to glow while you speak. */
 export const MIC = { level: 0, active: false };
+let lkMod: typeof import('livekit-client') | null = null;
 let meterStop: (() => void) | null = null;
 function stopMeter() { try { meterStop?.(); } catch { /* ignore */ } meterStop = null; MIC.level = 0; MIC.active = false; }
 function startMeter(t: MediaStreamTrack) {
@@ -40,18 +41,18 @@ function startMeter(t: MediaStreamTrack) {
 function useLiveKitVoice(o: Opts) {
   const [micOn, setMicOnS] = useState(false), [msg, setMsg] = useState(''), [linked, setLinked] = useState(0), [live, setLive] = useState(0), [publishing, setPublishing] = useState(false);
   const [turn, setTurn] = useState<{ ok: boolean | null; provider: string; error: string }>({ ok: null, provider: 'livekit', error: '' });
-  const [mic, setMicState] = useState<{ perm: string; secure: boolean; inApp: boolean; err: string }>(() => ({ perm: lsGet(MIC_OK) === '1' ? 'granted' : 'unknown', secure: true, inApp: false, err: '' }));
+  const [mic, setMicState] = useState<{ perm: string; secure: boolean; inApp: boolean; err: string; ios: boolean; standalone: boolean }>(() => ({ perm: lsGet(MIC_OK) === '1' ? 'granted' : 'unknown', secure: true, inApp: false, err: '', ios: false, standalone: false }));
   const op = useRef(o); op.current = o;
   const dist = (n: string) => (op.current.dist || cityDist)(n); // open city: world distance · inside a building: distance inside the room
   const room = useRef<LkRoom | null>(null), micRef = useRef(false), ptt = useRef(false), ready = useRef(false);
-  const trk = useRef<LocalAudioTrack | null>(null), pubbed = useRef(false), busy = useRef(false), again = useRef(false); // our own microphone track and whether it is in the room
+  const strm = useRef<MediaStream | null>(null), trk = useRef<LocalAudioTrack | null>(null), pubbed = useRef(false), busy = useRef(false), again = useRef(false); // our own microphone track and whether it is in the room
   const note = (t: string) => { setMsg(t); setTimeout(() => setMsg(m => (m === t ? '' : m)), 6000); };
   const roomName = o.room || 'city';
 
-  const readPerm = () => { try { const ua = navigator.userAgent || ''; const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|MicroMessenger|TikTok|Snapchat|; wv\)/i.test(ua); const secure = window.isSecureContext !== false && !!navigator.mediaDevices?.getUserMedia; (navigator as any).permissions?.query({ name: 'microphone' }).then((r: any) => { const sync = () => { lsSet(MIC_OK, r.state === 'granted' ? '1' : null); setMicState(m => ({ ...m, perm: r.state })); }; setMicState(m => ({ ...m, perm: r.state, secure, inApp })); lsSet(MIC_OK, r.state === 'granted' ? '1' : null); r.onchange = sync; }).catch(() => setMicState(m => ({ ...m, secure, inApp, perm: lsGet(MIC_OK) === '1' ? 'granted' : m.perm }))); setMicState(m => ({ ...m, secure, inApp })); } catch { /* ignore */ } };
+  const readPerm = () => { try { const ua = navigator.userAgent || ''; const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1), standalone = !!(navigator as unknown as { standalone?: boolean }).standalone || !!window.matchMedia?.('(display-mode: standalone)').matches; setMicState(m => ({ ...m, ios, standalone })); const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|MicroMessenger|TikTok|Snapchat|; wv\)/i.test(ua); const secure = window.isSecureContext !== false && !!navigator.mediaDevices?.getUserMedia; (navigator as any).permissions?.query({ name: 'microphone' }).then((r: any) => { const sync = () => { lsSet(MIC_OK, r.state === 'granted' ? '1' : null); setMicState(m => ({ ...m, perm: r.state })); }; setMicState(m => ({ ...m, perm: r.state, secure, inApp })); lsSet(MIC_OK, r.state === 'granted' ? '1' : null); r.onchange = sync; }).catch(() => setMicState(m => ({ ...m, secure, inApp, perm: lsGet(MIC_OK) === '1' ? 'granted' : m.perm }))); setMicState(m => ({ ...m, secure, inApp })); } catch { /* ignore */ } };
   useEffect(readPerm, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const micError = (e: unknown) => { const n = (e as DOMException)?.name; if (n === 'NotAllowedError' || n === 'SecurityError') lsSet(MIC_OK, null); const m = n === 'NotFoundError' ? 'No microphone found on this device.' : n === 'NotReadableError' ? 'The microphone is being used by another app. Close it and try again.' : 'Microphone blocked. Tap the 🔒 by the address bar → Permissions → Microphone → Allow, then reload. On Android also check Settings → Apps → Chrome → Permissions → Microphone.'; note(m); setMicState(s => ({ ...s, err: m })); readPerm(); };
+  const micError = (e: unknown) => { const n = (e as DOMException)?.name; if (n === 'NotAllowedError' || n === 'SecurityError') lsSet(MIC_OK, null); const iph = /iPad|iPhone|iPod/.test(navigator.userAgent || ''); const m = n === 'NotFoundError' ? 'No microphone found on this device.' : n === 'NotReadableError' ? 'The microphone is being used by another app. Close it and try again.' : 'Microphone blocked. Tap the 🔒 by the address bar → Permissions → Microphone → Allow, then reload. ' + (iph ? ' On iPhone: tap aA in the address bar → Website Settings → Microphone → Allow, then reload. Also check Settings → Privacy & Security → Microphone and make sure your browser (Safari or Chrome) is switched on.' : ' On Android also check Settings → Apps → Chrome → Permissions → Microphone.'); note(m); setMicState(s => ({ ...s, err: m })); readPerm(); };
   // Ask the browser for the microphone now (shows the permission prompt if it has not been answered yet).
   const requestMic = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) { setMicState(m => ({ ...m, err: 'This browser cannot use the microphone here. Open the game in Chrome or Safari (not inside WhatsApp / Instagram / Facebook).' })); return false; }
@@ -75,27 +76,31 @@ function useLiveKitVoice(o: Opts) {
         const want = micRef.current || ptt.current, r = room.current;
         if (want) {
           if (!trk.current) {
-            const { createLocalAudioTrack } = await import('livekit-client');
-            const t = await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+            // getUserMedia is the FIRST thing that runs after the tap (no await before it): iPhones only show the microphone prompt directly inside a tap.
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+            const mst = stream.getAudioTracks()[0]; if (!mst) { stream.getTracks().forEach(x => x.stop()); throw new DOMException('No microphone', 'NotFoundError'); }
+            strm.current = stream;
+            const lkm = lkMod ?? (lkMod = await import('livekit-client'));
+            const t = new lkm.LocalAudioTrack(mst);
             trk.current = t; lsSet(MIC_OK, '1'); setMicState(m => ({ ...m, perm: 'granted', err: '' }));
             t.mediaStreamTrack.addEventListener('ended', () => { if (trk.current !== t) return; micRef.current = false; setMicOnS(false); pub(); note('🎤 Microphone disconnected.'); }); // unplugged, or revoked by the system
             startMeter(t.mediaStreamTrack);
           }
           if (r && ready.current && !pubbed.current && trk.current) {
-            const { Track } = await import('livekit-client');
-            await r.localParticipant.publishTrack(trk.current, { source: Track.Source.Microphone, name: 'microphone' });
+            const lkm = lkMod ?? (lkMod = await import('livekit-client'));
+            await r.localParticipant.publishTrack(trk.current, { source: lkm.Track.Source.Microphone, name: 'microphone' });
             pubbed.current = true;
           }
           setPublishing(pubbed.current);
         } else if (trk.current) {
           const t = trk.current; trk.current = null; stopMeter(); setPublishing(false);
           if (pubbed.current && room.current) { try { await room.current.localParticipant.unpublishTrack(t, true); } catch { /* already gone */ } }
-          try { t.stop(); } catch { /* already stopped */ } pubbed.current = false;
+          try { t.stop(); } catch { /* already stopped */ } strm.current?.getTracks().forEach(x => x.stop()); strm.current = null; pubbed.current = false;
         } else setPublishing(false);
       } while (again.current);
     } catch (e) {
       micRef.current = false; ptt.current = false; setMicOnS(false); setPublishing(false); stopMeter();
-      const t = trk.current; trk.current = null; pubbed.current = false; try { t?.stop(); } catch { /* ignore */ }
+      const t = trk.current; trk.current = null; pubbed.current = false; try { t?.stop(); } catch { /* ignore */ } strm.current?.getTracks().forEach(x => x.stop()); strm.current = null;
       micError(e);
     } finally { busy.current = false; }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -110,7 +115,7 @@ function useLiveKitVoice(o: Opts) {
         const d = await res.json().catch(() => ({}));
         if (dead) return;
         if (!res.ok || !d.token) { const e = d.error || `HTTP ${res.status}`; setTurn({ ok: false, provider: 'livekit', error: e }); if (res.status !== 401) note('Voice is unavailable: ' + e); return; }
-        const { Room, RoomEvent, Track } = await import('livekit-client');
+        const mod = await import('livekit-client'); lkMod = mod; const { Room, RoomEvent, Track } = mod;
         if (dead) return;
         lk = new Room({ dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
         const audioEls = new Map<string, HTMLMediaElement[]>();
@@ -143,9 +148,10 @@ function useLiveKitVoice(o: Opts) {
     })();
     const unlock = () => { room.current?.startAudio().catch(() => {}); };
     ['pointerdown', 'touchend', 'click'].forEach(ev => window.addEventListener(ev, unlock));
-    return () => { dead = true; ready.current = false; if (iv) clearInterval(iv); ['pointerdown', 'touchend', 'click'].forEach(ev => window.removeEventListener(ev, unlock)); { const t = trk.current; trk.current = null; pubbed.current = false; stopMeter(); setPublishing(false); try { t?.stop(); } catch { /* ignore */ } } lk?.disconnect(); if (room.current === lk) room.current = null; setLinked(0); setLive(0); };
+    return () => { dead = true; ready.current = false; if (iv) clearInterval(iv); ['pointerdown', 'touchend', 'click'].forEach(ev => window.removeEventListener(ev, unlock)); pubbed.current = false; lk?.disconnect(false); /* false = keep the mic track alive so it can join the next room without asking the phone for the mic again */ if (room.current === lk) room.current = null; setLinked(0); setLive(0); };
   }, [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => () => { const t = trk.current; trk.current = null; pubbed.current = false; stopMeter(); try { t?.stop(); } catch { /* ignore */ } strm.current?.getTracks().forEach(x => x.stop()); strm.current = null; }, []);
   const setMic = useCallback(async (on: boolean) => {
     if (on && !navigator.mediaDevices?.getUserMedia) { await requestMic(); return; } // shows "this browser cannot use the microphone"
     micRef.current = on; setMicOnS(on);

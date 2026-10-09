@@ -12,7 +12,7 @@ import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
 import { FIGHT, NET, useCityNet } from '../lib/cityNet';
 import { JAIL_CELL_POS } from '../lib/profile';
-import { useCityVoice, type VoiceApi } from '../lib/cityVoice';
+import { useCityVoice, MIC, type VoiceApi } from '../lib/cityVoice';
 import CityPeople from './CityPeople';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
@@ -1437,9 +1437,17 @@ function FightHud() {
 }
 /* Voice: 🎤 toggles your mic (hold V for push-to-talk). The pill lists who nearby is speaking right now. */
 function MicBtn({ voice, me }: { voice: VoiceApi; me: string }) {
-  const ref = useRef<HTMLButtonElement>(null);
-  useEffect(() => { const id = setInterval(() => ref.current?.classList.toggle('live', (NET.talk[me] || 0) > Date.now()), 120); return () => clearInterval(id); }, [me]);
-  return <button ref={ref} className={'cwBtn mic' + (voice.micOn ? ' on' : '')} aria-label="Toggle microphone" onClick={() => { voice.toggleMic(); try { unlockAudio(); } catch { /* audio unlock must never block the mic */ } }} onContextMenu={e => e.preventDefault()}><span>{voice.micOn ? '🎤' : '🔇'}</span><small>{voice.micOn ? (voice.live ? `Mic · ${voice.live}` : 'Mic on') : 'Mic off'}</small></button>;
+  const ref = useRef<HTMLButtonElement>(null), bar = useRef<HTMLElement>(null);
+  useEffect(() => { // glows while you speak: driven by the real microphone level on this device
+    const id = setInterval(() => {
+      const hot = MIC.level > .06 || (NET.talk[me] || 0) > Date.now();
+      const b = ref.current; if (b) { b.classList.toggle('live', hot); b.style.boxShadow = hot ? '0 0 0 3px #35e07acc, 0 0 20px #35e07a' : ''; }
+      if (bar.current) bar.current.style.width = Math.round(Math.min(1, MIC.level * 1.5) * 100) + '%';
+    }, 80);
+    return () => clearInterval(id);
+  }, [me]);
+  const starting = voice.micOn && voice.micLive === false; // asked for, but not sending yet
+  return <button ref={ref} className={'cwBtn mic' + (voice.micOn ? ' on' : '')} aria-label="Toggle microphone" onClick={() => { voice.toggleMic(); try { unlockAudio(); } catch { /* audio unlock must never block the mic */ } }} onContextMenu={e => e.preventDefault()}><span>{voice.micOn ? '🎤' : '🔇'}</span><small>{voice.micOn ? (starting ? 'Starting…' : voice.live ? `Mic · ${voice.live}` : 'Mic on') : voice.mic.err ? '⚠ Mic error' : 'Mic off'}</small><i style={{ display: voice.micOn ? 'block' : 'none', height: 3, width: '70%', margin: '2px auto 0', background: '#ffffff30', borderRadius: 2, overflow: 'hidden' }}><b ref={bar} style={{ display: 'block', height: '100%', width: 0, background: '#35e07a' }} /></i></button>;
 }
 function Talkers({ me }: { me: string }) {
   const ref = useRef<HTMLDivElement>(null), last = useRef('');

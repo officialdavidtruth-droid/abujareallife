@@ -1,4 +1,5 @@
 'use client';
+import { VOICE_ENABLED } from '../lib/cityVoice';
 import { useEffect, useState } from 'react';
 import { audioReady, sfx, unlockAudio } from '../lib/audio';
 import { closeSettings, getSettings, resetSettings, setSetting, usePanelOpen, useSettings, type Settings } from '../lib/settings';
@@ -58,7 +59,7 @@ function SettingsPanel() {
           <Slider label="Master" icon="🔊" k="master" s={s} />
           <Slider label="Music" icon="🎵" k="music" s={s} />
           <Slider label="Effects" icon="💥" k="sfx" s={s} />
-          <Slider label="Voice chat" icon="🎙️" k="voice" s={s} />
+          {VOICE_ENABLED && <Slider label="Voice chat" icon="🎙️" k="voice" s={s} />}
           <div className="stGrid">
             <Switch label="Music" icon="🎶" on={s.musicOn} set={v => setSetting({ musicOn: v })} />
             <Switch label="Effects" icon="🔔" on={s.sfxOn} set={v => setSetting({ sfxOn: v })} />

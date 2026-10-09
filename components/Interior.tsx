@@ -13,7 +13,7 @@ import { sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import { buildInterior, staffLook, type Interior as Room, type Item, type Office, type Opt, type Post, type Spot } from '../lib/interiors';
 import { ROOM, useRoomNet } from '../lib/roomNet';
-import { useCityVoice } from '../lib/cityVoice';
+import { useCityVoice, VOICE_ENABLED } from '../lib/cityVoice';
 import { NET } from '../lib/cityNet';
 import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
 import type { Look } from '../lib/characterModels';
@@ -268,7 +268,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     <button className="inLeaveSide" onClick={leave} aria-label="Leave building">🚪 <span>Leave</span></button>
     {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}</div>}{msg && <div className="inToast">{msg}</div>}
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
-    <div className={"inDock" + (actionOpen ? " open" : "")}><button className={voice.micOn ? 'on' : ''} aria-label="Toggle microphone" onClick={() => voice.toggleMic()}>{voice.micOn ? '🎤' : '🔇'} <span>{voice.micOn ? (voice.live ? `Mic on · ${voice.live} hearing you` : 'Mic on') : 'Mic off'}</span></button>{talkers && <i className="inTalk">🔊 {talkers}</i>}{voice.msg && <i className="inTalk">{voice.msg}</i>}<button className="inActionsToggle" onClick={() => setActionOpen(v => !v)}>🎮 <span>{actionOpen ? "Close actions" : "Actions"}</span></button>{actionOpen && <div className="inActionTray"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => { setActionOpen(false); goSpot(sp); }}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>}</div>
+    <div className={"inDock" + (actionOpen ? " open" : "")}>{VOICE_ENABLED && <button className={voice.micOn ? 'on' : ''} aria-label="Toggle microphone" onClick={() => voice.toggleMic()}>{voice.micOn ? '🎤' : '🔇'} <span>{voice.micOn ? (voice.live ? `Mic on · ${voice.live} hearing you` : 'Mic on') : 'Mic off'}</span></button>}{VOICE_ENABLED && talkers && <i className="inTalk">🔊 {talkers}</i>}{VOICE_ENABLED && voice.msg && <i className="inTalk">{voice.msg}</i>}<button className="inActionsToggle" onClick={() => setActionOpen(v => !v)}>🎮 <span>{actionOpen ? "Close actions" : "Actions"}</span></button>{actionOpen && <div className="inActionTray"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => { setActionOpen(false); goSpot(sp); }}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>}</div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
     {menu && <div className={'inMenu k-' + (menu.id.startsWith('npc') ? 'npc' : menu.id)} style={{ ['--e' as string]: `"${menu.e}"` }}><button className="x" aria-label="Close" onClick={() => setMenu(null)}>✕</button><h3><span>{menu.e} {menu.label}</span></h3><div className="inBody">

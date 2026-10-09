@@ -13,6 +13,8 @@ export const VOICE_FULL = 7;       // metres: full volume inside this
 export const VOICE_MAX = 30;       // metres: silent / not subscribed beyond this
 export const VOICE_DROP = 40;      // unsubscribe only past this (hysteresis, so walking at the edge does not flap)
 export const VOICE_REQ_RANGE = VOICE_MAX; // kept for older imports
+/** Voice chat UI is shown unless you set NEXT_PUBLIC_VOICE=off in Vercel. */
+export const VOICE_ENABLED = process.env.NEXT_PUBLIC_VOICE !== 'off';
 export type VoiceApi = ReturnType<typeof useLiveKitVoice>;
 type Opts = MeshOpts & { room?: string }; // room: 'city' (default) or 'bld:<businessId>'
 

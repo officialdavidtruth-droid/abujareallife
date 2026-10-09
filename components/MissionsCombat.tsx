@@ -41,10 +41,10 @@ export default function MissionsCombat() {
     activeRef.current = id; (window as any).__arlMissionId = id; setActiveState(id);
     if (!id) { holding.current = false; holdProg.current = 0; (window as any).__arlMissionHold = false; setHoldLeft(null); }
   };
-  const sendStage = (m: Mission, idx: number) => window.dispatchEvent(new CustomEvent('arl-mission-start', { detail: { id: m.id, title: m.title, goto: m.stages[idx].goto, label: m.stages[idx].label } }));
-  const begin = (m: Mission, startedAt: number) => {
+  const sendStage = (m: Mission, idx: number, fresh = false) => window.dispatchEvent(new CustomEvent('arl-mission-start', { detail: { id: m.id, title: m.title, goto: m.stages[idx].goto, final: m.stages[m.stages.length - 1].goto, fresh, label: m.stages[idx].label } }));
+  const begin = (m: Mission, startedAt: number, fresh = false) => {
     stageRef.current = 0; setStage(0); deadlineAt.current = startedAt + m.deadlineSecs * 1000; setSecsLeft(Math.max(0, Math.round((deadlineAt.current - Date.now()) / 1000)));
-    setActive(m.id); sendStage(m, 0);
+    setActive(m.id); sendStage(m, 0, fresh);
   };
   const say = useCallback((s: string) => { setNotice(s); window.setTimeout(() => setNotice(v => v === s ? '' : v), 3000); }, []);
 
@@ -152,7 +152,7 @@ export default function MissionsCombat() {
     const m = MISSIONS.find(x => x.id === id); if (!m || busy.current) return;
     busy.current = true; const r = await post({ action: 'start', id }); busy.current = false;
     if (!r.ok) { say(r.d?.error || 'Could not start the mission.'); return; }
-    begin(m, Date.now()); say(`Mission started: ${m.title}${m.heat ? ' — the police are on you!' : ''}`); setOpen(false);
+    begin(m, Date.now(), true); say(`Mission started: ${m.title}${m.heat ? ' — the police are on you!' : ''}`); setOpen(false);
   };
   const activeMission = MISSIONS.find(m => m.id === active);
   return <><RuntimeStyle css={CSS}/><div className="mcQuick"><button title="Missions (M)" aria-label="Missions" onClick={()=>{setOpen(v=>!v);setTab('missions')}}>📋<kbd>M</kbd></button>{weapon>=0 && <button title={`${LOADOUT[weapon].name} (G to switch)`} aria-label="Weapons" onClick={()=>{setOpen(v=>!v);setTab('weapons')}}>{LOADOUT[weapon].icon}<kbd>G</kbd></button>}</div>

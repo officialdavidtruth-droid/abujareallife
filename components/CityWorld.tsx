@@ -1128,7 +1128,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16, r: Math.PI }; // overwritten with a random sidewalk spot each time a player steps outside (see CityWorld)
-export const GAME = { jailed: false, heat: 0, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string; mission?: string; auto?: boolean } | null, route: null as { pts: [number, number][]; i: number } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
+export const GAME = { jailed: false, heat: 0, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string; mission?: string; auto?: boolean } | null, route: null as { pts: [number, number][]; i: number } | null, missionFinal: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const WX = { over: new THREE.Color('#7d8791'), dust: new THREE.Color('#d6bf9b'), flash: new THREE.Color('#e8f0ff'), tmp: new THREE.Color() };
@@ -1575,6 +1575,11 @@ function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onOpen?: (
         for (let i = rt.i; i < rt.pts.length; i++) g.lineTo(rt.pts[i][0], rt.pts[i][1]);
         g.lineTo(nv.x, nv.z); g.stroke(); g.setLineDash([]);
       }
+      const mf = (window as any).__arlMissionId ? GAME.missionFinal : null;
+      if (mf && nv && (mf.x !== nv.x || mf.z !== nv.z)) { // final destination of the mission: dotted guide from this stop to the end + a gold flag (clamped to the minimap edge)
+        g.strokeStyle = '#ffd23f'; g.lineWidth = 1; g.setLineDash([1.5, 2.5]); g.beginPath(); g.moveTo(nv.x, nv.z); g.lineTo(mf.x, mf.z); g.stroke(); g.setLineDash([]);
+        const fd = Math.hypot(mf.x - h.x, mf.z - h.z), fk = fd > 46 ? 46 / fd : 1; g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = .5; g.beginPath(); g.arc(h.x + (mf.x - h.x) * fk, h.z + (mf.z - h.z) * fk, 3, 0, Math.PI * 2); g.fill(); g.stroke();
+      }
       if (nv) { const dd = Math.hypot(nv.x - h.x, nv.z - h.z), k = dd > 46 ? 46 / dd : 1, mx = h.x + (nv.x - h.x) * k, mz = h.z + (nv.z - h.z) * k; g.fillStyle = '#ff3b30'; g.strokeStyle = '#fff'; g.lineWidth = .5; g.beginPath(); g.arc(mx, mz, k < 1 ? 2.6 : 3.4, 0, Math.PI * 2); g.fill(); g.stroke(); }
       if (h.vp) { g.fillStyle = '#ff6a00'; g.strokeStyle = '#000'; g.lineWidth = .3; g.fillRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); g.strokeRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); }
       g.save(); g.translate(h.x, h.z); g.rotate(Math.PI - h.r); g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = .3;
@@ -1652,20 +1657,27 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
     const startMission = (e: Event) => {
-      const m = (e as CustomEvent).detail as { id?: string; goto?: { name?: string; type?: string; district?: string }; label?: string; title?: string };
+      const m = (e as CustomEvent).detail as { id?: string; goto?: { name?: string; type?: string; district?: string }; final?: { name?: string; type?: string; district?: string }; fresh?: boolean; label?: string; title?: string };
       if (!m?.id || !m.goto) return;
-      const g = m.goto, pos = (window as any).__arlPos as { x: number; z: number } | undefined;
-      const near = (l: typeof BUILDING_DESTS) => pos ? [...l].sort((a, b) => Math.hypot(a.x - pos.x, a.z - pos.z) - Math.hypot(b.x - pos.x, b.z - pos.z))[0] : l[0];
-      const pick = (l: typeof BUILDING_DESTS) => l.length ? near(l) : undefined;
-      const target = (g.name ? pick(BUILDING_DESTS.filter(d => d.name.toLowerCase().includes(g.name!.toLowerCase()))) : undefined)
-        || (g.type ? pick(BUILDING_DESTS.filter(d => d.type === g.type)) : undefined)
-        || (g.district ? pick(BUILDING_DESTS.filter(d => d.district.toLowerCase() === g.district!.toLowerCase())) : undefined);
+      const pos = (window as any).__arlPos as { x: number; z: number } | undefined;
+      const resolve = (g: { name?: string; type?: string; district?: string }, from?: { x: number; z: number }) => {
+        const near = (l: typeof BUILDING_DESTS) => from ? [...l].sort((a, b) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(b.x - from.x, b.z - from.z))[0] : l[0];
+        const pick = (l: typeof BUILDING_DESTS) => l.length ? near(l) : undefined;
+        return (g.name ? pick(BUILDING_DESTS.filter(d => d.name.toLowerCase().includes(g.name!.toLowerCase()))) : undefined)
+          || (g.type ? pick(BUILDING_DESTS.filter(d => d.type === g.type)) : undefined)
+          || (g.district ? pick(BUILDING_DESTS.filter(d => d.district.toLowerCase() === g.district!.toLowerCase())) : undefined);
+      };
+      const target = resolve(m.goto, pos);
+      // the FINAL destination of the whole mission (resolved from the current stage target so multi-stop contracts pick the sensible building)
+      const fin = m.final ? resolve(m.final, target || pos) : undefined;
+      GAME.missionFinal = fin ? { x: fin.x, z: fin.z, name: fin.name } : null;
       if (!target) { GAME.notice = `Mission started: ${m.title || m.label}. Find the mission destination in the city.`; return; }
       (window as any).__arlMissionTarget = { x: target.x, z: target.z }; (window as any).__arlMissionGoal = { id: m.id, x: target.x, z: target.z, name: target.name };
       GAME.nav = { x: target.x, z: target.z, name: target.name, mission: m.id } as any;
       GAME.notice = `📍 ${m.label || 'Mission waypoint'}: ${target.name} — follow the route on your minimap or map`;
+      if (m.fresh) onOpenMap?.(); // a brand-new mission opens the map so you see the route and the final destination straight away
     };
-    const cancelMission = () => { if ((GAME.nav as any)?.mission) GAME.nav = null; };
+    const cancelMission = () => { GAME.missionFinal = null; if ((GAME.nav as any)?.mission) GAME.nav = null; };
     window.addEventListener('arl-mission-start', startMission); window.addEventListener('arl-mission-cancel', cancelMission);
     return () => { window.removeEventListener('arl-mission-start', startMission); window.removeEventListener('arl-mission-cancel', cancelMission); };
   }, []);

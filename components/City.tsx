@@ -85,6 +85,7 @@ function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSele
     GAME.nav = { x, z, name: 'Dropped pin' }; setSelected(null);
   };
   const nav = GAME.nav, dir = nav ? directions(pos, GAME.route, nav) : null;
+  const fin = (window as any).__arlMissionId ? GAME.missionFinal : null, finLeg = nav && fin && (fin.x !== nav.x || fin.z !== nav.z) ? fin : null; // final destination of the active mission (when it is a later stop)
   const heading = Math.atan2(Math.sin(pos.r), -Math.cos(pos.r)) * 180 / Math.PI;
   return <div className="realMap">
     <div className="realMapHead"><div><h3>🗺️ Abuja Real Life Map</h3><small>Tap a place, or tap anywhere on the map to drop a pin · the route shows up in red</small></div><button className="mapClose" onClick={onClose}>×</button></div>
@@ -94,16 +95,19 @@ function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSele
         {shops.map(b => <rect key={b.id} x={mx(b.x - b.w / 2)} y={my(b.z - b.d / 2)} width={b.w} height={b.d} fill="#2b3f36" />)}
         {roads.map(k => { const major = k % 2 === 0, w = major ? 3.4 : 2.2, c = major ? '#8a7f5c' : '#5d6a63'; return <g key={k}><rect x={mx(k * 22) - w / 2} y={5} width={w} height={250} fill={c} /><rect x={5} y={my(k * 22) - w / 2} width={250} height={w} fill={c} /></g>; })}
         {dir && <polyline points={dir.pts.map(p => `${mx(p[0])},${my(p[1])}`).join(' ')} fill="none" stroke="#ff3b30" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 3" style={{ pointerEvents: 'none' }} />}
+        {finLeg && nav && <line x1={mx(nav.x)} y1={my(nav.z)} x2={mx(finLeg.x)} y2={my(finLeg.z)} stroke="#ffd23f" strokeWidth="1.6" strokeDasharray="2 3" strokeLinecap="round" style={{ pointerEvents: 'none' }} />}
         {places.map(d => <g key={d.id} onClick={e => { e.stopPropagation(); goTo(d); }} className="mapDistrict" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') goTo(d); }}><circle cx={mx(d.x)} cy={my(d.z)} r="6" fill="#243d31" fillOpacity=".55" stroke="#90a89d" strokeWidth=".6" /><text x={mx(d.x)} y={my(d.z) - 8} textAnchor="middle" className="districtLabel" style={{ fontSize: '5px' }}>{d.name}</text></g>)}
         {shops.map(b => { const biz = b.business!, on = selected?.id === biz.id; return <g key={biz.id} onClick={e => { e.stopPropagation(); select(biz); }} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') select(biz); }} className={`mapBiz ${on ? 'selected' : ''}`}><circle cx={mx(b.x)} cy={my(b.z)} r={on ? 4.4 : biz.type === 'Gun Shop' ? 3.6 : 2.7} fill={biz.type === 'Gun Shop' ? '#ff5b52' : '#f0a83b'} stroke="#111" strokeWidth=".8" /><title>{biz.name} · {biz.type}</title></g>; })}
         {nav && <g style={{ pointerEvents: 'none' }}><circle cx={mx(nav.x)} cy={my(nav.z)} r="6" fill="#ff3b30" fillOpacity=".25" stroke="#ff5b52" strokeWidth="1.4" /><circle cx={mx(nav.x)} cy={my(nav.z)} r="2" fill="#ff3b30" /><text x={mx(nav.x)} y={my(nav.z) + 12} textAnchor="middle" className="navLabel" style={{ fontSize: '5px' }}>{nav.name}</text></g>}
+        {fin && <g style={{ pointerEvents: 'none' }}><circle cx={mx(fin.x)} cy={my(fin.z)} r="6" fill="#ffd23f" fillOpacity=".25" stroke="#ffd23f" strokeWidth="1.4" /><text x={mx(fin.x)} y={my(fin.z) + 2} textAnchor="middle" style={{ fontSize: '7px' }}>🏁</text><text x={mx(fin.x)} y={my(fin.z) - 8} textAnchor="middle" className="navLabel" style={{ fontSize: '5px', fill: '#ffd23f' }}>Final: {fin.name}</text></g>}
         <g transform={`translate(${mx(pos.x)} ${my(pos.z)}) rotate(${heading})`} style={{ pointerEvents: 'none' }}><circle r="5" fill="#4ba3ff" stroke="#fff" strokeWidth="1.2" /><path d="M0 -11 L-4 -4 L4 -4 Z" fill="#4ba3ff" stroke="#fff" strokeWidth=".8" /></g>
       </svg>
-      <div className="mapLegend"><span><i className="youDot" />You</span><span><i className="bizDot" />Business</span><span><i style={{ background: '#ff5b52' }} />Gun Shop</span><span><i style={{ background: '#ff3b30' }} />Route</span></div>
+      <div className="mapLegend"><span><i className="youDot" />You</span><span><i className="bizDot" />Business</span><span><i style={{ background: '#ff5b52' }} />Gun Shop</span><span><i style={{ background: '#ff3b30' }} />Route</span>{fin && <span><i style={{ background: '#ffd23f' }} />Final destination</span>}</div>
     </div>
     {selected && <div className="mapPlace"><div><b>{ICON[selected.type] || '🏢'} {selected.name}</b><small>{selected.type} · {selected.district} · {businessStatus(selected.type, getMinute ? getMinute() : 0).label}</small></div><button onClick={() => navigate(selected)}>📍 Show route</button></div>}
     {nav && dir && <div className="mapRoute" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}><span>📍 <b>{nav.name}</b> · {metres(dir.total)} · about {Math.max(1, Math.round(dir.total / WALK_MPS / 60))} min on foot</span><button onClick={() => { GAME.nav = null; }}>Clear</button></div>
+      {fin && <div style={{ marginTop: 6, color: '#ffd23f' }}>🏁 Mission final destination: <b>{fin.name}</b></div>}
       {dir.legs.length > 0 && <ol style={{ margin: '8px 0 0', paddingLeft: 18, display: 'grid', gap: 3, color: '#cfe' }}>{dir.legs.slice(0, 6).map((l, i) => <li key={i}>{i === 0 ? 'Head' : 'Then go'} <b>{l.dir}</b> for {metres(l.d)}</li>)}{dir.legs.length > 6 && <li>…then keep following the red line</li>}<li>You have arrived at <b>{nav.name}</b></li></ol>}
     </div>}
     <p className="jbTip">You walk there yourself: the red line is your route. It also shows on your minimap while you travel.</p>

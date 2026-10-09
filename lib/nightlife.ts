@@ -41,3 +41,9 @@ export function npcTakesBribe(c: NpcCop, amount: number, heat: number, roll: num
   const needed = c.greed * Math.max(20, heat);
   return amount >= needed && roll >= c.honesty;
 }
+
+/* ───────── Street escort service (step 7) ─────────
+   The same company deal as the club booth, but out on the pavement between two REAL players standing next to each other.
+   Hotter than the club: no bouncers, no private room. A police officer accepting is a sting (STING_HEAT). The scene itself is a fade to black. */
+export const STREET = { building: 'street', range: 6, min: 15_000, max: 250_000, sellerHeat: 20, buyerHeat: 5, xp: 8 };
+export const SCENE_LINES = ['🌙 The night goes on…', '🚕 A quiet ride, a closed door…', '🕯️ Later…'];

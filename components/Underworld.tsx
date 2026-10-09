@@ -1,6 +1,7 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import RuntimeStyle from './RuntimeStyle';
+import { playScene } from './StreetEscort';
 
 /* Club underworld panel (Nightclub only). Escorts, dealers and gang members make offers to REAL players in the room; anyone can accept or decline.
    All rules are enforced by /api/deal: this is only the interface. */
@@ -15,11 +16,13 @@ export default function Underworld({ onCash, onFx, toast }: { onCash: (n: number
   const [bribe, setBribe] = useState<Record<string, string>>({}), [open, setOpen] = useState(false), [s, setS] = useState<Poll | null>(null), [to, setTo] = useState(''), [price, setPrice] = useState('');
   const poll = useCallback(async () => { const r = await post({ action: 'poll' }); if (r.ok) setS(r.d); }, []);
   useEffect(() => { poll(); const i = setInterval(poll, 4000); return () => clearInterval(i); }, [poll]);
+  const seenAcc = useRef<Set<string> | null>(null);   // the seller gets the scene too, once, when the buyer accepts
+  useEffect(() => { if (!s) return; const acc = s.outgoing.filter(o => o.status === 'accepted' && o.kind === 'company').map(o => o.id); if (seenAcc.current === null) { seenAcc.current = new Set(acc); return; } for (const id of acc) if (!seenAcc.current.has(id)) { seenAcc.current.add(id); playScene(); } }, [s]);
   const n = s?.incoming.length || 0;
   const offer = async () => { if (!s?.sells) return; const r = await post({ action: 'offer', to, price: Number(price) }); if (!r.ok) return toast(r.d.error, true); toast(`${s.sells.e} Offer sent to ${to}. It expires in 2 minutes.`); setTo(''); poll(); };
   const answer = async (id: string, action: 'accept' | 'decline') => {
     const r = await post({ action, id }); if (!r.ok) { toast(r.d.error, true); return poll(); }
-    if (action === 'accept') { if (r.d.cash != null) onCash(r.d.cash); if (r.d.sting) toast('🚔 Sting! The seller is now WANTED.'); else { onFx(r.d.fx || {}); toast('💰 Deal done.'); } }
+    if (action === 'accept') { if (r.d.cash != null) onCash(r.d.cash); if (r.d.sting) toast('🚔 Sting! The seller is now WANTED.'); else { onFx(r.d.fx || {}); toast('💰 Deal done.'); if (s?.incoming.find(o => o.id === id)?.kind === 'company') playScene(); } }
     poll();
   };
   const sendBribe = async (to: string) => { const r = await post({ action: 'bribe', to, price: Number(bribe[to]) }); if (!r.ok) return toast(r.d.error, true);

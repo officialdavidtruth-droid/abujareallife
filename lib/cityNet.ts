@@ -14,6 +14,7 @@ export type NetPeer = {
 export const NET = {
   me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0, call: false, anim: '', animUntil: 0, hp: 100, ko: 0, hurt: 0, safe: 0 } as NetMe,
   peers: {} as Record<string, NetPeer>,
+  reason: '' as string, // why multiplayer is offline, shown in the chat panel
   msg: '' as string, // one-line toast written by the net layer, shown by the scene
   talk: {} as Record<string, number>, // name -> timestamp until which that player counts as "speaking" (voice chat indicator)
 };
@@ -168,8 +169,12 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
         })
         .subscribe(async s => {
           if (cur !== c || dead) return;
-          if (s === 'SUBSCRIBED') await c.track({ look: lookRef.current });
-          else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setStatus('error');
+          if (s === 'SUBSCRIBED') { await c.track({ look: lookRef.current }); NET.reason = ''; if (decided) setStatus('online'); } // coming back after a dropped connection must flip the status back to online
+          else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') {
+            NET.reason = s === 'TIMED_OUT' ? 'Realtime timed out (slow or blocked network). Retrying…' : 'Realtime refused the connection. Check NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel and that Supabase → Realtime → Settings allows public access. Retrying…';
+            setStatus('error');
+            setTimeout(() => { if (cur === c && !dead && statusRef.current === 'error') { sb.removeChannel(c); join(n); } }, 8000); // never stay dead until a page reload
+          }
         });
     };
     join(1);
@@ -208,7 +213,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     if (!t || now - lastSend.current < 350) return false;
     const c = ch.current;
     if (!c || statusRef.current === 'off') { NET.msg = 'Chat is offline: multiplayer is not connected.'; return false; }
-    if (statusRef.current !== 'online') { NET.msg = 'Still connecting to the city. Try again in a moment.'; return false; } // keep the text in the box instead of losing it
+    if (statusRef.current === 'error') { NET.msg = 'City chat is offline: cannot reach the realtime server. Retrying…'; return false; } // keep the text in the box instead of losing it
     lastSend.current = now; say(name, t, true);
     if (!Object.keys(NET.peers).length) NET.msg = 'Nobody else is in this city right now, so no one received that.';
     Promise.resolve(c.send({ type: 'broadcast', event: 'chat', payload: { u: name, t } })).then(r => { if (r && r !== 'ok') NET.msg = 'Message not delivered. Check your connection.'; }).catch(() => { NET.msg = 'Message not delivered. Check your connection.'; });

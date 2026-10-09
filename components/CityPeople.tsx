@@ -62,6 +62,7 @@ export default function CityPeople({ net, voice, sel, setSel }: { net: Net; voic
       <button className="cpX" onClick={() => setOpen(false)} aria-label="Close">×</button>
       {!net.enabled ? <p className="cpNoteTxt">Multiplayer is off. Add <b>NEXT_PUBLIC_SUPABASE_URL</b> and <b>NEXT_PUBLIC_SUPABASE_ANON_KEY</b> in Vercel and redeploy.</p> : <>
         <div className="cpTitle">🏙️ Abuja · City {net.room} · {net.status === 'online' ? `${count} players` : net.status}</div>
+        {net.status === 'error' && NET.reason && <p className="cpNoteTxt">{NET.reason}</p>}
         {net.roster.length > 8 && <input className="cpFind" value={find} placeholder="Find a player…" onChange={e => setFind(e.target.value)} />}
         <div className="cpPeople">{net.roster.length === 0 ? <span>You're the only one here right now. Invite friends!</span> : people.length === 0 ? <span>No player matches “{find}”.</span> : people.map(n => <button key={n} onClick={() => { setSel(n); setOpen(false); }}>👤 {n} <small>{Math.round(dist(n))}m</small></button>)}</div>
         <VoiceStatus voice={voice} />

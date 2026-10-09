@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
 import { insideBiz, loadState } from '../../../lib/game';
+import { PASSOUT_DOWN_MS, PASSOUT_LEVEL_AFTER, downState } from '../../../lib/downed';
 import { BAR_TYPES, BLACKOUT_AT, BLACKOUT_PENALTY, JOINT_HIGH, JOINT_ITEM, clamp100, drinkById } from '../../../lib/intoxication';
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
   if (throttled('intox:' + u.id, 20, 60_000)) return err('Slow down.', 429);
   const st = await loadState(u.id); if (!st) return err('Create your character first.', 409);
   if (st.jailLeft) return err('You are in jail.', 403);
+  if (downState(st.save.downUntil).down) return err('You are out cold.', 403);
   const b = await req.json().catch(() => ({}));
   let drunk = st.save.drunk, high = st.save.high, spent = 0, label = '';
 
@@ -38,7 +40,9 @@ export async function POST(req: Request) {
   } else return err('Unknown action.');
 
   const blackout = drunk >= BLACKOUT_AT || high >= BLACKOUT_AT;
-  await prisma.save.update({ where: { userId: u.id }, data: { drunk, high, intoxAt: new Date() } });
+  // passing out: you lie there for PASSOUT_DOWN_MS (easy to rob) and wake up groggy, not at 100% again
+  if (blackout) { drunk = Math.min(drunk, PASSOUT_LEVEL_AFTER); high = Math.min(high, PASSOUT_LEVEL_AFTER); }
+  await prisma.save.update({ where: { userId: u.id }, data: { drunk, high, intoxAt: new Date(), ...(blackout ? { downUntil: new Date(Date.now() + PASSOUT_DOWN_MS), downKind: 'passout' } : {}) } });
   const n = await loadState(u.id);
-  return NextResponse.json({ ok: true, label, spent, drunk, high, cash: n!.save.cash, blackout, penalty: blackout ? BLACKOUT_PENALTY : null });
+  return NextResponse.json({ ok: true, label, spent, drunk, high, cash: n!.save.cash, blackout, downMs: blackout ? PASSOUT_DOWN_MS : 0, penalty: blackout ? BLACKOUT_PENALTY : null });
 }

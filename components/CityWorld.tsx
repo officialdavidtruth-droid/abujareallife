@@ -11,6 +11,7 @@ import { CITY } from '../lib/cityData';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
 import { FIGHT, NET, useCityNet } from '../lib/cityNet';
+import { SAFE_AFTER_WAKE_MS } from '../lib/downed';
 import { JAIL_CELL_POS } from '../lib/profile';
 import CityPeople from './CityPeople';
 import MissionsCombat from './MissionsCombat';
@@ -1279,7 +1280,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     }
     /* ── fighting: punch the nearest real player, get knocked out at 0 HP ── */
     const nowMs = Date.now(), me = NET.me;
-    if (me.ko && nowMs >= me.ko) { me.ko = 0; me.hp = 35; me.safe = nowMs + 4000; GAME.notice = '💪 You got back up.'; }
+    if (me.ko && nowMs >= me.ko) { const out = me.koKind === 'passout'; me.ko = 0; me.hp = out ? Math.max(me.hp, 60) : 35; me.safe = nowMs + SAFE_AFTER_WAKE_MS; me.koKind = ''; GAME.notice = out ? '🥴 You came to. Your head is pounding. Protected for a few seconds.' : '💪 You got back up. Protected for a few seconds.'; }
     const down = me.ko > nowMs;
     if (!down && me.hp < 100 && nowMs > me.hurt + 6000) me.hp = Math.min(100, me.hp + 5 * dt); // slow regeneration
     if (NET.msg) { GAME.notice = NET.msg; NET.msg = ''; }
@@ -1607,9 +1608,9 @@ function FightHud() {
   useEffect(() => {
     const id = setInterval(() => {
       const m = NET.me, now = Date.now(), ko = m.ko > now, hurtRecent = now - m.hurt < 7000;
-      if (box.current) box.current.style.display = ko || m.hp < 100 || hurtRecent ? 'flex' : 'none';
+      if (box.current) box.current.style.display = ko || m.hp < 100 || hurtRecent || m.safe > now ? 'flex' : 'none';
       if (bar.current) { bar.current.style.width = `${Math.max(0, m.hp)}%`; bar.current.style.background = m.hp > 50 ? '#35c46b' : m.hp > 25 ? '#f2b705' : '#ff5147'; }
-      if (txt.current) txt.current.textContent = ko ? `😵 Knocked out: ${Math.ceil((m.ko - now) / 1000)}s` : `❤️ ${Math.ceil(m.hp)}`;
+      if (txt.current) txt.current.textContent = ko ? `${m.koKind === 'passout' ? '🥴 Passed out' : '😵 Knocked out'}: wakes in ${Math.ceil((m.ko - now) / 1000)}s` : m.safe > now ? `🛡️ Protected ${Math.ceil((m.safe - now) / 1000)}s · ❤️ ${Math.ceil(m.hp)}` : `❤️ ${Math.ceil(m.hp)}`;
       if (fx.current) fx.current.style.opacity = ko ? '.55' : String(Math.max(0, 1 - (now - m.hurt) / 350) * .5);
     }, 80);
     return () => clearInterval(id);

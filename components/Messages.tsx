@@ -12,7 +12,7 @@ const ago = (t: number) => { const s = Math.max(0, (Date.now() - t) / 1000); ret
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const j = async (url: string, body?: object) => { try { const r = await fetch(url, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' }); return { ok: r.ok, status: r.status, d: await r.json().catch(() => ({})) as any }; } catch { return { ok: false, status: 0, d: { error: 'No connection.' } as any }; } };
 const FAILED: Record<string, Msg[]> = {}; // unsent texts survive closing the chat or the phone
-const preview = (m: Msg) => (m.mine ? 'You: ' : '') + (m.kind === 'loc' ? '📍 Location' : m.kind === 'cash' ? '💸 ' + naira(m.data?.amount || 0) : m.body);
+const preview = (m: Msg) => (m.mine ? 'You: ' : '') + (m.kind === 'loc' ? '📍 Location' : m.kind === 'cash' ? '💸 ' + naira(m.data?.amount || 0) : m.kind === 'robbed' ? '🚨 Robbery · ' + naira(m.data?.amount || 0) : m.body);
 
 export default function Messages({ start, onCash, onClose, onUnread }: { start: string | null; onCash: (n: number) => void; onClose: () => void; onUnread: (n: number) => void }) {
   const [convs, setConvs] = useState<Conv[]>([]), [tier] = useState(3), [cash, setCash] = useState(0), [open, setOpen] = useState<string | null>(start);
@@ -62,6 +62,7 @@ export default function Messages({ start, onCash, onClose, onUnread }: { start: 
           <div className={'msBub ' + m.kind}>
             {m.kind === 'text' && m.body}
             {m.kind === 'loc' && <><b>📍 {m.mine ? 'You shared your location' : `${open} shared a location`}</b>{!m.mine && <button className="msGo" onClick={() => navigate(m, open)}>🗺️ Navigate</button>}</>}
+            {m.kind === 'robbed' && <b>🚨 {m.mine ? `You robbed ${open} of` : `${open} robbed you of`} {naira(m.data?.amount || 0)}</b>}
             {m.kind === 'cash' && <><b>💸 {m.mine ? 'You sent' : `${open} sent you`} {naira(m.data?.amount || 0)}</b>{m.body && <span>{m.body}</span>}</>}
             <small>{m.failed ? <button className="msRetry" onClick={() => retry(m)}>⚠ Not sent · tap to retry</button> : <>{clock(m.at)}{m.mine ? (m.pending ? ' …' : m.read ? ' ✓✓' : ' ✓') : ''}</>}</small>
           </div></div>)}

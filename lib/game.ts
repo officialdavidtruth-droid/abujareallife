@@ -1,3 +1,4 @@
+import { downState } from './downed';
 import { prisma } from './prisma';
 import { CITY } from './cityData';
 import { decayIntox } from './intoxication';
@@ -23,11 +24,13 @@ export async function loadState(userId: string) {
   const jailLeft = s.jailUntil ? Math.max(0, Math.ceil((s.jailUntil.getTime() - now) / 1000)) : 0;
   return { save: s, profile, rank: rankFor(profile.profession, totalXp), jailLeft };
 }
+const downPublic = (until: Date | null, kind: string | null) => { const d = downState(until); return { downLeft: Math.ceil(d.downLeft / 1000), safeLeft: Math.ceil(d.safeLeft / 1000), downKind: d.down ? (kind || 'ko') : '' }; };
 export const addSkillXp = (p: Profile, skill: SkillId, xp: number): Profile => ({ ...p, skills: { ...p.skills, [skill]: (p.skills[skill] || 0) + xp } });
 export const lvl = (p: Profile, s: SkillId) => skillLevel(p.skills[s] || 0);
 export const publicState = (st: NonNullable<Awaited<ReturnType<typeof loadState>>>) => ({
   cash: st.save.cash, heat: st.save.heat, wanted: st.save.heat >= 40, jailLeft: st.jailLeft, profile: st.profile, rank: st.rank,
   drunk: st.save.drunk, high: st.save.high,
+  ...downPublic(st.save.downUntil, st.save.downKind),
   origin: st.save.origin, hasCar: st.save.hasCar, fame: st.save.fame, tier: fameTier(st.save.fame),
 });
 

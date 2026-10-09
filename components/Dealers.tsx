@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import RuntimeStyle from './RuntimeStyle';
 import { GAME } from './CityWorld';
 import { MAX_PER_DEAL } from '../lib/dealers';
+import { PASSOUT_DOWN_MS } from '../lib/downed';
+import { goDown } from '../lib/cityNet';
 
 /* NPC weed dealers. In the Market you meet the supplier (you buy); in the Nightclub you meet the buyer (you sell).
    All prices, heat and bust rolls are decided by /api/dealer; this is only the interface. */
@@ -10,7 +12,7 @@ type Poll = { dealer: { name: string; e: string; role: 'supplier' | 'buyer'; lin
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 const post = async (body: object) => { const r = await fetch('/api/dealer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { ok: r.ok, d: await r.json().catch(() => ({})) as any }; }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-export default function Dealers({ onCash, onFx, toast }: { onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void; toast: (m: string, bad?: boolean) => void }) {
+export default function Dealers({ onCash, onFx, toast, onBlackout }: { onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void; toast: (m: string, bad?: boolean) => void; onBlackout?: () => void }) {
   const [open, setOpen] = useState(false), [s, setS] = useState<Poll | null>(null), [qty, setQty] = useState(1);
   const poll = useCallback(async () => { const r = await post({ action: 'poll' }); if (r.ok) setS(r.d); }, []);
   useEffect(() => { if (!open) return; poll(); const i = setInterval(poll, 8000); return () => clearInterval(i); }, [open, poll]);
@@ -25,7 +27,7 @@ export default function Dealers({ onCash, onFx, toast }: { onCash: (n: number) =
   const smoke = async () => {
     const r = await fetch('/api/intox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'smoke' }) }), d = await r.json().catch(() => ({}));
     if (!r.ok) return toast(d.error || 'Nope.', true);
-    GAME.high = d.high; GAME.drunk = d.drunk; if (d.blackout) { onFx(d.penalty || {}); toast('😵 You blacked out.', true); } else toast('🌿 You smoked a joint.'); poll();
+    GAME.high = d.high; GAME.drunk = d.drunk; if (d.blackout) { onFx(d.penalty || {}); goDown(d.downMs || PASSOUT_DOWN_MS, 'passout'); toast('🥴 You passed out. Security drags you out to the street…', true); onBlackout?.(); } else toast('🌿 You smoked a joint.'); poll();
   };
   const buying = s?.dealer.role === 'supplier';
   return <>

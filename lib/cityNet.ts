@@ -3,17 +3,18 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 import { WEAPON_RULES } from './weapons';
 import { sanitizeLook, type Look } from './characterModels';
+import { KO_DOWN_MS, SAFE_AFTER_WAKE_MS } from './downed';
 
 /* Shared, mutable multiplayer state. The 3D scene writes NET.me every frame and reads NET.peers every frame
    (no React re-renders in the hot path). React state only changes when people join/leave or chat. */
-export type NetMe = { x: number; z: number; r: number; mv: 0 | 1 | 2; drv: boolean; cp: boolean; cx: number; cz: number; cr: number; anim: string; animUntil: number; hp: number; ko: number; hurt: number; safe: number };
+export type NetMe = { x: number; z: number; r: number; mv: 0 | 1 | 2; drv: boolean; cp: boolean; cx: number; cz: number; cr: number; anim: string; animUntil: number; hp: number; ko: number; hurt: number; safe: number; koKind: string };
 export type NetPeer = {
-  look: Look; init: boolean; mv: number; drv: boolean; cp: boolean; anim: string; animUntil: number; ko: boolean;
+  look: Look; init: boolean; mv: number; drv: boolean; cp: boolean; anim: string; animUntil: number; ko: boolean; safe: boolean;
   x: number; z: number; r: number; tx: number; tz: number; tr: number;
   cx: number; cz: number; cr: number; tcx: number; tcz: number; tcr: number;
 };
 export const NET = {
-  me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0, anim: '', animUntil: 0, hp: 100, ko: 0, hurt: 0, safe: 0 } as NetMe,
+  me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0, anim: '', animUntil: 0, hp: 100, ko: 0, hurt: 0, safe: 0, koKind: '' } as NetMe,
   peers: {} as Record<string, NetPeer>,
   reason: '' as string, // why multiplayer is offline, shown in the chat panel
   msg: '' as string, // one-line toast written by the net layer, shown by the scene
@@ -24,8 +25,17 @@ export const NET = {
 /* Peer-to-peer voice signalling message (used only by the optional mesh voice fallback). */
 export type RtcMsg = { u: string; t: string; d?: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-export const FIGHT = { range: 2.6, dmg: 10, cooldown: 600, koMs: 10_000 };
+export const FIGHT = { range: 2.6, dmg: 10, cooldown: 600, koMs: KO_DOWN_MS };
 export { WEAPON_RULES };
+
+/** Lie down for `ms` (blackout in a bar, etc.). Never shortens a knockout you are already in. */
+export function goDown(ms: number, kind: 'ko' | 'passout') { const m = NET.me, t = Date.now() + ms; if (t > m.ko) { m.ko = t; m.koKind = kind; } }
+/** Copy the server's down/safe timers (from /api/status) onto the local player, so a page reload cannot cancel a knockout or fake protection. */
+export function syncDown(downLeft: number, safeLeft: number, kind: string) {
+  const m = NET.me, now = Date.now();
+  if (downLeft > 0 && m.ko < now + downLeft * 1000 - 1500) { m.ko = now + downLeft * 1000; m.koKind = kind === 'passout' ? 'passout' : 'ko'; }
+  if (safeLeft > 0 && m.safe < now + safeLeft * 1000 - 1500) m.safe = now + Math.min(safeLeft * 1000, SAFE_AFTER_WAKE_MS);
+}
 
 export const MAX_ROOM = 40;   // players per city instance; the 41st player is moved to instance #2, etc.
 const MAX_ROOMS = 50;
@@ -35,7 +45,7 @@ const clampN = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? Ma
 const angle = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height, l.outfitModel].join('|');
-const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, cp: false, anim: '', animUntil: 0, ko: false, x: 0, z: 16, r: 0, tx: 0, tz: 16, tr: 0, cx: 0, cz: 0, cr: 0, tcx: 0, tcz: 0, tcr: 0 });
+const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, cp: false, anim: '', animUntil: 0, ko: false, safe: false, x: 0, z: 16, r: 0, tx: 0, tz: 16, tr: 0, cx: 0, cz: 0, cr: 0, tcx: 0, tcz: 0, tcr: 0 });
 
 export const INTERACT_RANGE = 10; // metres: how close you must be to wave / high-five / dance with someone
 export const ACT_LIST = [['wave', '👋', 'Wave'], ['cheer', '🙌', 'High-five'], ['dance', '💃', 'Dance']] as const;
@@ -163,7 +173,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
           if (cur !== c) return;
           const p = NET.peers[String(payload?.u)]; if (!p) return;
           p.tx = clampN(payload.x); p.tz = clampN(payload.z, 16); p.tr = angle(payload.r, p.tr);
-          p.mv = payload.m === 2 ? 2 : payload.m === 1 ? 1 : 0; p.drv = !!payload.d; p.cp = !!payload.p; p.ko = !!payload.k;
+          p.mv = payload.m === 2 ? 2 : payload.m === 1 ? 1 : 0; p.drv = !!payload.d; p.cp = !!payload.p; p.ko = !!payload.k; p.safe = !!payload.s;
           p.tcx = clampN(payload.cx); p.tcz = clampN(payload.cz); p.tcr = angle(payload.cr, p.tcr);
           if (!p.init) { p.init = true; p.x = p.tx; p.z = p.tz; p.r = p.tr; p.cx = p.tcx; p.cz = p.tcz; p.cr = p.tcr; }
         })
@@ -192,7 +202,8 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
           m.hp = Math.max(0, m.hp - FIGHT.dmg); m.hurt = now;
           if (!retaliating && !aggressor.current[u]) { aggressor.current[u] = now; NET.msg = `👊 ${u} attacked you!`; report('assault', u); }
           if (m.hp <= 0) {
-            m.ko = now + FIGHT.koMs; NET.msg = `😵 ${u} knocked you out!`;
+            m.ko = now + FIGHT.koMs; m.koKind = 'ko'; NET.msg = `😵 ${u} knocked you out!`;
+            fetch('/api/down', { method: 'POST' }).catch(() => {});   // the server now times your recovery (and your safe window)
             if (aggressor.current[u] && now - aggressor.current[u] < 120_000) report('ko', u);
           }
         })
@@ -251,7 +262,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     const id = setInterval(() => {
       const c = ch.current; if (!c || statusRef.current !== 'online' || !Object.keys(NET.peers).length) return;
       const m = NET.me, now = Date.now();
-      const pl = { u: name, x: r2(m.x), z: r2(m.z), r: r2(m.r), m: m.mv, d: m.drv, p: m.cp, cx: r2(m.cx), cz: r2(m.cz), cr: r2(m.cr), k: m.ko > now ? 1 : 0 };
+      const pl = { u: name, x: r2(m.x), z: r2(m.z), r: r2(m.r), m: m.mv, d: m.drv, p: m.cp, cx: r2(m.cx), cz: r2(m.cz), cr: r2(m.cr), k: m.ko > now ? 1 : 0, s: m.safe > now ? 1 : 0 };
       const key = `${pl.x}|${pl.z}|${pl.r}|${pl.m}|${pl.d}|${pl.p}|${pl.cx}|${pl.cz}|${pl.cr}|${pl.k}`;
       if (key === lastKey.current && now - lastBeat.current < 2500) return;
       lastKey.current = key; lastBeat.current = now;

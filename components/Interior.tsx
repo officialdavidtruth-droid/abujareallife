@@ -19,7 +19,7 @@ import { openSettings } from '../lib/settings';
 import { buildInterior, staffLook, type Interior as Room, type Item, type Office, type Opt, type Post, type Spot } from '../lib/interiors';
 import { ROOM, useRoomNet } from '../lib/roomNet';
 import { NET } from '../lib/cityNet';
-import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
+import { CRIMES, HOLDUP, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
 import type { Look } from '../lib/characterModels';
 import { businessStatus } from '../lib/businessHours';
 import { AUTO, idleFor } from '../lib/autoState';
@@ -154,6 +154,21 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   const [job, setJob] = useState<{ kind: 'shift' | 'quest' | 'mtask'; id: string | number; end: number; label: string } | null>(null), [, tick] = useState(0), [near, setNear] = useState<string | null>(null);
   const toast = (m: string, bad = false) => { setMsg(m); setTimeout(() => setMsg(''), 4500); sfx(bad ? 'error' : /^(Done|💰|🎉|🚔 .* arrested)/.test(m) ? 'success' : 'pop'); };
   useEffect(() => { sfx('door'); }, []);
+  /* Shop hold-up: the server hides when the police arrive. Staying fills the bag; running early takes a partial share; waiting too long = arrested. */
+  type Hold = { ticket: string; start: number; bagSecs: number; minSecs: number; busy: boolean };
+  const [hold, setHold] = useState<Hold | null>(null), holdRef = useRef<Hold | null>(null);
+  const finishHold = async (): Promise<'jail' | 'ok' | 'fail'> => {
+    const h = holdRef.current; if (!h || h.busy) return 'fail'; h.busy = true;
+    const r = await post('/api/holdup', { action: 'finish', ticket: h.ticket });
+    holdRef.current = null; setHold(null);
+    if (!r.ok) { toast(r.d.error || 'The hold-up fell apart.', true); return 'fail'; }
+    if (r.d.cash != null) onCash(r.d.cash);
+    if (r.d.caught) { toast(`🚔 The police burst in! You are arrested${r.d.fine ? ` · fined ${naira(r.d.fine)}` : ''}`, true); setTimeout(() => onExit(true), 1600); return 'jail'; }
+    toast(r.d.loot ? `💰 You ${r.d.full ? 'bagged it all:' : 'grabbed'} ${naira(r.d.loot)}${r.d.wanted ? ' · WANTED: get out before the patrol arrives' : ''}` : '🏃 You ran with nothing.');
+    return 'ok';
+  };
+  useEffect(() => { if (!hold) return; const i = setInterval(() => { const h = holdRef.current; if (h && Date.now() - h.start >= h.bagSecs * 1000) finishHold(); }, 300); return () => clearInterval(i); }, [hold]); // eslint-disable-line react-hooks/exhaustive-deps
+  const exitNow = async () => { if (holdRef.current && (await finishHold()) === 'jail') return; onExit(); };   // walking out mid hold-up = you run with what you have
   const [mgr, setMgr] = useState<Mgr | null>(null), lock = useRef(false), restored = useRef(false), snappedMgr = useRef(false), blockedAt = useRef(0);
   const cam = useRef<Cam>({ yaw: 0, pitch: .85, dist: 10.5 }), go = useRef<Go | null>(null), nav = useMemo(() => makeNav(room), [room]), pts = useRef(new Map<number, { x: number; y: number }>()), pinch = useRef(0);
   const walk = (x: number, z: number, open?: Go['open']) => { const p = nav.path([ROOM.me.x, ROOM.me.z], [x, z]); if (!p || !p.length) return open ? undefined : toast("Can't walk there.", true); go.current = { path: p, i: 0, stuck: 0, open }; };
@@ -219,9 +234,11 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     if (r.ok) { onCash(r.d.cash); toast(`Done: +${naira(r.d.pay ?? r.d.reward)}${r.d.heatAdded ? ' · heat up 🔥' : ''}`); if (autoShift.current) { autoShift.current = false; AUTO.drain?.(); } } else toast(r.d.error, true);
   })(); }, [left, job]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (o: Opt) => {
-    if (job && (o.t === 'shift' || o.t === 'quest' || o.t === 'crime')) return toast('Finish what you are doing first.', true);
+    if (holdRef.current && o.t !== 'info') return toast('Finish the hold-up first.', true);
+    if (job && (o.t === 'shift' || o.t === 'quest' || o.t === 'crime' || o.t === 'holdup')) return toast('Finish what you are doing first.', true);
     if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: `${o.label} · ${r.d.task}` }); setMenu(null); const po = room.posts.find(x => x.idx === o.idx); if (po) snap.current = stand(po); toast(`📍 ${o.label}: ${r.d.task} (${Math.round(r.d.secs / 60)} min). Stay in the building, walk around if you like - the shift keeps running.`); }
     else if (o.t === 'quest') { const q = QUESTS.find(x => x.id === o.id)!, r = await post('/api/quest', { action: 'start', id: o.id }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'quest', id: o.id, end: Date.now() + r.d.secs * 1000, label: q.title }); setMenu(null); }
+    else if (o.t === 'holdup') { const r = await post('/api/holdup', { action: 'start' }); if (!r.ok) return toast(r.d.error, true); const h: Hold = { ticket: r.d.ticket, start: Date.now(), bagSecs: r.d.bagSecs, minSecs: r.d.minSecs, busy: false }; holdRef.current = h; setHold(h); setMenu(null); toast('🔫 Hands up! The clerk is emptying the till…'); }
     else if (o.t === 'store') { setStore(true); setMenu(null); }
     else if (o.t === 'shop') { const r = await post('/api/shop', { item: o.id }); if (!r.ok) return toast(r.d.error, true); onCash(r.d.cash); onFx(r.d.fx); sfx('buy'); toast(`Bought: ${o.label}`); }
     else if (o.t === 'crime') { const r = await post('/api/crime', { kind: o.id, policeNearby: cops() }); if (!r.ok) return toast(r.d.error, true); onCash(r.d.cash);
@@ -246,7 +263,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
         {mgr.holder && <p>The seat opens when this term ends. Keep earning tasks to be first in line.</p>}
         {!me.otherSeat && mgr.tasks.map(t => <button key={t.id} onClick={() => mgrAct('task_start', { task: t.id })}><span className="tx"><b>{t.label}</b><small>+{naira(MGR_TASK_PAY)} · {t.mins} min · counts toward promotion</small></span><em className="pill">Start</em></button>)}</>}
     </div>; };
-  const leave = () => { if (job && job.kind !== 'quest' && !window.confirm('Leaving now forfeits this and its pay. Leave anyway?')) return; onExit(); };
+  const leave = () => { if (job && job.kind !== 'quest' && !window.confirm('Leaving now forfeits this and its pay. Leave anyway?')) return; exitNow(); };
   const arrest = async () => { if (!near) return; const r = await post('/api/arrest', { target: near }); toast(r.ok ? `🚔 ${near} arrested. +${naira(r.d.reward)}` : r.d.error); };
   const qName = (id: string) => QUESTS.find(q => q.id === id)!;
   const stick = useRef<HTMLDivElement>(null), knob = useRef<HTMLElement>(null);
@@ -262,7 +279,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
       {room.posts.map(p => <Staff key={p.idx} post={p} look={staff[p.idx]} onTalk={talk} />)}
       {room.office && <ManagerSeat office={room.office} mgr={mgr} meName={look.name} onTap={() => { const sp = room.spots.find(x => x.id === 'mgmt'); if (sp) goSpot(sp); }} />}
       {room.spots.map(s => <SpotMark key={s.id} s={s} active={spot?.id === s.id} onTap={goSpot} />)}
-      <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => onExit()} frozen={!!menu || store} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
+      <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => exitNow()} frozen={!!menu || store} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
       {net.roster.map(n => ROOM.peers[n] && <Remote key={n + net.ver} name={n} bub={net.bub[n]} />)}
     </Canvas></div>
     <div className="inTop"><div className="inIdentity"><span className="inEyebrow">INSIDE</span><b>{biz.name}</b><span className="inMeta">{biz.type} · {businessStatus(biz.type, getMinute ? getMinute() : 0).label} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span></div></div>
@@ -271,16 +288,20 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
     <div className={"inDock" + (actionOpen ? " open" : "")}><button className="inActionsToggle" onClick={() => setActionOpen(v => !v)}>🎮 <span>{actionOpen ? "Close actions" : "Actions"}</span></button>{actionOpen && <div className="inActionTray"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => { setActionOpen(false); goSpot(sp); }}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>}</div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
-    {(BAR_TYPES as string[]).includes(biz.type) && <DrinksMenu onCash={onCash} onFx={onFx} toast={toast} />}
-    {dealerAt(biz.type) && <Dealers onCash={onCash} onFx={onFx} toast={toast} />}
+    {(BAR_TYPES as string[]).includes(biz.type) && <DrinksMenu onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
+    {dealerAt(biz.type) && <Dealers onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
     {biz.type === 'Nightclub' && <Underworld onCash={onCash} onFx={onFx} toast={toast} />}
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
+    {hold && (() => { const el = (Date.now() - hold.start) / 1000, pct = Math.min(100, Math.round(el / hold.bagSecs * 100)), canRun = el >= hold.minSecs;
+      return <div className="hdBox"><b>🔫 HOLD-UP · 🚨 police on the way</b><i><u style={{ width: pct + '%' }} /></i><small>{pct >= 100 ? 'Bag is full!' : `Bagging the cash… ${pct}%`}</small><button disabled={!canRun} onClick={() => exitNow()}>{canRun ? '🏃 Take it & run' : 'Wait for the clerk…'}</button></div>; })()}
+    {hold && <RuntimeStyle id="arl-holdup" css={`.hdBox{position:absolute;left:50%;transform:translateX(-50%);top:calc(150px + env(safe-area-inset-top,0px));z-index:35;width:min(300px,calc(100vw - 24px));background:#450a0af2;color:#fff;border:1px solid #fca5a5aa;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;text-align:center;box-shadow:0 10px 30px #000a}.hdBox b{font-size:13px}.hdBox small{font-size:11px;color:#fecaca}.hdBox i{display:block;height:10px;border-radius:99px;background:#00000066;overflow:hidden}.hdBox u{display:block;height:100%;background:#f97316;transition:width .3s}.hdBox button{min-height:44px;border:0;border-radius:10px;background:#fff;color:#7f1d1d;font-weight:900;font-size:14px;touch-action:manipulation}.hdBox button:disabled{opacity:.55}`} />}
     {menu && <div className={'inMenu k-' + (menu.id.startsWith('npc') ? 'npc' : menu.id)} style={{ ['--e' as string]: `"${menu.e}"` }}><button className="x" aria-label="Close" onClick={() => setMenu(null)}>✕</button><h3><span>{menu.e} {menu.label}</span></h3><div className="inBody">
       {menu.opts.map((o, i) => o.t === 'info' ? <p key={i}>{o.text}</p> : o.t === 'mgmt' ? mgmtMenu(i) : <button key={i} onClick={() => run(o)}>
         {o.t === 'shift' && <><span className="tx"><b>{o.label}</b><small>+{naira(o.pay)} · 8–12 min · task assigned{o.senior ? ' · needs rank 2' : ''}</small></span><em className="pill">Apply</em></>}
         {o.t === 'store' && <><span className="tx"><b>🛍️ Browse the store</b><small>{o.count} items · household, kitchen, furniture, tech, style &amp; more</small></span><em className="pill">Open</em></>}
         {o.t === 'shop' && <><span className="tx"><b>{o.label}</b><small>{naira(o.cost)}</small></span><em className="pill">Buy</em></>}
         {o.t === 'quest' && <><span className="tx"><b>{qName(o.id).title}</b><small>{qName(o.id).blurb} · +{naira(qName(o.id).reward)} · {qName(o.id).secs}s{qName(o.id).legal ? '' : ' · 🔥 illegal'}</small></span><em className="pill">Start</em></>}
+        {o.t === 'holdup' && <><span className="tx"><b>🔫 Hold up the clerk</b><small>{naira(CRIMES.rob_shop.loot[0])}–{naira(CRIMES.rob_shop.loot[1])} · +{HOLDUP.heat} heat · stay ~{HOLDUP.bagSecs}s to bag it all · the police may arrive first</small></span><em className="pill">Go</em></>}
         {o.t === 'crime' && <><span className="tx"><b>{CRIMES[o.id].label}</b><small>{naira(CRIMES[o.id].loot[0])}–{naira(CRIMES[o.id].loot[1])} · +{CRIMES[o.id].heat} heat · officers inside make it riskier</small></span><em className="pill">Try</em></>}</button>)}</div></div>}
     {net.enabled && <div className="inChat">{net.log.slice(-3).map(m => <div key={m.id}><b>{m.u}</b> {m.t}</div>)}<div className="inChatRow"><input placeholder="Say something…" maxLength={120} value={txt} enterKeyHint="send" onChange={e => setTxt(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter' && net.send(txt)) setTxt(''); }} onKeyUp={e => e.stopPropagation()} /><button type="button" onClick={() => { if (net.send(txt)) setTxt(''); }}>Send</button></div></div>}
     <div className="inStick" ref={stick} onPointerDown={e => { (e.target as Element).setPointerCapture(e.pointerId); joy(e, true); }} onPointerMove={e => (e.buttons || e.pointerType === 'touch') && joy(e, true)} onPointerUp={e => joy(e, false)} onPointerCancel={e => joy(e, false)}><i ref={knob as React.RefObject<HTMLElement>} /></div>

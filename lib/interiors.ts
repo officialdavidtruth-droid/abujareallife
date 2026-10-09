@@ -9,7 +9,7 @@ export type Item = { x: number; z: number; w: number; d: number; h: number; c: s
 /* A staff post: where an NPC employee works. Players who start a shift are placed at the matching post (stand overrides the spot). */
 export type Office = { x: number; z: number; sx: number; sz: number; title: string };
 export type Post = { idx: number; title: string; x: number; z: number; r: number; anim?: string; y?: number; stand?: [number, number]; patrol?: [number, number][] };
-export type Opt = { t: 'mgmt' } | { t: 'shift'; idx: number; label: string; pay: number; senior: boolean } | { t: 'shop'; id: string; label: string; cost: number } | { t: 'store'; count: number } | { t: 'quest'; id: string } | { t: 'crime'; id: CrimeId } | { t: 'info'; text: string };
+export type Opt = { t: 'mgmt' } | { t: 'shift'; idx: number; label: string; pay: number; senior: boolean } | { t: 'shop'; id: string; label: string; cost: number } | { t: 'store'; count: number } | { t: 'quest'; id: string } | { t: 'crime'; id: CrimeId } | { t: 'holdup' } | { t: 'info'; text: string };
 export type Spot = { id: string; x: number; z: number; e: string; label: string; opts: Opt[] };
 export type Interior = { w: number; d: number; floor: string; wall: string; items: Item[]; decor: Item[]; posts: Post[]; spots: Spot[]; office: Office | null };
 
@@ -163,7 +163,7 @@ export function buildInterior(b: Business): Interior {
   if (jobs.length) spots.push({ id: 'work', x: at('work')[0], z: at('work')[1], e: '💼', label: 'Jobs', opts: jobs });
   const shop = SHOP[type] || [], big = storeCats(type).length ? storeItems(type).length : 0; if (shop.length || big) spots.push({ id: 'shop', x: at('shop')[0], z: at('shop')[1], e: '🛒', label: type === 'Restaurant' || type === 'Nightclub' ? 'Order' : 'Buy', opts: [...(big ? [{ t: 'store' as const, count: big }] : []), ...shop.map(i => ({ t: 'shop' as const, id: i.id, label: i.label, cost: i.cost }))] });
   const qs = QUESTS.filter(q => q.at?.includes(type)); if (qs.length) spots.push({ id: 'quest', x: at('quest')[0], z: at('quest')[1], e: '📜', label: 'Quests', opts: qs.map(q => ({ t: 'quest' as const, id: q.id })) });
-  const cr = (Object.keys(CRIMES) as CrimeId[]).filter(k => CRIMES[k].at?.includes(type)); if (cr.length) spots.push({ id: 'crime', x: at('crime')[0], z: at('crime')[1], e: '🕶️', label: type === 'Bank' ? 'Vault (rob)' : 'Till (rob)', opts: cr.map(k => ({ t: 'crime' as const, id: k })) });
+  const cr = (Object.keys(CRIMES) as CrimeId[]).filter(k => CRIMES[k].at?.includes(type)); if (cr.length) spots.push({ id: 'crime', x: at('crime')[0], z: at('crime')[1], e: '🕶️', label: type === 'Bank' ? 'Vault (rob)' : 'Counter (hold-up)', opts: cr.map(k => k === 'rob_shop' ? ({ t: 'holdup' as const }) : ({ t: 'crime' as const, id: k })) });
   if (type === 'Police Station') spots.push({ id: 'board', x: hx - 3, z: 6, e: '📋', label: 'Wanted board', opts: [{ t: 'info', text: 'Officers: arrest wanted players who are inside with you (within range). Others: keep your heat low.' }] });
   // ---- the manager's office: a desk + a 'Management' ring, placed where nothing else is ----
   let office: Interior['office'] = null;

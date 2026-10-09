@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import RuntimeStyle from './RuntimeStyle';
 import { GAME } from './CityWorld';
 import { DRINKS, effects, stageOf } from '../lib/intoxication';
+import { PASSOUT_DOWN_MS } from '../lib/downed';
+import { goDown } from '../lib/cityNet';
 
 /* Screen effect while drunk / high. Levels come from /api/status (server-owned). GAME.drunk / GAME.high are set for the world to read (walking sway, speed). */
 export function IntoxOverlay({ drunk, high }: { drunk: number; high: number }) {
@@ -18,7 +20,7 @@ export function IntoxOverlay({ drunk, high }: { drunk: number; high: number }) {
 
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 /** Drinks menu for bars / clubs / restaurants / hotels (rendered inside the building), plus a smoke button if you carry a joint. */
-export function DrinksMenu({ onCash, onFx, toast }: { onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void; toast: (m: string, bad?: boolean) => void }) {
+export function DrinksMenu({ onCash, onFx, toast, onBlackout }: { onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void; toast: (m: string, bad?: boolean) => void; onBlackout?: () => void }) {
   const [open, setOpen] = useState(false), [lvl, setLvl] = useState({ drunk: 0, high: 0 }), [joints, setJoints] = useState(0);
   const load = () => { fetch('/api/status').then(r => r.ok ? r.json() : null).then(d => d && setLvl({ drunk: d.drunk || 0, high: d.high || 0 })).catch(() => {}); fetch('/api/intox').then(r => r.ok ? r.json() : null).then(d => d && setJoints(d.joints || 0)).catch(() => {}); };
   useEffect(() => { if (open) load(); }, [open]);
@@ -27,7 +29,7 @@ export function DrinksMenu({ onCash, onFx, toast }: { onCash: (n: number) => voi
     if (!r.ok) return toast(d.error || 'Nope.', true);
     if (d.cash != null) onCash(d.cash);
     setLvl({ drunk: d.drunk, high: d.high }); GAME.drunk = d.drunk; GAME.high = d.high;
-    if (d.blackout) { onFx(d.penalty || {}); toast('😵 You blacked out. Your energy crashed.', true); } else toast(d.spent ? `🍹 ${d.label} · ${naira(d.spent)}` : `🌿 You smoked a ${d.label}.`);
+    if (d.blackout) { onFx(d.penalty || {}); goDown(d.downMs || PASSOUT_DOWN_MS, 'passout'); setOpen(false); toast('🥴 You passed out. Security drags you out to the street…', true); onBlackout?.(); } else toast(d.spent ? `🍹 ${d.label} · ${naira(d.spent)}` : `🌿 You smoked a ${d.label}.`);
     load();
   };
   return <>

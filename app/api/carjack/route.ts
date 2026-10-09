@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
 import { CARJACK_HEAT, CARJACK_RANGE } from '../../../lib/profile';
+import { downState } from '../../../lib/downed';
 import { checkNear } from '../../../lib/proximity';
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,7 @@ export async function POST(req: Request) {
   if (throttled('carjack:' + u.id, 4, 10 * 60_000)) return err('Slow down.', 429);
   const me = await loadState(u.id); if (!me) return err('Create your character first.', 409);
   if (me.jailLeft) return err('You are in jail.', 403);
+  if (downState(me.save.downUntil).down) return err('You are out cold.', 403);
   if (me.profile.profession === 'police') return err('Officers cannot commit crimes on duty.', 403);
   const near = await checkNear(u.id, target, { x: Number(b.sx), z: Number(b.sz) }, { x: Number(b.tx), z: Number(b.tz) }, CARJACK_RANGE);
   if (!near.ok) return err(near.reason, 409);

@@ -4,6 +4,7 @@ import { currentUser, err } from '../../../lib/auth';
 import { WEAPON_RULES } from '../../../lib/weapons';
 import { signTicket } from '../../../lib/shotTicket';
 import { ASSAULT_HEAT, OFFICER_HEAT } from '../../../lib/profile';
+import { downState } from '../../../lib/downed';
 import { recordShot } from '../../../lib/combatLog';
 export const dynamic = 'force-dynamic';
 
@@ -43,12 +44,14 @@ export async function POST(req: Request) {
   if (!plausible(s, me, now) || !plausible(t, him, now)) return NextResponse.json({ ok: false, reason: 'position' });
   if (Math.hypot(s.x - t.x, s.z - t.z) > rules.range + 1.5) return NextResponse.json({ ok: false, reason: 'range' });
 
-  const saves = await prisma.save.findMany({ where: { userId: { in: [u.id, him.userId] } }, select: { userId: true, jailUntil: true, profile: true, heat: true } });
+  const saves = await prisma.save.findMany({ where: { userId: { in: [u.id, him.userId] } }, select: { userId: true, jailUntil: true, profile: true, heat: true, downUntil: true } });
   const mine = saves.find(x => x.userId === u.id), theirs = saves.find(x => x.userId === him.userId);
   if (!mine || !theirs) return NextResponse.json({ ok: false, reason: 'offline' });
   if (mine.jailUntil && mine.jailUntil.getTime() > now) return err('You are in jail.', 403);
   if (theirs.jailUntil && theirs.jailUntil.getTime() > now) return NextResponse.json({ ok: false, reason: 'jailed' });
 
+  if (downState(mine.downUntil, now).down) return err('You are out cold.', 403);
+  if (downState(theirs.downUntil, now).safe) return NextResponse.json({ ok: false, reason: 'safe' });   // just woke up: protected for a few seconds
   lastShot.set(u.id, now);
   recordShot(u.id, him.userId);
   const pair = `${u.id}>${him.userId}`, back = `${him.userId}>${u.id}`;

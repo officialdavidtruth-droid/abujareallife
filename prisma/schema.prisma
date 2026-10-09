@@ -241,6 +241,8 @@ model Save {
   drunk     Int      @default(0) // 0-100 alcohol level (server-owned, fades over time)
   high      Int      @default(0) // 0-100 weed level (server-owned, fades over time)
   intoxAt   DateTime?            // when drunk/high were last decayed
+  downUntil DateTime?            // knocked out / passed out until this moment (server-owned; the safe window after waking is derived from it)
+  downKind  String?              // 'ko' | 'passout'
   updatedAt DateTime @updatedAt
 
   @@index([fame])
@@ -273,6 +275,7 @@ model Crime {
   loot      Int      @default(0)
   createdAt DateTime @default(now())
   @@index([userId, createdAt])
+  @@index([kind, createdAt])
 }
 
 // One manager seat per business. Unique businessId = the first applicant wins; unique userId = one seat per player. Expired rows count as vacant.

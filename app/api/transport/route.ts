@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
-import { currentUser, err } from '../../../lib/auth';
+import { currentUser, err, serverError } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
 import { weatherAt } from '../../../lib/worldClock';
 import { activeCityEvents, districtProfile } from '../../../lib/livingCity';
@@ -11,7 +11,7 @@ type Kind = keyof typeof PRICE;
 export const dynamic = 'force-dynamic';
 
 async function fareFor(kind: Kind, district?: string) {
-  const wx = weatherAt(), events = await activeCityEvents();
+  const wx = weatherAt(), events: { kind: string }[] = await activeCityEvents().catch(() => []);
   const rain = wx.rain > 0.5, storm = !!wx.storm;
   const surge = events.some(e => e.kind === 'traffic' || e.kind === 'flood') ? 1.2 : 1;
   const weather = kind === 'taxi' || kind === 'private_driver' ? (rain ? 1.3 : 1) : kind === 'bike' || kind === 'keke' ? (storm ? 1.5 : rain ? 0.85 : 1) : 1;
@@ -19,17 +19,17 @@ async function fareFor(kind: Kind, district?: string) {
   return Math.round(PRICE[kind] * surge * weather * wealth / 50) * 50;
 }
 
-export async function GET() {
+async function getImpl() {
   const u = await currentUser(); if (!u) return err('Not signed in.', 401);
-  const ch = await prisma.character.findUnique({ where: { userId: u.id }, select: { district: true } });
+  const ch = await prisma.character.findUnique({ where: { userId: u.id }, select: { district: true } }).catch(() => null);
   const fares = Object.fromEntries(await Promise.all((Object.keys(PRICE) as Kind[]).map(async k => [k, await fareFor(k, ch?.district)])));
   return NextResponse.json({ fares });
 }
 
-export async function POST(req: Request) {
+async function postImpl(req: Request) {
   const u = await currentUser(); if (!u) return err('Not signed in.', 401);
   const b = await req.json().catch(() => ({}));
-  const ch = await prisma.character.findUnique({ where: { userId: u.id }, select: { district: true } });
+  const ch = await prisma.character.findUnique({ where: { userId: u.id }, select: { district: true } }).catch(() => null);
 
   // Player-as-driver: a Driver profession earns a fare for carrying a passenger (server-side cooldown, rating grows).
   if (b.action === 'drive_fare') {
@@ -60,3 +60,6 @@ export async function POST(req: Request) {
   ]);
   return NextResponse.json({ ok: true, price, cash: save.cash - price });
 }
+
+export async function GET() { try { return await getImpl(); } catch (e) { return serverError(e); } }
+export async function POST(req: Request) { try { return await postImpl(req); } catch (e) { return serverError(e); } }

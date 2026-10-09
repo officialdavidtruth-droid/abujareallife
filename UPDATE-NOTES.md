@@ -63,3 +63,12 @@
 - Assault heat for shooting is now applied by the server to the shooter (first shot per target per 30 s, skipped if the target shot you in the last 20 s). The victim no longer reports shots, so false assault reports are impossible. Knockout reports still go through `/api/fight`.
 - No database migration needed.
 - Known limits: ammo/weapon ownership is still client-side; no line-of-sight/wall check; positions are client-reported every 5 s (plausibility check allows ~30 m/s + 12 m slack); a modified VICTIM client can still ignore damage (needs server-held HP); in-memory rate/replay maps are per server instance.
+
+## Wallet top-ups (Paystack)
+Packages (`lib/wallet.ts`): ₦5,000→80,000 · ₦10,000→170,000 · ₦25,000→400,000 · ₦37,000→585,000 · ₦50,000→1,500,000 · ₦100,000→10,000,000 game money (added to the player's cash).
+Setup:
+1. Vercel env: `PAYSTACK_SECRET_KEY` (start with `sk_test_...`, switch to `sk_live_...` when ready). Optional `APP_URL` (e.g. https://yourdomain.com).
+2. Paystack Dashboard > Settings > API Keys & Webhooks: set the Webhook URL to `https://YOUR-DOMAIN/api/wallet/webhook`.
+3. Redeploy. No database migration needed.
+How it works: 💰 Wallet in the ☰ dock -> `/api/wallet/checkout` creates a Paystack payment -> player pays on Paystack -> returns to the game (`/?wallet=1`) -> `/api/wallet/verify`; the webhook does the same if the player never returns. Both call one idempotent function (`creditPayment` in `lib/paystack.ts`): it asks Paystack for the truth, checks status/amount/currency, takes the credit amount from OUR table (never from the browser) and uses the payment reference as the Transaction primary key so a payment can only ever credit once.
+Not included: refunds/chargebacks (handle manually in Paystack; there is no automatic clawback), receipts page, admin view of payments (use the Paystack dashboard).

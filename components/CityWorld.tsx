@@ -930,14 +930,16 @@ function Pedestrians() {
       const td=Math.hypot(p.x-p.target[0],p.z-p.target[1]);
       p.tc=Math.max(0,p.tc-dt);
       const wander=()=>(Math.random()<.5?-1:1)*(20+Math.random()*25);
-      if(p.hidden){ p.rest-=dt; if(p.rest<=0){ p.ox=wander(); p.oz=wander(); p.hidden=false; p.tc=0; } else if(td>16){ p.hidden=false; p.tc=0; } } // inside a shop/home for a while, then comes back out and walks somewhere else
-      else if(td<12 && p.mode!=='flee'){ p.hidden=true; p.rest=12+Math.random()*30; }
-      if(p.hidden) p.moving=false;
+      // Arrived near the destination: stand and linger for a while (visible on the pavement, never shrunk or hidden), then wander off somewhere else.
+      if(p.mode==='flee') p.rest=0;
+      else if(p.rest>0){ p.rest-=dt; if(p.rest<=0){ p.ox=wander(); p.oz=wander(); p.tc=0; } else if(td>16){ p.rest=0; p.tc=0; } } // destination changed (time of day): stop lingering
+      else if(td<12){ p.rest=12+Math.random()*30; }
+      const lingering = p.rest>0;
       if (p.down > 0) { p.down -= dt; fall = Math.min(1, (3.2 - p.down) / .25) * Math.min(1, Math.max(0, p.down) / .35); }
       else {
-        let go = !p.hidden;
+        let go = !lingering;
         if(p.mode==='flee'){ p.dir = p.axis==='x' ? (p.target[0]>=p.x?1:-1) : (p.target[1]>=p.z?1:-1); p.sp=2.8*p.vf; }
-        else if(!p.hidden && td>4){
+        else if(!lingering && td>4){
           const tx=p.target[0],tz=p.target[1],ox=p.x,oz=p.z;
           if(p.tc<=0){ // walk the pavements: go along the road to the junction nearest the target, turn there, never cut across blocks
             if(p.axis==='x'){

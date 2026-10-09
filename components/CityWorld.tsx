@@ -919,7 +919,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16, r: Math.PI }; // overwritten with a random sidewalk spot each time a player steps outside (see CityWorld)
-export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z }, ride: null as null | { kind: 'taxi' | 'bike'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
+export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const WX = { over: new THREE.Color('#7d8791'), dust: new THREE.Color('#d6bf9b'), flash: new THREE.Color('#e8f0ff'), tmp: new THREE.Color() };
@@ -1175,7 +1175,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) VEH.placed = false; // car you walked away from goes back to the garage
     }
     c.jump = false;
-    GAME.player.x = p.x; GAME.player.z = p.z;
+    GAME.player.x = p.x; GAME.player.z = p.z; GAME.player.r = p.r;
     group.current.rotation.order = 'YXZ'; group.current.position.set(p.x, p.y + (me.ko > nowMs ? .28 : 0), p.z); group.current.rotation.y = p.r; group.current.rotation.x = me.ko > nowMs ? -Math.PI / 2 : 0; // knocked out: lying on the ground
     group.current.visible = !VEH.drv;
     if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';

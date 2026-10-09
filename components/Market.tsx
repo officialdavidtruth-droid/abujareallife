@@ -109,7 +109,7 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
 }
 
 const CSS = `.mkWrap{position:absolute;inset:0;z-index:95;background:#000a;display:grid;place-items:center;padding:10px}
-.mkBox{width:min(520px,100%);max-height:calc(100vh - 20px);display:flex;flex-direction:column;background:linear-gradient(160deg,#15231e,#09130f);border:1px solid #ffffff2a;border-radius:20px;color:#fff;overflow:hidden;box-shadow:0 24px 70px #000b}
+.mkBox{width:min(520px,100%);max-height:calc(100dvh - 20px);display:flex;flex-direction:column;background:linear-gradient(160deg,#15231e,#09130f);border:1px solid #ffffff2a;border-radius:20px;color:#fff;overflow:hidden;box-shadow:0 24px 70px #000b}
 .mkHead{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 16px 6px}.mkHead h3{margin:0;font-size:18px}.mkHead small{color:#9fb5aa;font-size:11px}.mkX{background:#13231d;border:1px solid #ffffff20;color:#fff;width:36px;height:36px;border-radius:10px;font-size:20px;cursor:pointer}
 .mkTabs{display:flex;gap:6px;padding:6px 12px}.mkTabs button{flex:1;padding:9px 6px;border-radius:10px;border:1px solid #ffffff1a;background:#10201a;color:#cfe0d7;font-weight:700;font-size:12px;cursor:pointer}.mkTabs button.on{background:#d99a42;color:#1a1410;border-color:#d99a42}
 .mkMsg{margin:4px 12px;padding:8px 10px;background:#000b;border:1px solid #ffffff22;border-radius:10px;font-size:12px;text-align:center}

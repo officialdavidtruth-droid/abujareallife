@@ -45,9 +45,9 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .emotes{gap:5px!important}
   .emotes button{width:40px!important;height:40px!important;font-size:18px!important}
   .pill{min-height:34px;padding:5px 10px!important;font-size:12px!important}
-  .cityPanel{top:calc(56px + var(--sat))!important;max-height:calc(100vh - 70px)!important}
-  .card,.box{max-height:calc(100vh - 24px);overflow:auto}
-  .cr .crPanel{max-height:100vh;overflow:auto}
+  .cityPanel{top:calc(56px + var(--sat))!important;max-height:calc(100dvh - 70px)!important}
+  .card,.box{max-height:calc(100dvh - 24px);overflow:auto}
+  .cr .crPanel{max-height:100dvh;overflow:auto}
 }
 /* Auth / creator forms: keep inputs at 16px so iOS doesn't zoom on focus */
 .card input,.box input,.vb input,select{font-size:16px!important}
@@ -85,7 +85,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .nearCard{left:50%!important;right:auto!important;bottom:auto!important;top:calc(56px + var(--sat))!important;transform:translateX(-50%);max-width:min(360px,calc(100vw - 270px));padding:6px 10px!important;gap:8px!important;font-size:12px}
   .nearCard span{display:none}
   .nearCard button{padding:6px 12px!important;font-size:12px!important;min-height:34px!important}
-  .cityPanel{top:calc(56px + var(--sat))!important;right:calc(66px + var(--sar))!important;width:min(340px,calc(100vw - 90px))!important;max-height:calc(100vh - 70px)!important}
+  .cityPanel{top:calc(56px + var(--sat))!important;right:calc(66px + var(--sar))!important;width:min(340px,calc(100vw - 90px))!important;max-height:calc(100dvh - 70px)!important}
   .cwMap{top:calc(100px + var(--sat))!important;left:calc(10px + var(--sal))!important;width:90px!important;height:90px!important}
   .cwMute{top:calc(196px + var(--sat))!important;left:calc(10px + var(--sal))!important;width:34px!important;height:34px!important}
   .cwTip{display:none!important}

@@ -1,0 +1,35 @@
+/* ===== Phone pass: loaded last. Makes every panel, modal and input behave on touch screens ===== */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+
+/* iOS zooms the whole page when a field under 16px is focused: keep EVERY field at 16px on touch devices */
+@media (pointer:coarse),(max-width:820px){
+  input,textarea,select{font-size:16px!important}
+  input[type=range]{touch-action:pan-x;min-height:32px}
+}
+
+/* Hover effects stick after a tap on phones: switch them off where there is no real hover */
+@media (hover:none){
+  .stoCard:hover,.inLbl:hover,.cityNameTag.cwTapTag:hover,.inDock button:hover,.inBody button:not(.x):hover{transform:none!important;filter:none!important}
+  .glPlate:hover b,.glPlate:hover em{filter:none!important}
+}
+
+/* Full-screen panels and modals: respect the notch, rounded corners, home bar and on-screen keyboard */
+.stBack,.stoBack,.wlBackdrop,.mcBackdrop{
+  padding-top:max(14px,var(--sat,0px))!important;padding-bottom:max(14px,var(--sab,0px))!important;
+  padding-left:max(14px,var(--sal,0px))!important;padding-right:max(14px,var(--sar,0px))!important;
+  overscroll-behavior:contain}
+.stBox,.stoBox,.wlBox,.mcPanel,.cityPanel{max-height:calc(100dvh - 28px - var(--sat,0px) - var(--sab,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.stoGrid,.cityList,.jbList{-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+
+/* Thumb-sized close buttons and tap targets */
+@media (pointer:coarse){
+  .stX,.mcClose,.mapClose,.cityPanel .close,.stoX{min-width:44px;min-height:44px}
+  .stoSeg button,.seg button,.wdSeg button{min-height:40px}
+  .stoBuy,.cityList button{min-height:44px}
+}
+
+/* Narrow portrait phones (the rotate screen still nudges players to landscape, but menus must not break) */
+@media (max-width:480px){
+  .stoBar{gap:6px}.stoBar input{min-width:0;flex:1 1 100%}
+  .cityPanel{width:calc(100vw - 20px)!important;right:10px!important;left:10px!important}
+}

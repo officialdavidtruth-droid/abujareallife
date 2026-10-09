@@ -2,6 +2,7 @@ import './globals.css';
 import './mobile.css';
 import './hud.css';
 import './clean.css';
+import './phone.css';
 import type { Metadata, Viewport } from 'next';
 import { Lilita_One } from 'next/font/google';
 import PWARegister from '../components/PWARegister';
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
 };
 export const viewport: Viewport = {
-  width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false, viewportFit: 'cover', themeColor: '#07100d',
+  width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false, viewportFit: 'cover', interactiveWidget: 'resizes-content', themeColor: '#07100d',
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return <html lang="en" className={gameFont.variable}><body>{children}<PWARegister /><AudioRoot /></body></html>;

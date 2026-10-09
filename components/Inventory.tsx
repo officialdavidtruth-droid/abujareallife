@@ -62,7 +62,7 @@ export default function Inventory({ onClose, onCash }: { onClose: () => void; on
 }
 
 const CSS = `.ivWrap{position:absolute;inset:0;z-index:95;background:#000a;display:grid;place-items:center;padding:10px}
-.ivBox{width:min(560px,100%);max-height:calc(100vh - 24px);display:flex;flex-direction:column;gap:8px;background:#0f1b16;color:#fff;border:1px solid #ffffff22;border-radius:18px;padding:14px;font-family:Inter,system-ui,sans-serif}
+.ivBox{width:min(560px,100%);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;gap:8px;background:#0f1b16;color:#fff;border:1px solid #ffffff22;border-radius:18px;padding:14px;font-family:Inter,system-ui,sans-serif}
 .ivHead{display:flex;justify-content:space-between;align-items:flex-start}.ivHead h3{margin:0;font-size:18px}.ivHead small{color:#9fb5aa;font-size:11px}.ivX{background:#20372d;border:0;color:#fff;border-radius:50%;width:32px;height:32px;font-size:18px}
 .ivTabs{display:flex;gap:6px}.ivTabs button{flex:1;background:#17281f;border:1px solid #ffffff18;color:#c9dacf;border-radius:10px;padding:8px 4px;font-size:12px;font-weight:800}.ivTabs button.on{background:#d99a42;color:#1a1208;border-color:#d99a42}
 .ivMsg{background:#1f3a2e;border:1px solid #ffffff22;border-radius:10px;padding:7px 10px;font-size:12px}

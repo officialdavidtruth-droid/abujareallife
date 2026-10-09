@@ -30,7 +30,7 @@ export default function HomeUpgrades({ onClose, onChange }: { onClose: () => voi
   </div></div>;
 }
 const CSS = `.huWrap{position:fixed;inset:0;z-index:80;background:#000a;display:grid;place-items:center;padding:10px;backdrop-filter:blur(3px)}
-.huBox{width:min(560px,100%);max-height:calc(100vh - 24px);display:flex;flex-direction:column;gap:8px;background:#0f1b16;color:#fff;border:1px solid #ffffff22;border-radius:18px;padding:14px;font-family:Inter,system-ui,sans-serif}
+.huBox{width:min(560px,100%);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;gap:8px;background:#0f1b16;color:#fff;border:1px solid #ffffff22;border-radius:18px;padding:14px;font-family:Inter,system-ui,sans-serif}
 .huHead{display:flex;justify-content:space-between;align-items:flex-start}.huHead h3{margin:0;font-size:18px}.huHead small{color:#9fb5aa;font-size:11px}.huHead button{background:#20372d;border:0;color:#fff;border-radius:50%;width:32px;height:32px;font-size:18px}
 .huNote{background:#1f3a2e;border:1px solid #ffffff22;border-radius:10px;padding:7px 10px;font-size:12px}.huNote.bad{background:#4a1f22;border-color:#e5484d66}
 .huList{flex:1;min-height:140px;overflow:auto;display:flex;flex-direction:column;gap:7px}.huList h4{margin:6px 0 0;font-size:12px;color:#d99a42;letter-spacing:.04em}

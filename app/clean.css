@@ -42,7 +42,7 @@
   .sim.outside .nearCard b{font-size:12px!important}
   .sim.outside .nearCard button{font-size:11px!important;padding:7px 9px!important}
 
-  .sim.outside .glPanel{left:12px!important;right:12px!important;top:calc(62px + var(--sat))!important;width:auto!important;max-width:none!important;max-height:calc(100vh - 80px)!important;border-radius:16px!important;padding:13px!important;z-index:100!important}
+  .sim.outside .glPanel{left:12px!important;right:12px!important;top:calc(62px + var(--sat))!important;width:auto!important;max-width:none!important;max-height:calc(100dvh - 80px)!important;border-radius:16px!important;padding:13px!important;z-index:100!important}
   .sim.outside .glToast{top:calc(64px + var(--sat))!important;max-width:calc(100vw - 32px)!important}
 
   .sim.outside .cwMap{top:calc(112px + var(--sat))!important;left:calc(12px + var(--sal))!important;width:86px!important;height:86px!important}
@@ -174,7 +174,7 @@
   .sim.outside .cwLookPad span{display:none!important}
   .sim.outside .cwSpeed{right:calc(145px + var(--sar))!important;left:auto!important;bottom:calc(22px + var(--sab))!important}
 
-  .sim.outside .glPanel{left:10px!important;right:10px!important;top:calc(58px + var(--sat))!important;width:auto!important;max-width:none!important;max-height:calc(100vh - 72px)!important;border-radius:16px!important;z-index:100!important}
+  .sim.outside .glPanel{left:10px!important;right:10px!important;top:calc(58px + var(--sat))!important;width:auto!important;max-width:none!important;max-height:calc(100dvh - 72px)!important;border-radius:16px!important;z-index:100!important}
 }
 
 /* The full-screen map remains the authoritative navigation surface. */
@@ -272,7 +272,7 @@
     width:min(500px,calc(100vw - 32px))!important;
     max-width:500px!important;
     height:min(72vh,520px)!important;
-    max-height:calc(100vh - 76px)!important;
+    max-height:calc(100dvh - 76px)!important;
     min-height:0!important;
     border-radius:18px!important;
     box-sizing:border-box!important;
@@ -338,7 +338,7 @@
     bottom:auto!important;
     width:min(260px,calc(100vw - 28px))!important;
     max-width:260px!important;
-    max-height:min(210px,calc(100vh - 130px))!important;
+    max-height:min(210px,calc(100dvh - 130px))!important;
     overflow-y:auto!important;
     overflow-x:hidden!important;
     display:grid!important;

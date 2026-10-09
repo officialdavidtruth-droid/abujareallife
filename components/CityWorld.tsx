@@ -1648,7 +1648,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const ctl = useRef<Ctl>({ shoot: false, joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
-  useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) window.dispatchEvent(new Event('arl-mission-lost')); }, 800); return () => clearInterval(w); }, []);
+  useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
     const startMission = (e: Event) => {
@@ -1661,7 +1661,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         || (g.type ? pick(BUILDING_DESTS.filter(d => d.type === g.type)) : undefined)
         || (g.district ? pick(BUILDING_DESTS.filter(d => d.district.toLowerCase() === g.district!.toLowerCase())) : undefined);
       if (!target) { GAME.notice = `Mission started: ${m.title || m.label}. Find the mission destination in the city.`; return; }
-      (window as any).__arlMissionTarget = { x: target.x, z: target.z };
+      (window as any).__arlMissionTarget = { x: target.x, z: target.z }; (window as any).__arlMissionGoal = { id: m.id, x: target.x, z: target.z, name: target.name };
       GAME.nav = { x: target.x, z: target.z, name: target.name, mission: m.id } as any;
       GAME.notice = `📍 ${m.label || 'Mission waypoint'}: ${target.name} — follow the route on your minimap or map`;
     };

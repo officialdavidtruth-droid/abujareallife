@@ -1,15 +1,15 @@
 'use client';
 import { useSyncExternalStore } from 'react';
 
-/* Player settings. One tiny store shared by the audio engine, the voice calls, the labels and the settings panel.
+/* Player settings. One tiny store shared by the audio engine, the labels and the settings panel.
    Saved in the browser (localStorage), applied instantly, safe on the server (falls back to defaults). */
 export type Settings = {
-  master: number; music: number; sfx: number; voice: number;   // 0..1
+  master: number; music: number; sfx: number;   // 0..1
   muteAll: boolean; musicOn: boolean; sfxOn: boolean; uiSounds: boolean;
   labelScale: number;      // 0.85 small, 1 normal, 1.2 large
   reduceMotion: boolean; showHints: boolean;
 };
-export const DEFAULTS: Settings = { master: 0.8, music: 0.55, sfx: 0.8, voice: 1, muteAll: false, musicOn: true, sfxOn: true, uiSounds: true, labelScale: 1, reduceMotion: false, showHints: true };
+export const DEFAULTS: Settings = { master: 0.8, music: 0.55, sfx: 0.8, muteAll: false, musicOn: true, sfxOn: true, uiSounds: true, labelScale: 1, reduceMotion: false, showHints: true };
 const KEY = 'arl.settings.v1';
 const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(1, v)) : d);
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
@@ -17,7 +17,7 @@ const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
 function clean(x: Partial<Settings> | null | undefined): Settings {
   const s = x || {};
   return {
-    master: clamp01(s.master, DEFAULTS.master), music: clamp01(s.music, DEFAULTS.music), sfx: clamp01(s.sfx, DEFAULTS.sfx), voice: clamp01(s.voice, DEFAULTS.voice),
+    master: clamp01(s.master, DEFAULTS.master), music: clamp01(s.music, DEFAULTS.music), sfx: clamp01(s.sfx, DEFAULTS.sfx),
     muteAll: bool(s.muteAll, DEFAULTS.muteAll), musicOn: bool(s.musicOn, DEFAULTS.musicOn), sfxOn: bool(s.sfxOn, DEFAULTS.sfxOn), uiSounds: bool(s.uiSounds, DEFAULTS.uiSounds),
     labelScale: s.labelScale === 0.85 || s.labelScale === 1.2 ? s.labelScale : 1,
     reduceMotion: bool(s.reduceMotion, DEFAULTS.reduceMotion), showHints: bool(s.showHints, DEFAULTS.showHints),

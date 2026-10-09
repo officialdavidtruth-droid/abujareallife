@@ -32,56 +32,19 @@ No database tables are needed; it uses Supabase Realtime (presence + broadcast) 
 
 ---
 
-# Update: voice, interactions, cleaner phone screen
+# Update: interactions, cleaner phone screen
 
 ## Player interactions
 Tap a player (or their name above their head, or their name in the 🌍 list) to open the player card:
-- 🎙️ **Talk (voice)** – private voice call, see below
 - 👋 **Wave**, 🙌 **High-five**, 💃 **Dance** – they see the animation and get a notice with a one-tap "back" button. Both of you gain Social.
-- 🔇 **Mute chat** – hides that player's chat and auto-declines their call requests.
+- 🔇 **Mute chat** – hides that player's chat.
 Wave / high-five / dance work within 10 m.
-
-## Voice rules (as designed)
-1. You must be within **12 m** of a player to ask them to talk.
-2. They get a banner: **Accept / Decline**. Nothing is heard until they accept.
-3. After accepting, only the two of you hear each other (peer-to-peer WebRTC, encrypted). Everyone else hears nothing.
-4. The voice **fades with distance** (full volume within 8 m, silent at 30 m). If you stay out of range for 4 seconds the call ends.
-5. Either person can mute their mic or hang up. A person already on a call auto-replies "busy". Characters hold a phone to their ear while on a call.
-Text chat still works for everyone at all times.
-
-Files: `lib/cityVoice.ts` (calls), `components/CityPeople.tsx` (player card, call banners, chat), `lib/cityNet.ts` (signalling over the same Supabase channel).
-
-## IMPORTANT: calls on mobile data need a TURN server
-Free Google STUN servers connect most Wi-Fi users, but many phone networks (MTN/Airtel/Glo carrier-grade NAT) block direct peer-to-peer. For reliable voice add a TURN relay:
-- Easiest: a free/paid TURN from metered.ca, Twilio Network Traversal, or Cloudflare Calls TURN.
-- Add to `.env.local` and Vercel, then redeploy:
-```
-NEXT_PUBLIC_TURN_URL="turn:YOUR_HOST:3478,turns:YOUR_HOST:443?transport=tcp"
-NEXT_PUBLIC_TURN_USERNAME="..."
-NEXT_PUBLIC_TURN_CREDENTIAL="..."
-```
-(These are visible in the browser, so use a provider's short-lived/limited credentials where possible.)
-
-## Microphone permission
-- Browser/PWA: the site must be HTTPS (Vercel is) and the player taps **Allow** on the first call. On iPhone use Safari (or the installed Home Screen app on iOS 16.4+).
-- Capacitor app: Android `AndroidManifest.xml` add `<uses-permission android:name="android.permission.RECORD_AUDIO" />` and `MODIFY_AUDIO_SETTINGS`; iOS `Info.plist` add `NSMicrophoneUsageDescription` ("Used for voice chat with other players").
 
 ## Phone screen cleanup
 - Top bar is now just **clock · cash · 🏙️/🏠 · ☰**. Speed, power, account, character and free-will moved into the ☰ menu.
 - In the city the needs panel became a small icon strip under the clock; Map / Jobs / Businesses / Players are round icon buttons down the right edge; the business card is a slim chip at top-centre; the keyboard hint text is hidden.
 
 ## Limits to know
-- **Signalling is not authenticated.** Calls are encrypted, but because the channel is shared and names are trusted from the client, a determined attacker could try to impersonate a name during call setup. Before a big public launch, move signalling to Supabase *private* channels with Supabase Auth, or to your own server.
-- **Quota:** voice audio doesn't use Supabase (it is peer-to-peer; only the setup messages do), but TURN relay traffic is billed by your TURN provider.
-- **Only 1 call at a time** per player. No group/party voice yet.
-- Not tested on real devices from here, so please test with two phones on mobile data before launch.
+- Not tested on real devices from here, so please test with two phones before launch.
 
 ---
-
-# Voice: fixing "Connecting…" (update)
-Voice now asks the server for relay credentials (`/api/turn`), so you no longer need `NEXT_PUBLIC_TURN_*` in the browser. In Vercel → Settings → Environment Variables add ONE option from `.env.example` (Metered.ca has a free tier and is the quickest: create an app, copy its domain and API key into `METERED_DOMAIN` / `METERED_API_KEY`), then redeploy.
-- Without a relay, calls still work on most Wi-Fi, but usually get stuck on mobile data. The call card now says so instead of failing silently.
-- The call card shows the live network state while connecting, and a "Cancel" button.
-- Both players must allow the microphone (the site needs https, which Vercel gives you).
-- The remote voice plays through a normal audio element (more reliable than before). If a browser blocks autoplay, tap the screen once.
-- Volume: Settings → Voice chat slider. Distance fade still applies (iPhones ignore volume changes, so they hear full volume).

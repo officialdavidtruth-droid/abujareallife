@@ -45,3 +45,5 @@
 - **Phone > Market has an Online Mall** (always in stock, +8% delivery, everything except groceries/toiletries) next to the player marketplace. The Sell tab can also quick-sell any item to the market for 50%.
 - **Phone redesigned** as a real smartphone (bezel, island, status bar, wallpaper, app icons, dock, home bar; rotates into a landscape phone on short screens) with a new Pantry app.
 - **Home upgrades: 6 rooms (new South wing + Home gym, Home cinema, Executive office), 3 luxury items, 7 comfort upgrades** (solar = no outages, AC, smart home, hot water, surround sound, orthopaedic mattress, chef kitchen).
+
+- **Voice chat removed completely** (LiveKit + peer-to-peer engines, mic buttons, voice status panel, /api/livekit, /api/turn, voice volume slider, RTC signalling, livekit packages and TURN/LiveKit env vars). Community chat and private messages are unchanged. You can delete LIVEKIT_*, METERED_*, CF_TURN_*, TURN_* and NEXT_PUBLIC_VOICE from Vercel.

@@ -99,17 +99,6 @@ export function sfx(name: Sfx, opts: { ui?: boolean } = {}) {
   }
 }
 
-/* phone ring while a voice call is ringing (looped until stopRing) */
-let ringTimer: ReturnType<typeof setInterval> | null = null;
-export function startRing(kind: 'incoming' | 'outgoing' = 'incoming') {
-  stopRing();
-  const beep = () => { const s = getSettings(); if (s.muteAll || !s.sfxOn) return; const A = ensureAudio(); if (!A || A.ctx.state !== 'running') return; const { ctx: c, sfx: o } = A, t = c.currentTime + 0.01;
-    if (kind === 'incoming') [0, 0.22, 0.6, 0.82].forEach(d => { tone(o, c, 880, t + d, 0.16, 'sine', 0.13); tone(o, c, 1100, t + d, 0.16, 'sine', 0.09); });
-    else { tone(o, c, 440, t, 0.9, 'sine', 0.07); tone(o, c, 480, t, 0.9, 'sine', 0.07); } };
-  beep(); ringTimer = setInterval(beep, kind === 'incoming' ? 2200 : 3000);
-}
-export function stopRing() { if (ringTimer) { clearInterval(ringTimer); ringTimer = null; } }
-
 /* ───────── background music: generated Afro-house / amapiano-style loop (city) and a calm lo-fi loop (indoors) ───────── */
 type Track = { bpm: number; swing: number; roots: number[]; chords: number[][]; scale: number[]; kick: number[]; clap: number[]; hat: number[]; log: number[]; stab: number[]; pad: boolean; vol: number };
 const TRACKS: Record<Mood, Track> = {

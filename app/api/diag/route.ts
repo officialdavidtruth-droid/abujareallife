@@ -16,11 +16,6 @@ export async function GET() {
     supabaseUrlSet: has('NEXT_PUBLIC_SUPABASE_URL'),
     supabaseUrlLooksRight: /^https:\/\/[a-z0-9]+\.supabase\.co\/?$/.test(url.trim()),
     supabaseAnonKeySet: has('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-    voiceMode: process.env.NEXT_PUBLIC_VOICE || '(livekit)',
-    livekitUrlSet: has('LIVEKIT_URL'),
-    livekitUrlStartsWithWss: (process.env.LIVEKIT_URL || '').trim().startsWith('wss://'),
-    livekitKeySet: has('LIVEKIT_API_KEY'),
-    livekitSecretSet: has('LIVEKIT_API_SECRET'),
     messageTable,
   }, { headers: { 'cache-control': 'no-store' } });
 }

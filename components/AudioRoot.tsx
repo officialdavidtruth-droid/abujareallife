@@ -1,5 +1,4 @@
 'use client';
-import { VOICE_ENABLED } from '../lib/cityVoice';
 import { useEffect, useState } from 'react';
 import { audioReady, sfx, unlockAudio } from '../lib/audio';
 import { closeSettings, getSettings, resetSettings, setSetting, usePanelOpen, useSettings, type Settings } from '../lib/settings';
@@ -32,7 +31,7 @@ export default function AudioRoot() {
   return <>{blocked && !open && <button className="tapSound" onClick={() => { unlockAudio(); setTimeout(() => sfx('success'), 60); }}>🔊 Tap to turn sound on</button>}{open && <SettingsPanel />}<RuntimeStyle css={`.tapSound{all:unset;position:fixed;z-index:150;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translateX(-50%);cursor:pointer;background:var(--gold,#f0b94a);color:#fff;font-family:var(--gf,system-ui);font-size:17px;letter-spacing:.04em;padding:8px 18px;border:3px solid var(--ink,#1a1208);border-radius:999px;box-shadow:0 4px 0 var(--ink,#1a1208);-webkit-text-stroke:4px var(--ink,#1a1208);paint-order:stroke fill;animation:tapPulse 1.2s ease-in-out infinite}@keyframes tapPulse{50%{transform:translateX(-50%) scale(1.06)}}`} /></>;
 }
 
-function Slider({ label, icon, k, s }: { label: string; icon: string; k: 'master' | 'music' | 'sfx' | 'voice'; s: Settings }) {
+function Slider({ label, icon, k, s }: { label: string; icon: string; k: 'master' | 'music' | 'sfx'; s: Settings }) {
   const v = Math.round(s[k] * 100);
   return <label className="stRow"><span className="stIco">{icon}</span><span className="stLbl">{label}</span>
     <input type="range" min={0} max={100} value={v} style={{ ['--p' as string]: v + '%' }} onChange={e => setSetting({ [k]: +e.target.value / 100 })} onPointerUp={() => k === 'sfx' || k === 'master' ? sfx('coin') : undefined} />
@@ -59,7 +58,6 @@ function SettingsPanel() {
           <Slider label="Master" icon="🔊" k="master" s={s} />
           <Slider label="Music" icon="🎵" k="music" s={s} />
           <Slider label="Effects" icon="💥" k="sfx" s={s} />
-          {VOICE_ENABLED && <Slider label="Voice chat" icon="🎙️" k="voice" s={s} />}
           <div className="stGrid">
             <Switch label="Music" icon="🎶" on={s.musicOn} set={v => setSetting({ musicOn: v })} />
             <Switch label="Effects" icon="🔔" on={s.sfxOn} set={v => setSetting({ sfxOn: v })} />

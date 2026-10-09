@@ -31,8 +31,6 @@
     "@supabase/supabase-js": "^2.117.2",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.12",
-    "livekit-client": "^2.22.3",
-    "livekit-server-sdk": "^2.19.1",
     "next": "^15.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

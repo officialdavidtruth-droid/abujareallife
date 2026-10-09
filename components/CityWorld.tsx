@@ -12,7 +12,6 @@ import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
 import { FIGHT, NET, useCityNet } from '../lib/cityNet';
 import { JAIL_CELL_POS } from '../lib/profile';
-import { useCityVoice, MIC, type VoiceApi } from '../lib/cityVoice';
 import CityPeople from './CityPeople';
 import { engineSet, engineStart, engineStop, honk, setMuted, thud, unlockAudio } from '../lib/cityAudio';
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
@@ -1398,7 +1397,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Airport />
       <JailCell />
       <group ref={group}>
-        <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : m.call ? 'phone' : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />
+        <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />
         <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
@@ -1410,7 +1409,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
 /* ───────────── other real players ───────────── */
 const rWalk = (n: string) => { const q = NET.peers[n]; return !!q && q.mv > 0 && Math.hypot(q.tx - q.x, q.tz - q.z) > .08; };
 /* Crowd-friendly name tags: only the nearest few players get the full tag; the rest shrink to a small faded label, then disappear.
-   Anyone who is talking or has a chat bubble always keeps a full tag, so you can still tell who is speaking. */
+   Anyone with a chat bubble always keeps a full tag. */
 const TAGS: { at: number; rank: Record<string, number> } = { at: 0, rank: {} };
 const tagRanks = () => { const now = performance.now(); if (now - TAGS.at < 250) return; TAGS.at = now; const r: Record<string, number> = {}; Object.entries(NET.peers).map(([n, q]) => [n, Math.hypot(NET.me.x - q.x, NET.me.z - q.z)] as const).sort((a, b) => a[1] - b[1]).forEach(([n], i) => { r[n] = i; }); TAGS.rank = r; };
 function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n: string) => void }) {
@@ -1425,18 +1424,17 @@ function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n:
     body.current.visible = near && !q.drv; body.current.rotation.order = 'YXZ'; body.current.position.set(q.x, q.ko ? .28 : 0, q.z); body.current.rotation.y = q.r; body.current.rotation.x = q.ko ? -Math.PI / 2 : 0;
     car.current.visible = near && (q.cp || q.drv); car.current.position.set(q.cx, 0, q.cz); car.current.rotation.y = q.cr;
     tagRanks();
-    const talking = (NET.talk[name] || 0) > Date.now(), rk = TAGS.rank[name] ?? 99, full = rk < 5 || talking || !!bub;
+    const rk = TAGS.rank[name] ?? 99, full = rk < 5 || !!bub;
     if (tag.current) {
       const show = full ? d < 60 : rk < 14 && d < 28, sc = full ? THREE.MathUtils.clamp(1.1 - d / 70, .62, 1) : .6, op = full ? THREE.MathUtils.clamp(1.25 - d / 60, .5, 1) : THREE.MathUtils.clamp(1 - d / 28, .35, .85);
       const key = `${show}|${full}|${Math.round(sc * 20)}|${Math.round(op * 20)}`;
       if (tag.current.dataset.k !== key) { tag.current.dataset.k = key; tag.current.style.display = show ? '' : 'none'; tag.current.style.transform = `scale(${sc.toFixed(2)})`; tag.current.style.opacity = String(op.toFixed(2)); nameEl.current?.classList.toggle('mini', !full); }
     }
-    nameEl.current?.classList.toggle('talking', talking);
   });
   const p = NET.peers[name]; if (!p) return null;
   return <>
     <group ref={body} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onPick(name); }}>
-      <Human look={p.look} getState={() => (rWalk(name) ? 'walk' : 'idle')} getAnim={() => { const q = NET.peers[name]; if (!q || rWalk(name)) return undefined; return q.anim && Date.now() < q.animUntil ? q.anim : q.call ? 'phone' : undefined; }} getSpeed={() => ((NET.peers[name]?.mv || 0) === 2 ? 2.4 : 1.1)} />
+      <Human look={p.look} getState={() => (rWalk(name) ? 'walk' : 'idle')} getAnim={() => { const q = NET.peers[name]; if (!q || rWalk(name)) return undefined; return q.anim && Date.now() < q.animUntil ? q.anim : undefined; }} getSpeed={() => ((NET.peers[name]?.mv || 0) === 2 ? 2.4 : 1.1)} />
       <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, transformOrigin: '50% 100%' }} ref={el => { tag.current = el; }}>{bub && <div className="cwSay">{bub}</div>}<div ref={nameEl} className="cityNameTag cwTapTag" onClick={() => onPick(name)}>{name}</div></div></Html>
     </group>
     <group ref={car} visible={false}><CarModel kit={kit} color={colour} kind={0} model={remoteModel} /></group>
@@ -1516,32 +1514,6 @@ function FightHud() {
   }, []);
   return <><div ref={fx} className="cwHurt" /><div ref={box} className="cwHp" style={{ display: 'none' }}><span ref={txt} /><i><b ref={bar} /></i></div></>;
 }
-/* Voice: 🎤 toggles your mic (hold V for push-to-talk). The pill lists who nearby is speaking right now. */
-function MicBtn({ voice, me }: { voice: VoiceApi; me: string }) {
-  const ref = useRef<HTMLButtonElement>(null), bar = useRef<HTMLElement>(null);
-  useEffect(() => { // glows while you speak: driven by the real microphone level on this device
-    const id = setInterval(() => {
-      const hot = MIC.level > .06 || (NET.talk[me] || 0) > Date.now();
-      const b = ref.current; if (b) { b.classList.toggle('live', hot); b.style.boxShadow = hot ? '0 0 0 3px #35e07acc, 0 0 20px #35e07a' : ''; }
-      if (bar.current) bar.current.style.width = Math.round(Math.min(1, MIC.level * 1.5) * 100) + '%';
-    }, 80);
-    return () => clearInterval(id);
-  }, [me]);
-  const starting = voice.micOn && voice.micLive === false; // asked for, but not sending yet
-  return <button ref={ref} className={'cwBtn mic' + (voice.micOn ? ' on' : '')} aria-label="Toggle microphone" onClick={() => { voice.toggleMic(); try { unlockAudio(); } catch { /* audio unlock must never block the mic */ } }} onContextMenu={e => e.preventDefault()}><span>{voice.micOn ? '🎤' : '🔇'}</span><small>{voice.micOn ? (starting ? 'Starting…' : voice.live ? `Mic · ${voice.live}` : 'Mic on') : voice.mic.err ? '⚠ Mic error' : 'Mic off'}</small><i style={{ display: voice.micOn ? 'block' : 'none', height: 3, width: '70%', margin: '2px auto 0', background: '#ffffff30', borderRadius: 2, overflow: 'hidden' }}><b ref={bar} style={{ display: 'block', height: '100%', width: 0, background: '#35e07a' }} /></i></button>;
-}
-function Talkers({ me }: { me: string }) {
-  const ref = useRef<HTMLDivElement>(null), last = useRef('');
-  useEffect(() => {
-    const id = setInterval(() => {
-      const now = Date.now(), who = Object.keys(NET.talk).filter(n => n !== me && NET.talk[n] > now && NET.peers[n]);
-      const t = who.length ? '🔊 ' + who.slice(0, 3).join(' · ') : '';
-      if (t !== last.current && ref.current) { last.current = t; ref.current.textContent = t; ref.current.style.display = t ? '' : 'none'; }
-    }, 150);
-    return () => clearInterval(id);
-  }, [me]);
-  return <div ref={ref} className="cwTalkers" style={{ display: 'none' }} />;
-}
 function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; icon: string; down: () => void; up?: () => void }) {
   return <button className={'cwBtn ' + cls} aria-label={label} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); down(); }} onPointerUp={() => up?.()} onPointerCancel={() => up?.()} onContextMenu={e => e.preventDefault()}><span>{icon}</span><small>{label}</small></button>;
 }
@@ -1553,7 +1525,7 @@ const CSS = `
 .cwKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:#ffffffcc;transform:translate(-50%,-50%);box-shadow:0 2px 8px #0006;pointer-events:none}
 .cwBtns{position:absolute;right:18px;bottom:22px;z-index:12;display:grid;grid-template-columns:64px 64px 80px;gap:10px;align-items:center;justify-items:center}.cwBtns .big{grid-column:3;grid-row:1 / span 2}
 .cwBtn{width:64px;height:64px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:pointer}
-.cwHurt{position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,#0000 40%,#ff1010cc 100%)}.cwHp{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:12;flex-direction:column;align-items:center;gap:4px;color:#fff;font-weight:800;font-size:13px;pointer-events:none;text-shadow:0 2px 0 #000}.cwHp i{display:block;width:180px;height:12px;border:3px solid #1a1410;border-radius:99px;background:#0009;overflow:hidden}.cwHp b{display:block;height:100%;width:100%;transition:width .15s}\n.cwBtn.mic.on{background:#1d7654;border-color:#3fb98a}.cwBtn.mic.live{box-shadow:0 0 0 4px #35c46b88,0 0 18px #35c46b}.cwTalkers{position:absolute;z-index:11;left:50%;transform:translateX(-50%);top:calc(58px + env(safe-area-inset-top,0px));background:#0b1511e6;border:2px solid #35c46b;color:#fff;font-size:12px;font-weight:800;padding:5px 14px;border-radius:999px;pointer-events:none;white-space:nowrap}.cityNameTag.talking{background:#35c46b!important;color:#06210f!important}.cityNameTag.talking::before{content:'🔊 '}\n.cwBtn span{font-size:22px;line-height:1}.cwBtn small{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.cwHurt{position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,#0000 40%,#ff1010cc 100%)}.cwHp{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:12;flex-direction:column;align-items:center;gap:4px;color:#fff;font-weight:800;font-size:13px;pointer-events:none;text-shadow:0 2px 0 #000}.cwHp i{display:block;width:180px;height:12px;border:3px solid #1a1410;border-radius:99px;background:#0009;overflow:hidden}.cwHp b{display:block;height:100%;width:100%;transition:width .15s}\n.cwBtn span{font-size:22px;line-height:1}.cwBtn small{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .cwBtn:active{background:#d99a42;color:#111}.cwBtn.big{width:78px;height:78px}.cwBtn.cam{width:50px;height:50px}.cwBtn.cam small{display:none}
 .cwMap{position:absolute;left:12px;top:72px;width:140px;height:140px;border-radius:50%;border:3px solid #ffffffcc;box-shadow:0 4px 18px #0008;z-index:6;background:#35553f;pointer-events:none}
 .cwHint{position:absolute;right:18px;bottom:110px;z-index:6;color:#fff;font-size:11px;line-height:1.55;background:#0b1511b0;border:1px solid #ffffff22;border-radius:10px;padding:8px 11px;pointer-events:none}
@@ -1575,7 +1547,6 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
     return 0;
   });
   const net = useCityNet(look, onSocial);
-  const voice = useCityVoice({ me: look.name, roster: net.roster, signal: net.signal, subscribe: net.subscribeRtc, isMuted: n => net.muted.includes(n), onSocial });
   const [sel, setSel] = useState<string | null>(null);
   const ctl = useRef<Ctl>({ joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
@@ -1606,25 +1577,23 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         <Scene fight={net.punch} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />
-      <CityPeople net={net} voice={voice} sel={sel} setSel={setSel} />
+      <CityPeople net={net} sel={sel} setSel={setSel} />
       <LookPad ctl={ctl} />
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
       <FightHud />
-      <Talkers me={look.name} />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMuted(!cfg.muteAll); }}>{cfg.muteAll ? '🔇' : '🔊'}</button>
       <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
-        <MicBtn voice={voice} me={look.name} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter view · <b>F</b> punch · <b>V</b> hold to talk (or tap 🎤)<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter view · <b>F</b> punch<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
     </div>
   );
 }

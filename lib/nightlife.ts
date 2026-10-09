@@ -22,3 +22,22 @@ export const DEAL_TTL_MS = 2 * 60_000;     // an offer expires after 2 minutes
 export const DEAL_OFFERS_PER_MIN = 8;
 export const STING_HEAT = 45;              // heat the seller gets if the "buyer" was a police officer (>= WANTED_AT, so they become wanted)
 export const NIGHTCLUB = 'Nightclub';
+
+/* ───────── Bribes / protection money for the police ─────────
+   Any non-police player can offer a bribe. A REAL officer decides by hand (accept/decline). An NPC officer decides on the server:
+   it takes the bribe only if it is big enough for how hot you are AND the officer is not feeling honest that night. */
+export const BRIBE_MIN = 5_000, BRIBE_MAX = 2_000_000;
+export const BRIBE_NAIRA_PER_HEAT = 1_000;   // a real officer who accepts cools the briber by amount / this much heat
+export const BRIBE_TAKER_HEAT = 10;          // taking a bribe is a crime: the officer gains this much heat
+export const NPC_BRIBE_FAIL_HEAT = 15;       // heat for a refused bribe attempt (and an NPC arrest if you were already wanted)
+export type NpcCop = { id: string; name: string; rank: string; greed: number; honesty: number };
+export const NPC_COPS: NpcCop[] = [
+  { id: 'npc:vice1', name: 'Sgt. Adewale', rank: 'Vice Patrol', greed: 1_200, honesty: 0.25 },   // greed = naira needed per point of heat
+  { id: 'npc:vice2', name: 'Insp. Okonkwo', rank: 'Vice Patrol', greed: 2_000, honesty: 0.55 },
+];
+export const npcCop = (id: string) => NPC_COPS.find(c => c.id === id) || null;
+/** Does this NPC officer take it? Pure so the server decides; `roll` is a 0..1 random number. */
+export function npcTakesBribe(c: NpcCop, amount: number, heat: number, roll: number) {
+  const needed = c.greed * Math.max(20, heat);
+  return amount >= needed && roll >= c.honesty;
+}

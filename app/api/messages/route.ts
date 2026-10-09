@@ -57,18 +57,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, message: shape(m, me) });
     }
     if (kind === 'cash') {
-      const amt = Math.floor(Number(b.amount)); if (!(amt >= 1) || amt > MAX_SEND_CASH) return err(`Send between ₦1 and ₦${MAX_SEND_CASH.toLocaleString()}.`);
+      const amt = Math.floor(Number(b.amount)); if (!(amt >= 1) || amt > MAX_SEND_CASH) return err('Enter an amount of ₦1 or more.');
       try {
         const m = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: amt } }, data: { cash: { decrement: amt } } }); if (!r.count) throw new Error('FUNDS');
-          const t = await tx.save.updateMany({ where: { userId: to.id }, data: { cash: { increment: amt } } }); if (!t.count) throw new Error('NOSAVE');
+          const t = await tx.save.updateMany({ where: { userId: to.id, cash: { lte: MAX_SEND_CASH - amt } }, data: { cash: { increment: amt } } });
+          if (!t.count) throw new Error((await tx.save.findUnique({ where: { userId: to.id }, select: { id: true } })) ? 'TOOBIG' : 'NOSAVE');
           await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -amt, description: `sent:${to.username}` } });
           await tx.transaction.create({ data: { userId: to.id, type: 'EARN', amount: amt, description: `received:${me}` } });
           return tx.message.create({ data: { fromId: u.id, fromName: me, toName: to.username, kind, body: text, data: { amount: amt } } });
         });
         const s = await prisma.save.findUnique({ where: { userId: u.id }, select: { cash: true } });
         return NextResponse.json({ ok: true, message: shape(m, me), cash: s?.cash ?? 0 });
-      } catch (e) { const t = (e as Error).message; if (t === 'FUNDS') return err("You don't have that much cash.", 402); if (t === 'NOSAVE') return err('That player has no character yet.', 409); throw e; }
+      } catch (e) { const t = (e as Error).message; if (t === 'FUNDS') return err("You don't have that much cash.", 402); if (t === 'NOSAVE') return err('That player has no character yet.', 409); if (t === 'TOOBIG') return err('That player cannot hold that much more cash.', 409); throw e; }
     }
     const m = await prisma.message.create({ data: { fromId: u.id, fromName: me, toName: to.username, kind: 'text', body: text } });
     return NextResponse.json({ ok: true, message: shape(m, me) });

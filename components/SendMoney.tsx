@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import RuntimeStyle from './RuntimeStyle';
-import { MAX_SEND_CASH } from '../lib/phone';
 
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
@@ -9,7 +8,7 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 export default function SendMoney({ cash, start, onClose, onDone }: { cash: number; start?: string; onClose: () => void; onDone: (newCash: number, msg: string) => void }) {
   const [to, setTo] = useState(start || ''), [amount, setAmount] = useState(''), [note, setNote] = useState(''), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState('');
   const name = to.trim().replace(/^@/, ''), amt = Math.floor(Number(amount) || 0);
-  const problem = !name ? 'Enter a username.' : amt < 1 ? 'Enter an amount.' : amt > MAX_SEND_CASH ? `The most you can send at once is ${naira(MAX_SEND_CASH)}.` : amt > cash ? "You don't have that much cash." : '';
+  const problem = !name ? 'Enter a username.' : amt < 1 ? 'Enter an amount.' : amt > cash ? "You don't have that much cash." : '';
   const send = async () => {
     if (!confirm) { setConfirm(true); return; } // second tap = really send, so a mistyped name or amount is caught first
     setBusy(true); setErr('');
@@ -23,9 +22,9 @@ export default function SendMoney({ cash, start, onClose, onDone }: { cash: numb
   return <div className="smBack" onClick={onClose}><div className="smBox" onClick={e => e.stopPropagation()}>
     <button className="smX" aria-label="Close" onClick={onClose}>✕</button>
     <h3>💸 Send money</h3>
-    <small className="smBal">Your cash: <b>{naira(cash)}</b> · max {naira(MAX_SEND_CASH)} per transfer</small>
+    <small className="smBal">Your cash: <b>{naira(cash)}</b></small>
     <label>Player username<input value={to} autoCapitalize="none" autoCorrect="off" maxLength={19} placeholder="e.g. Chidi_22" onChange={e => { setTo(e.target.value); setConfirm(false); }} /></label>
-    <label>Amount (₦)<input inputMode="numeric" value={amount} placeholder="0" onChange={e => { setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 7)); setConfirm(false); }} /></label>
+    <label>Amount (₦)<input inputMode="numeric" value={amount} placeholder="0" onChange={e => { setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 10)); setConfirm(false); }} /></label>
     <label>Note <i>(optional)</i><input value={note} maxLength={80} placeholder="For the taxi, rent…" onChange={e => setNote(e.target.value)} /></label>
     {(err || (problem && (name || amount))) && <p className="smErr">{err || problem}</p>}
     <button className={'smGo' + (confirm ? ' sure' : '')} disabled={busy || !!problem} onClick={send}>{busy ? 'Sending…' : confirm ? `Tap again to send ${naira(amt)} to @${name}` : 'Send'}</button>

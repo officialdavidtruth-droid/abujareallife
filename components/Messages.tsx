@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GAME } from './CityWorld';
 import RuntimeStyle from './RuntimeStyle';
-import { MAX_SEND_CASH, phoneOf } from '../lib/phone';
+import { phoneOf } from '../lib/phone';
 
 /* The phone's Messages app: a chat list, a thread per player, and phone-grade features (location, money, read receipts, maps). */
 type Msg = { id: string; mine: boolean; kind: string; body: string; data: any; at: number; read: boolean; pending?: boolean; failed?: boolean };
@@ -69,8 +69,8 @@ export default function Messages({ start, onCash, onClose, onUnread }: { start: 
       {menu === 'attach' && <div className="msAttach">
         <button onClick={() => send('loc', { x: GAME.player.x, z: GAME.player.z, body: '📍 My location' })}><b>📍</b><span>Location</span></button>
         <button onClick={() => setMenu('cash')}><b>💸</b><span>Send money</span></button></div>}
-      {menu === 'cash' && <div className="msCashBox"><small>Cash: {naira(cash)} · max {naira(MAX_SEND_CASH)} per transfer</small>
-        <div><input inputMode="numeric" placeholder="Amount (₦)" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 7))} /><button disabled={busy || !Number(amount)} onClick={() => send('cash', { amount: Number(amount) })}>Send {Number(amount) ? naira(Number(amount)) : ''}</button></div>
+      {menu === 'cash' && <div className="msCashBox"><small>Cash: {naira(cash)}</small>
+        <div><input inputMode="numeric" placeholder="Amount (₦)" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))} /><button disabled={busy || !Number(amount)} onClick={() => send('cash', { amount: Number(amount) })}>Send {Number(amount) ? naira(Number(amount)) : ''}</button></div>
         <input placeholder="Add a note (optional)" maxLength={80} value={text} onChange={e => setText(e.target.value)} /></div>}
       <div className="msIn"><button className="msPlus" onClick={() => setMenu(menu === 'attach' || menu === 'cash' ? '' : 'attach')} aria-label="More">＋</button>
         <input value={menu === 'cash' ? '' : text} disabled={menu === 'cash'} maxLength={ph.maxLen} placeholder={menu === 'cash' ? 'Sending money…' : 'Message…'} enterKeyHint="send" onChange={e => setText(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') send(); }} onKeyUp={e => e.stopPropagation()} />

@@ -12,5 +12,5 @@ export const PHONES: Phone[] = [
 export const FREE_PHONE: Phone = { tier: 3, itemId: '', name: 'Phone', e: '📱', maxLen: 500, maxChats: 999, read: true, maps: true, location: true, cash: true, perks: ['Unlimited chats', 'Read receipts', 'Maps', 'Share location', 'Send money'] };
 export const phoneOf = (_tier?: number): Phone => FREE_PHONE;
 export const tierFromItems = (keys: Iterable<string>): PhoneTier => { let t = 0; for (const k of keys) { const p = PHONES.find(x => x.itemId && x.itemId === k); if (p && p.tier > t) t = p.tier; } return t as PhoneTier; };
-export const MAX_SEND_CASH = 500_000;
+export const MAX_SEND_CASH = 2_147_483_647; // no game limit: only the player's own balance (the database stores cash as a 32-bit number)
 export const MSG_COOLDOWN_MS = 250;

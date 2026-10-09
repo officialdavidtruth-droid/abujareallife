@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
-import { currentUser, err } from '../../../lib/auth';
+import { currentUser, err, serverError } from '../../../lib/auth';
 import { sanitizeLook } from '../../../lib/characterModels';
 
 export const dynamic = 'force-dynamic';
 export async function GET() {
-  const u = await currentUser();
-  if (!u) return err('Not signed in.', 401);
-  const s = await prisma.save.findUnique({ where: { userId: u.id } });
-  return NextResponse.json({ save: s ? { look: s.look, state: s.state, cash: s.cash, profile: s.profile, heat: s.heat } : null });
+  try {
+    const u = await currentUser();
+    if (!u) return err('Not signed in.', 401);
+    const s = await prisma.save.findUnique({ where: { userId: u.id } });
+    return NextResponse.json({ save: s ? { look: s.look, state: s.state, cash: s.cash, profile: s.profile, heat: s.heat } : null });
+  } catch (e) { return serverError(e); }
 }
 const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
 export async function PUT(req: Request) {

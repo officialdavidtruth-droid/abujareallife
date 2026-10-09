@@ -115,3 +115,31 @@ CREATE TABLE IF NOT EXISTS "RideRequest" (
 );
 CREATE INDEX IF NOT EXISTS "RideRequest_toUserId_status_idx" ON "RideRequest"("toUserId","status");
 CREATE INDEX IF NOT EXISTS "RideRequest_fromUserId_status_idx" ON "RideRequest"("fromUserId","status");
+
+-- Deal (migration 0015): property deals between players
+CREATE TABLE IF NOT EXISTS "Deal" (
+  "id" TEXT PRIMARY KEY,
+  "building" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "price" INTEGER NOT NULL,
+  "fromId" TEXT NOT NULL,
+  "fromName" TEXT NOT NULL,
+  "toId" TEXT NOT NULL,
+  "toName" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "Deal_toId_status_idx" ON "Deal"("toId","status");
+CREATE INDEX IF NOT EXISTS "Deal_fromId_status_idx" ON "Deal"("fromId","status");
+
+-- intoxication (migration 0016)
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "drunk" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "high" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "intoxAt" TIMESTAMP(3);
+
+-- down state (migration 0017)
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "downUntil" TIMESTAMP(3);
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "downKind" TEXT;
+
+-- holdup (migration 0018)
+CREATE INDEX IF NOT EXISTS "Crime_kind_createdAt_idx" ON "Crime"("kind", "createdAt");

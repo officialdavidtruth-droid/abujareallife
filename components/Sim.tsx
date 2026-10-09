@@ -917,7 +917,7 @@ export default function Sim() {
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const sr = await fetch('/api/save'), r = await sr.json().catch(() => null);
-    if (!sr.ok || !r) throw new Error(r?.error || `Could not load your save (${sr.status}). If you just updated the game, run the database migration (prisma/migrations/0013_auto_work).`);
+    if (!sr.ok || !r) throw new Error(r?.error || `Could not load your save (${sr.status}). If you just updated the game, the database may be out of date: run prisma/fix-database.sql in the Supabase SQL Editor (safe to re-run).`);
     if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); loadPantry(); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } try { const l = await fetch('/api/home/layout', { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture',{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
   }

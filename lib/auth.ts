@@ -15,7 +15,7 @@ export const authConfigured = () => (process.env.AUTH_SECRET || '').length >= 32
 export function serverError(e: unknown) {
   console.error('[auth] server error:', e);
   const x = e as { code?: string; message?: string };
-  if (x?.code === 'P2021' || x?.code === 'P2022') return err('Database is not set up yet (migrations not applied). Run: npm run db:migrate:deploy', 500);
+  if (x?.code === 'P2021' || x?.code === 'P2022') return err('The database is out of date. Run prisma/fix-database.sql in the Supabase SQL Editor (safe to re-run), then reload.', 500);
   if (x?.code && ['P1000', 'P1001', 'P1002', 'P1017', 'P2024'].includes(x.code)) return err('The database is busy or unreachable right now. Please try again in a moment.', 503);
   if (x?.message?.includes('AUTH_SECRET')) return err('Server is missing AUTH_SECRET (32+ characters).', 500);
   return err('Server error. Please try again.', 500);

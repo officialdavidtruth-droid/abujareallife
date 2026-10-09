@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GAME, canDispatchRide, dispatchRide } from './CityWorld';
 import RideOrder from './RideOrder';
+import SendMoney from './SendMoney';
 import { VEHICLE_CATALOG } from '../lib/vehicles';
 import { NET } from '../lib/cityNet';
 import { sfx } from '../lib/audio';
@@ -27,7 +28,8 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null), [chatWith, setChatWith] = useState<string | null>(null), [unread, setUnread] = useState(0), seenMsg = useRef('');
   const [ping, setPing] = useState<{ from: string; text: string; n: number } | null>(null), pingT = useRef<any>(null), live = useRef<{ tab: string | null; chat: string | null }>({ tab: null, chat: null });
   live.current = { tab, chat: chatWith };
-  const [stuff, setStuff] = useState(false);
+  const [stuff, setStuff] = useState(false), [sendTo, setSendTo] = useState<string | null>(null); // sendTo: null = closed, '' = open with no name yet
+  useEffect(() => { const f = (e: Event) => setSendTo(String((e as CustomEvent).detail || '')); window.addEventListener('arl-send-money', f); return () => window.removeEventListener('arl-send-money', f); }, []);
   // ── rides other players order for you (you must accept) and updates on rides you ordered ──
   type RideReq = { id: string; from: string; to: string; kind: string; destName: string; destX: number; destZ: number; fare: number; status: string; expiresIn: number };
   const [orderFor, setOrderFor] = useState<string | null>(null), [rideReq, setRideReq] = useState<(RideReq & { until: number }) | null>(null), [rideBusy, setRideBusy] = useState(false), rideSeen = useRef<Record<string, string> | null>(null);
@@ -137,7 +139,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const items: [string, string, () => void][] = [
     ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🎒', 'My Stuff', () => setStuff(true)], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
     ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
-    ['❤️', 'Love', () => setTab('love')], ['🌆', 'City Life', () => setTab('city')], ['📱', 'Phone', () => setTab('phone')], ['🕶️', 'Crime', () => setTab('crime')],
+    ['❤️', 'Love', () => setTab('love')], ['🌆', 'City Life', () => setTab('city')], ['📱', 'Phone', () => setTab('phone')], ['💸', 'Send Money', () => setSendTo('')], ['🕶️', 'Crime', () => setTab('crime')],
   ];
   if (role === 'police') items.push(['👮', 'Police', () => setTab('police')]);
   const p = st.profile, prof = PROFESSIONS.find(x => x.id === p.profession);
@@ -162,7 +164,8 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
     {stuff && <Inventory onClose={() => setStuff(false)} onCash={onCash} />}
     {market && <Market seller={market.seller} onClose={() => setMarket(null)} onCash={onCash} />}
     {st.jailLeft > 0 && <div className="glJail"><h2>🚔 In jail</h2><p>{Math.floor(st.jailLeft / 60)}:{String(st.jailLeft % 60).padStart(2, '0')} left</p><button disabled={st.cash < bail} onClick={async () => { const r = await post('/api/jail'); say(r.ok ? 'Bail paid.' : r.d.error); refresh(); }}>Pay bail {naira(bail)}</button></div>}
-      {orderFor && <RideOrder to={orderFor} me={username} onClose={() => setOrderFor(null)} onSent={say} />}
+      {sendTo !== null && <SendMoney cash={st.cash} start={sendTo} onClose={() => setSendTo(null)} onDone={(c, m) => { onCash(c); say(m); refresh(); }} />}
+    {orderFor && <RideOrder to={orderFor} me={username} onClose={() => setOrderFor(null)} onSent={say} />}
       {rideReq && <div className="glRide" role="alert"><i>{rideReq.kind === 'bike' ? '🚲' : '🚕'}</i><span><b>@{rideReq.from} ordered you a {rideReq.kind === 'bike' ? 'bike taxi' : 'taxi'}</b><small>To {rideReq.destName} · they pay · {Math.max(0, Math.ceil((rideReq.until - Date.now()) / 1000))}s left</small></span><button className="ok" disabled={rideBusy} onClick={() => answerRide(true)}>Accept</button><button className="no" disabled={rideBusy} onClick={() => answerRide(false)}>Decline</button></div>}
       <RuntimeStyle id="arl-ride-req" css={`.glRide{position:fixed;left:0;right:0;margin:0 auto;width:fit-content;top:calc(60px + env(safe-area-inset-top,0px));z-index:98;display:flex;align-items:center;gap:10px;max-width:min(440px,calc(100vw - 20px));background:#0b1a13f8;border:2px solid #ffb81c;border-radius:16px;padding:9px 12px;color:#fff;box-shadow:0 8px 24px #000a;font-family:system-ui,sans-serif}.glRide i{font-style:normal;font-size:26px}.glRide span{display:flex;flex-direction:column;min-width:0}.glRide b{font-size:13px}.glRide small{font-size:11px;color:#b9cfc4}.glRide button{all:unset;cursor:pointer;padding:6px 11px;border-radius:10px;font-weight:800;font-size:12px}.glRide .ok{background:#2fc66b;color:#06210f}.glRide .no{background:#3a2a2a;color:#ffb3ad}.glRide button:disabled{opacity:.5}`} />
     {tab && tab !== 'phone' && <div className="glPanel"><button className="x" onClick={() => setTab(null)}>×</button>
@@ -231,7 +234,7 @@ function PlayersPanel({ username, onClose, onOrder }: { username: string; onClos
       {players.map(({ name, q, d }) => { const police = q.look.outfitModel === 'uniform'; return <div className="playerCard" key={name}>
         <div className="playerAvatar"><span>{q.look.gender === 'f' ? '👩🏽' : '👨🏽'}</span><i className={d < 20 ? 'near' : ''} /></div>
         <div className="playerInfo"><b>{name}</b><span>{police ? '👮 Police officer' : '🎮 Real player'} · {Math.round(d)}m away</span><small>{q.drv ? '🚗 Driving' : q.mv > 0 ? '🚶 Moving' : '🧍 Standing'}{q.cp ? ' · Own car' : ''}</small></div>
-        <div className="playerActions"><button title="Order a ride for this player" onClick={() => onOrder(name)}>🚕</button><button onClick={() => { GAME.nav = { x: q.x, z: q.z, name }; onClose(); }}>📍</button><button onClick={() => window.dispatchEvent(new CustomEvent('arl-player-select', { detail: name }))}>👤</button></div>
+        <div className="playerActions"><button title="Send money to this player" onClick={() => window.dispatchEvent(new CustomEvent('arl-send-money', { detail: name }))}>💸</button><button title="Order a ride for this player" onClick={() => onOrder(name)}>🚕</button><button onClick={() => { GAME.nav = { x: q.x, z: q.z, name }; onClose(); }}>📍</button><button onClick={() => window.dispatchEvent(new CustomEvent('arl-player-select', { detail: name }))}>👤</button></div>
       </div>; })}
     </div>}
   </>;

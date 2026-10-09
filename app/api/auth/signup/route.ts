@@ -18,10 +18,15 @@ export async function POST(req: Request) {
     if (password.length < 6 || password.length > 100) return err('Password must be at least 6 characters.');
     if (email && !/^\S+@\S+\.\S+$/.test(email)) return err('That email looks invalid.');
     const usernameKey = username.toLowerCase();
-    if (await prisma.user.findUnique({ where: { usernameKey } })) return err('That username is taken.', 409);
+    if (await prisma.user.findUnique({ where: { usernameKey } })) return err('That username is already taken. Please choose another name.', 409);
     if (email && await prisma.user.findUnique({ where: { email } })) return err('That email is already registered.', 409);
     const origin: Origin = randomInt(0, 1000) < NEPO_CHANCE * 1000 ? 'NEPO' : 'LAPO';
-    const user = await prisma.user.create({ data: { username, usernameKey, passwordHash: await bcrypt.hash(password, 10), email: email || null, origin } });
+    let user;
+    try { user = await prisma.user.create({ data: { username, usernameKey, passwordHash: await bcrypt.hash(password, 10), email: email || null, origin } }); }
+    catch (e) { // two people signing up with the same name at the same moment: the database's unique key decides, the loser gets a friendly message
+      if ((e as { code?: string })?.code === 'P2002') { const t = String((e as { meta?: { target?: unknown } })?.meta?.target || ''); return err(/email/i.test(t) ? 'That email is already registered.' : 'That username is already taken. Please choose another name.', 409); }
+      throw e;
+    }
     await startSession(user.id);
     let verifyEmail = false;
     if (email) { verifyEmail = true; await issueCode(user).catch(() => null); }

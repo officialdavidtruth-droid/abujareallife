@@ -24,8 +24,8 @@ export default function Messages({ start, onCash, onClose, onUnread }: { start: 
 
   const loadList = useCallback(async () => { const r = await j('/api/messages'); if (r.ok) { setConvs(r.d.convs || []); setCash(r.d.cash || 0); onUnread(r.d.unread || 0); setLoaded(true); } else if (!loaded) { say(r.d.error || 'Messages are unavailable.', true); setLoaded(true); } }, [onUnread]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadThread = useCallback(async (name: string) => { const r = await j('/api/messages?with=' + encodeURIComponent(name)); if (r.ok) { const srv: Msg[] = r.d.messages || []; const ids = new Set(srv.map(m => m.id)); local.current = local.current.filter(m => m.pending || m.failed || (!ids.has(m.id) && Date.now() - m.at < 15000)); setThread([...srv, ...local.current.filter(m => !ids.has(m.id))].sort((a, b) => a.at - b.at)); if (r.d.name && r.d.name !== name) setOpen(r.d.name); } else { say(r.d.error || 'Could not open that chat.', true); setOpen(null); } }, []);
-  useEffect(() => { loadList(); const id = setInterval(loadList, open ? 6000 : 3500); return () => clearInterval(id); }, [loadList, open]);
-  useEffect(() => { local.current = open ? (FAILED[open.toLowerCase()] || []).slice() : []; if (!open) { setThread([]); return; } loadThread(open); const id = setInterval(() => loadThread(open), 1500); return () => clearInterval(id); }, [open, loadThread]);
+  useEffect(() => { loadList(); const id = setInterval(() => { if (!document.hidden) loadList(); }, open ? 6000 : 3500); return () => clearInterval(id); }, [loadList, open]);
+  useEffect(() => { local.current = open ? (FAILED[open.toLowerCase()] || []).slice() : []; if (!open) { setThread([]); return; } loadThread(open); const id = setInterval(() => { if (!document.hidden) loadThread(open); }, 2000); return () => clearInterval(id); }, [open, loadThread]);
   useEffect(() => { if (stick.current) box.current?.scrollTo(0, 1e9); }, [thread.length, open]);
 
   async function send(kind: 'text' | 'loc' | 'cash' = 'text', extra: object = {}) {

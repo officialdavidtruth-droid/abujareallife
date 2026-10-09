@@ -924,7 +924,7 @@ export default function Sim() {
   }, []);
   useEffect(() => {
     Object.assign(S, NEW()); F.reset();
-    (async () => { try { const me = await (await fetch('/api/auth/me')).json(); if (me.user) await enter(me.user); } catch { /* offline */ } setReady(true); })();
+    (async () => { try { let me: any = null; for (let i = 0; i < 4; i++) { const r = await fetch('/api/auth/me'); me = await r.json().catch(() => null); if (r.status !== 503) break; await new Promise(x => setTimeout(x, 800)); } if (me?.user) await enter(me.user); } catch { /* offline */ } setReady(true); })();
     const a = setInterval(() => { S.min = worldMinute(); setUi(snap()); }, 200), b = setInterval(() => { if (lookRef.current) saveNow(lookRef.current); }, 5000);
     return () => { clearInterval(a); clearInterval(b); };
   }, []);

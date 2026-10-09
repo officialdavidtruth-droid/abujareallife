@@ -194,22 +194,24 @@ export function buildHuman(look: Look): Rig {
   }
   // neck + head
   add(spine, mesh(new THREE.CylinderGeometry(f ? .047 : .062, f ? .054 : .07, .1, 14), skin), 0, .5, 0);
-  const head = add(spine, new THREE.Group(), 0, .55, 0); head.scale.setScalar(f ? 1.08 : 1.14);
-  const skull = add(head, mesh(new THREE.SphereGeometry(.108, 36, 28), skin), 0, .1, 0); skull.scale.set(.96, 1.1, 1.03);
-  add(head, mesh(new THREE.SphereGeometry(.07, 24, 18), skin), 0, .045, .035).scale.set(f ? 1.0 : 1.2, .85, 1.05); // jaw (softer on women, squarer on men)
-  for (const s of [-1, 1]) add(head, mesh(new THREE.SphereGeometry(.02, 12, 10), skin), s * .104, .095, 0).scale.set(.6, 1, .8); // ears
+  const head = add(spine, new THREE.Group(), 0, .55, 0); head.scale.setScalar(f ? 1.34 : 1.32); // Bitmoji-inspired oversized head-to-body ratio
+  const skull = add(head, mesh(new THREE.SphereGeometry(.12, 40, 32), skin), 0, .1, 0); skull.scale.set(.98, 1.08, 1.02);
+  add(head, mesh(new THREE.SphereGeometry(.078, 28, 20), skin), 0, .043, .038).scale.set(f ? 1.04 : 1.18, .82, 1.0); // jaw (softer on women, squarer on men)
+  for (const s of [-1, 1]) add(head, mesh(new THREE.SphereGeometry(.022, 16, 12), skin), s * .116, .094, 0).scale.set(.62, 1, .8); // ears
   // face
-  const eyes = add(head, new THREE.Group(), 0, .115, .092);
+  const eyes = add(head, new THREE.Group(), 0, .119, .104); // larger, forward-set eyes for the smooth avatar style
   for (const s of [-1, 1]) {
-    const e = add(eyes, new THREE.Group(), s * .038, 0, 0);
-    add(e, mesh(new THREE.SphereGeometry(.0185, 16, 12), white), 0, 0, 0).scale.set(1, .9, .55);
-    add(e, mesh(new THREE.SphereGeometry(.0105, 12, 10), dark), 0, 0, .006).scale.set(1, 1, .6);
+    const e = add(eyes, new THREE.Group(), s * .043, 0, 0);
+    add(e, mesh(new THREE.SphereGeometry(.024, 20, 16), white), 0, 0, 0).scale.set(1.04, 1.08, .58);
+    add(e, mesh(new THREE.SphereGeometry(.014, 16, 12), std('#6b4935', .35)), 0, -.001, .009).scale.set(1, 1.02, .62);
+    add(e, mesh(new THREE.SphereGeometry(.008, 12, 10), dark), 0, -.001, .016).scale.set(1, 1, .65);
+    add(e, mesh(new THREE.SphereGeometry(.004, 10, 8), white), -.003, .006, .021).scale.set(1, 1, .5);
     if (f) { const lash = add(e, mesh(new THREE.BoxGeometry(.036, .005, .008), dark), 0, .017, .008); lash.rotation.z = -s * .1; } // lashes
-    const b = add(head, mesh(new THREE.BoxGeometry(f ? .036 : .045, f ? .005 : .009, .01), brow), s * .038, .15, .1); b.rotation.z = -s * .12;
+    const b = add(head, mesh(new THREE.BoxGeometry(f ? .043 : .048, f ? .007 : .01, .012), brow), s * .043, .158, .111); b.rotation.z = -s * .12;
   }
-  add(head, mesh(new THREE.SphereGeometry(.017, 12, 10), skin), 0, .082, .108).scale.set(1, .9, 1.1); // nose
-  const smile = add(head, mesh(new THREE.TorusGeometry(.02, .0042, 8, 18, Math.PI), lip), 0, .066, .103); smile.rotation.z = Math.PI; smile.scale.set(1.2, .9, 1);
-  if (f) add(head, mesh(new THREE.SphereGeometry(.0165, 12, 8), std('#b3394a', .45)), 0, .062, .104).scale.set(1.5, .42, .5); // lipstick
+  add(head, mesh(new THREE.SphereGeometry(.018, 14, 12), skin), 0, .081, .124).scale.set(1, .9, 1.0); // nose
+  const smile = add(head, mesh(new THREE.TorusGeometry(.021, .0045, 8, 20, Math.PI), lip), 0, .062, .12); smile.rotation.z = Math.PI; smile.scale.set(1.22, .85, 1);
+  if (f) add(head, mesh(new THREE.SphereGeometry(.017, 14, 10), std('#b3394a', .45)), 0, .058, .121).scale.set(1.5, .38, .5); // lipstick
   // ---- accessories on the head ----
   const hat = M === 'agbada' || M === 'uniform', gele = M === 'ankara';
   if (M === 'designer') { // sunglasses

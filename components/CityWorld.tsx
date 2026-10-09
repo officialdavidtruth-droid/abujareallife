@@ -467,7 +467,34 @@ const TRANSPORT_SOLIDS = [
   ...BILLBOARDS.flatMap(b => [-1.7, 1.7].map(o => ({ x: b.x + b.ax * o, z: b.z + b.az * o, r: .1 }))),
 ];
 
-function BusBody(){return <group scale={[1.25,1.25,1.25]}><mesh position={[0,1.1,0]}><boxGeometry args={[4.8,1.8,1.8]}/><meshStandardMaterial color="#d99a42"/></mesh><mesh position={[0,1.45,0]}><boxGeometry args={[4.5,.55,1.85]}/><meshStandardMaterial color="#1b2d38" metalness={.5}/></mesh>{[-1.7,1.7].map(x=><mesh key={x} position={[x,.45,.95]} rotation-x={Math.PI/2}><cylinderGeometry args={[.35,.35,.22,16]}/><meshStandardMaterial color="#111"/></mesh>)}</group>}
+function BusBody() { // faces +x like every vehicle: a yellow city bus with a window band, pillars, doors, lights and a destination sign
+  const Y = '#e8a923', D = '#14202a';
+  return <group>
+    <mesh position={[0, .95, 0]} castShadow><boxGeometry args={[6, 1.1, 2.2]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>
+    <mesh position={[0, .52, 0]}><boxGeometry args={[5.9, .26, 2.12]} /><meshStandardMaterial color="#1c1c1f" /></mesh>
+    <mesh position={[0, .98, 0]}><boxGeometry args={[6.02, .14, 2.22]} /><meshStandardMaterial color="#b3261e" /></mesh>
+    <mesh position={[0, 1.88, 0]}><boxGeometry args={[5.9, .76, 2.1]} /><meshStandardMaterial color={D} metalness={.55} roughness={.2} /></mesh>
+    {[-2.8, -1.8, -.8, .2, 1.2, 2.2, 2.85].map(x => <mesh key={x} position={[x, 1.88, 0]}><boxGeometry args={[.12, .78, 2.2]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>)}
+    <mesh position={[0, 2.33, 0]} castShadow><boxGeometry args={[6, .14, 2.2]} /><meshStandardMaterial color="#f1ead7" roughness={.6} /></mesh>
+    <mesh position={[-1.4, 2.43, 0]}><boxGeometry args={[.9, .1, .7]} /><meshStandardMaterial color="#cfd3d6" /></mesh>
+    <mesh position={[3.02, 1.85, 0]}><boxGeometry args={[.05, .8, 2.0]} /><meshStandardMaterial color={D} metalness={.5} roughness={.15} /></mesh>
+    <mesh position={[3.04, 2.2, 0]}><boxGeometry args={[.05, .22, 1.3]} /><meshStandardMaterial color="#0b0b0b" /></mesh>
+    <Text position={[3.075, 2.2, 0]} rotation-y={Math.PI / 2} fontSize={.15} color="#ffb020" anchorX="center" anchorY="middle">CITY BUS</Text>
+    <mesh position={[3.06, .4, 0]}><boxGeometry args={[.22, .26, 2.3]} /><meshStandardMaterial color="#26262a" metalness={.4} /></mesh>
+    {[1, -1].map(sd => <group key={sd}>
+      <mesh position={[3.04, .85, sd * .8]}><boxGeometry args={[.06, .2, .34]} /><meshStandardMaterial color="#fff6c8" emissive="#ffe9a0" emissiveIntensity={.6} /></mesh>
+      <mesh position={[-3.02, .85, sd * .85]}><boxGeometry args={[.06, .22, .3]} /><meshStandardMaterial color="#d62b2b" emissive="#ff1a1a" emissiveIntensity={.5} /></mesh>
+      <mesh position={[1.7, 1.15, sd * 1.12]}><boxGeometry args={[.95, 1.7, .05]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>
+      <mesh position={[1.7, 1.3, sd * 1.15]}><boxGeometry args={[.8, 1.25, .03]} /><meshStandardMaterial color={D} metalness={.5} roughness={.2} /></mesh>
+      <mesh position={[1.7, 1.3, sd * 1.17]}><boxGeometry args={[.03, 1.25, .03]} /><meshStandardMaterial color="#26262a" /></mesh>
+      <mesh position={[3.0, 1.55, sd * 1.2]}><boxGeometry args={[.1, .26, .08]} /><meshStandardMaterial color="#1c1c1f" /></mesh>
+      {[-1.95, 1.95].map(x => <group key={x} position={[x, .5, sd * 1.03]} rotation-x={Math.PI / 2}>
+        <mesh><cylinderGeometry args={[.5, .5, .3, 20]} /><meshStandardMaterial color="#121214" roughness={.9} /></mesh>
+        <mesh position={[0, sd * .16, 0]}><cylinderGeometry args={[.27, .27, .04, 16]} /><meshStandardMaterial color="#aeb4b9" metalness={.7} roughness={.35} /></mesh>
+      </group>)}
+    </group>)}
+  </group>;
+}
 function TaxiBody({ kit, driver }: { kit: Kit; driver?: boolean }) {
   return <group>
     <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" />
@@ -478,14 +505,34 @@ function TaxiBody({ kit, driver }: { kit: Kit; driver?: boolean }) {
     {driver && <group position={[.12, .3, -.4]} rotation-y={Math.PI / 2} scale={.6}><Human look={{ ...DEFAULT_LOOK, name: 'Taxi Driver', outfit: '#d99a42' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
   </group>;
 }
-function BikeBody({ scale = 1, rider }: { scale?: number; rider?: boolean }) { // faces +x like every vehicle
+function BikeBody({ scale = 1, rider }: { scale?: number; rider?: boolean }) { // faces +x like every vehicle: a motorcycle (okada) with fat tyres, fork, tank, seat, engine and exhaust
+  const body = '#2d8f62', dark = '#1a1d21', steel = '#aeb4b9';
   return <group scale={[scale, scale, scale]}>
-    {[-.55, .55].map(x => <mesh key={x} position={[x, .4, 0]}><torusGeometry args={[.36, .05, 8, 18]} /><meshStandardMaterial color="#15181b" /></mesh>)}
-    <mesh position={[0, .62, 0]}><boxGeometry args={[1.05, .07, .07]} /><meshStandardMaterial color="#2d8f62" /></mesh>
-    <mesh position={[.5, .66, 0]} rotation-z={-.25}><boxGeometry args={[.06, .62, .06]} /><meshStandardMaterial color="#2d8f62" /></mesh>
-    <mesh position={[.58, .98, 0]}><boxGeometry args={[.06, .06, .5]} /><meshStandardMaterial color="#20252a" /></mesh>
-    <mesh position={[-.3, .84, 0]}><boxGeometry args={[.34, .06, .2]} /><meshStandardMaterial color="#20252a" /></mesh>
-    {rider && <group position={[-.18, .6, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
+    {[-.62, .62].map(x => <group key={x} position={[x, .4, 0]}>
+      <mesh><torusGeometry args={[.31, .09, 10, 22]} /><meshStandardMaterial color="#101113" roughness={.9} /></mesh>
+      <mesh rotation-x={Math.PI / 2}><cylinderGeometry args={[.21, .21, .07, 16]} /><meshStandardMaterial color={steel} metalness={.7} roughness={.35} /></mesh>
+      <mesh rotation-x={Math.PI / 2}><cylinderGeometry args={[.06, .06, .12, 10]} /><meshStandardMaterial color="#555b61" metalness={.6} /></mesh>
+    </group>)}
+    <mesh position={[0, .47, 0]}><boxGeometry args={[.5, .34, .3]} /><meshStandardMaterial color="#2a2e33" metalness={.5} roughness={.45} /></mesh>
+    <mesh position={[.05, .62, 0]}><boxGeometry args={[.3, .14, .26]} /><meshStandardMaterial color="#3a4046" metalness={.5} /></mesh>
+    <mesh position={[.2, .8, 0]} rotation-z={-.08}><boxGeometry args={[.52, .24, .32]} /><meshStandardMaterial color={body} roughness={.35} metalness={.3} /></mesh>
+    <mesh position={[-.22, .79, 0]}><boxGeometry args={[.6, .1, .27]} /><meshStandardMaterial color={dark} roughness={.8} /></mesh>
+    <mesh position={[-.65, .84, 0]} rotation-z={.12}><boxGeometry args={[.42, .06, .24]} /><meshStandardMaterial color={dark} roughness={.8} /></mesh>
+    <mesh position={[-.72, .68, 0]} rotation-z={.2}><boxGeometry args={[.5, .04, .2]} /><meshStandardMaterial color={body} /></mesh>
+    <mesh position={[-.86, .75, 0]}><boxGeometry args={[.05, .07, .12]} /><meshStandardMaterial color="#d62b2b" emissive="#ff1a1a" emissiveIntensity={.5} /></mesh>
+    {[1, -1].map(sd => <group key={sd}>
+      <mesh position={[.51, .69, sd * .09]} rotation-z={.36}><cylinderGeometry args={[.028, .028, .78, 8]} /><meshStandardMaterial color={steel} metalness={.8} roughness={.25} /></mesh>
+      <mesh position={[-.3, .4, sd * .12]}><boxGeometry args={[.74, .05, .06]} /><meshStandardMaterial color="#2a2e33" metalness={.5} /></mesh>
+      <mesh position={[-.5, .62, sd * .14]} rotation-z={.25}><cylinderGeometry args={[.025, .025, .42, 8]} /><meshStandardMaterial color="#c9a227" metalness={.7} /></mesh>
+    </group>)}
+    <mesh position={[.62, .62, 0]}><boxGeometry args={[.4, .03, .15]} /><meshStandardMaterial color={body} /></mesh>
+    <mesh position={[.4, 1.0, 0]} rotation-x={Math.PI / 2}><cylinderGeometry args={[.02, .02, .72, 8]} /><meshStandardMaterial color={dark} metalness={.6} /></mesh>
+    {[1, -1].map(sd => <mesh key={sd} position={[.4, 1.0, sd * .36]} rotation-x={Math.PI / 2}><cylinderGeometry args={[.03, .03, .12, 8]} /><meshStandardMaterial color="#0c0d0f" roughness={.9} /></mesh>)}
+    <mesh position={[.42, .98, 0]}><boxGeometry args={[.12, .1, .18]} /><meshStandardMaterial color={dark} /></mesh>
+    <mesh position={[.7, .88, 0]}><sphereGeometry args={[.11, 14, 10]} /><meshStandardMaterial color="#fff6c8" emissive="#ffe9a0" emissiveIntensity={.7} /></mesh>
+    <mesh position={[-.3, .27, .2]} rotation-z={Math.PI / 2 - .06}><cylinderGeometry args={[.05, .045, .85, 10]} /><meshStandardMaterial color={steel} metalness={.85} roughness={.25} /></mesh>
+    <mesh position={[-.72, .3, .2]}><cylinderGeometry args={[.07, .07, .3, 10]} /><meshStandardMaterial color="#8d9399" metalness={.8} roughness={.3} /></mesh>
+    {rider && <group position={[-.2, .66, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
   </group>;
 }
 function PoliceBody({ kit }: { kit: Kit }) {

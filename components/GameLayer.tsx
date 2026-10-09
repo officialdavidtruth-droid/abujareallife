@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GAME, canDispatchRide, dispatchRide } from './CityWorld';
 import RideOrder from './RideOrder';
 import CrimeActions from './CrimeActions';
+import { IntoxOverlay } from './Intoxication';
 import SendMoney from './SendMoney';
 import { VEHICLE_CATALOG } from '../lib/vehicles';
 import { NET } from '../lib/cityNet';
@@ -16,7 +17,7 @@ import Inventory from './Inventory';
 import Messages from './Messages';
 import CityLifePanel from './CityLifePanel';
 type Tier = { id: string; label: string; e: string; at: number; next: { label: string; at: number } | null; pct: number };
-type St = { cash: number; heat: number; wanted: boolean; jailLeft: number; rank: number; profile: Profile; origin: Origin | null; hasCar: boolean; fame: number; tier: Tier };
+type St = { cash: number; heat: number; wanted: boolean; jailLeft: number; rank: number; profile: Profile; origin: Origin | null; hasCar: boolean; fame: number; tier: Tier; drunk?: number; high?: number };
 type Row = { rank: number; name: string; fame: number; origin: string | null; tier: string; you: boolean };
 type CityTab = 'map' | 'jobs' | 'businesses' | null;
 const post = async (url: string, body?: object) => { const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) }); return { ok: r.ok, d: await r.json().catch(() => ({})) as any }; };
@@ -103,7 +104,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const base = document.title.replace(/^\(\d+\)\s*/, ''); document.title = unread > 0 ? `(${unread > 9 ? '9+' : unread}) ${base}` : base; }, [unread]); // tab title shows the unread count
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
-  const refresh = useCallback(async () => { const r = await fetch('/api/status'); if (r.ok) { const d = await r.json(); setSt(d); GAME.hasCar = !!d.hasCar; GAME.heat = Number(d.heat) || 0; onCash(d.cash); } }, [onCash]);
+  const refresh = useCallback(async () => { const r = await fetch('/api/status'); if (r.ok) { const d = await r.json(); setSt(d); GAME.hasCar = !!d.hasCar; GAME.heat = Number(d.heat) || 0; GAME.drunk = Number(d.drunk) || 0; GAME.high = Number(d.high) || 0; onCash(d.cash); } }, [onCash]);
   useEffect(() => { const f = () => { refresh(); }; window.addEventListener('arl-refresh', f); return () => window.removeEventListener('arl-refresh', f); }, [refresh]);
   useEffect(() => { refresh(); const a = setInterval(refresh, 5000), b = setInterval(() => { if (GAME.notice) { say(GAME.notice); GAME.notice = ''; } tick(x => x + 1); }, 500); return () => { clearInterval(a); clearInterval(b); }; }, [refresh]);
   // Jail: lock the player inside the real cell, free them at the police station when time is up.
@@ -153,6 +154,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
     <div className="dock">
       <button className="dockToggle" onClick={onToggle} aria-label="Menu">{open ? '✕' : '☰'}{!open && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>
       {near && !st.jailLeft && <button className="enter" disabled={entering} onClick={tryEnter}>{entering ? '⏳ Entering…' : businessStatus(near.type as any, getMinute ? getMinute() : 0).open ? '🚪 Enter' : '🔒 Closed'}</button>}
+      <IntoxOverlay drunk={Number(st.drunk) || 0} high={Number(st.high) || 0} />
       {!st.jailLeft && st.profile.profession !== 'police' && <CrimeActions username={username} say={say} refresh={refresh} />}
       {(() => { const h = !st.jailLeft && helpNear(); return h ? <button className="help" onClick={() => help(h)}>🤝 Help {h}</button> : null; })()}
       {open && <div className="dockGrid">{items.map(([e, l, f]) => <button key={l} onClick={() => { f(); onToggle(); }}><span>{e}</span><small>{l}</small>{l === 'Phone' && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>)}</div>}

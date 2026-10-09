@@ -10,6 +10,10 @@ import { makeNav } from '../lib/nav';
 import { GAME_LABEL_CSS, INTERIOR_UI_CSS } from '../lib/gameLabels';
 import StoreModal from './StoreModal';
 import Underworld from './Underworld';
+import { DrinksMenu } from './Intoxication';
+import Dealers from './Dealers';
+import { dealerAt } from '../lib/dealers';
+import { BAR_TYPES } from '../lib/intoxication';
 import { sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import { buildInterior, staffLook, type Interior as Room, type Item, type Office, type Opt, type Post, type Spot } from '../lib/interiors';
@@ -267,6 +271,8 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
     <div className={"inDock" + (actionOpen ? " open" : "")}><button className="inActionsToggle" onClick={() => setActionOpen(v => !v)}>🎮 <span>{actionOpen ? "Close actions" : "Actions"}</span></button>{actionOpen && <div className="inActionTray"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => { setActionOpen(false); goSpot(sp); }}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>}</div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
+    {(BAR_TYPES as string[]).includes(biz.type) && <DrinksMenu onCash={onCash} onFx={onFx} toast={toast} />}
+    {dealerAt(biz.type) && <Dealers onCash={onCash} onFx={onFx} toast={toast} />}
     {biz.type === 'Nightclub' && <Underworld onCash={onCash} onFx={onFx} toast={toast} />}
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
     {menu && <div className={'inMenu k-' + (menu.id.startsWith('npc') ? 'npc' : menu.id)} style={{ ['--e' as string]: `"${menu.e}"` }}><button className="x" aria-label="Close" onClick={() => setMenu(null)}>✕</button><h3><span>{menu.e} {menu.label}</span></h3><div className="inBody">

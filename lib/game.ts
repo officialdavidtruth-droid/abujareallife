@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { CITY } from './cityData';
+import { decayIntox } from './intoxication';
 import { DEFAULT_PROFILE, FAME_ACTIVE_SECS, FAME_DAILY_CAP, HEAT_DECAY_PER_MIN, fameTier, rankFor, sanitizeProfile, skillLevel, type Profile, type SkillId } from './profile';
 
 // Loads the save, cools heat over time, frees the player when jail time is up. Server is the only writer of money/heat/jail/skills.
@@ -10,6 +11,10 @@ export async function loadState(userId: string) {
   if (s.heat > 0 && s.heatAt) {
     const cooled = Math.max(0, s.heat - Math.floor((now - s.heatAt.getTime()) / 60_000) * HEAT_DECAY_PER_MIN);
     if (cooled !== s.heat) { data.heat = cooled; data.heatAt = new Date(now); }
+  }
+  if ((s.drunk > 0 || s.high > 0) && s.intoxAt) {
+    const d = decayIntox(s.drunk, s.high, now - s.intoxAt.getTime());
+    if (d.drunk !== s.drunk || d.high !== s.high) { data.drunk = d.drunk; data.high = d.high; data.intoxAt = new Date(now); }
   }
   if (s.jailUntil && s.jailUntil.getTime() <= now) { data.jailUntil = null; data.heat = 0; }
   if (Object.keys(data).length) s = await prisma.save.update({ where: { userId }, data });
@@ -22,6 +27,7 @@ export const addSkillXp = (p: Profile, skill: SkillId, xp: number): Profile => (
 export const lvl = (p: Profile, s: SkillId) => skillLevel(p.skills[s] || 0);
 export const publicState = (st: NonNullable<Awaited<ReturnType<typeof loadState>>>) => ({
   cash: st.save.cash, heat: st.save.heat, wanted: st.save.heat >= 40, jailLeft: st.jailLeft, profile: st.profile, rank: st.rank,
+  drunk: st.save.drunk, high: st.save.high,
   origin: st.save.origin, hasCar: st.save.hasCar, fame: st.save.fame, tier: fameTier(st.save.fame),
 });
 

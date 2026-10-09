@@ -4,6 +4,7 @@ import { currentUser, err } from '../../../lib/auth';
 import { WEAPON_RULES } from '../../../lib/weapons';
 import { signTicket } from '../../../lib/shotTicket';
 import { ASSAULT_HEAT, OFFICER_HEAT } from '../../../lib/profile';
+import { recordShot } from '../../../lib/combatLog';
 export const dynamic = 'force-dynamic';
 
 /* The server decides whether a shot may hurt someone. Checks:
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
   if (theirs.jailUntil && theirs.jailUntil.getTime() > now) return NextResponse.json({ ok: false, reason: 'jailed' });
 
   lastShot.set(u.id, now);
+  recordShot(u.id, him.userId);
   const pair = `${u.id}>${him.userId}`, back = `${him.userId}>${u.id}`;
   const retaliating = now - (lastAimed.get(back) || 0) < RETALIATE_MS;
   lastAimed.set(pair, now);

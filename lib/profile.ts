@@ -209,3 +209,10 @@ export const CAREER_LADDERS: Record<string, string[]> = {
 export const careerLadder = (profession: string) => CAREER_LADDERS[profession] || GENERIC_LADDER;
 
 export const FRIEND_STATUSES = ['friends', 'best_friends', 'family'] as const;
+
+/* ───────── Physical crime, NPC police and death (v5) ───────── */
+export const NPC_COP_DELAY_MS = 8_000;                                  // after you become WANTED, an NPC patrol needs this long to reach you
+export const ROB_RANGE = 3.5, ROB_PCT = 0.3, ROB_MAX = 150_000, ROB_MIN = 1_000;   // mug a real player: take 30% of their cash, max ₦150k
+export const ROB_HEAT = 45, ROB_COOLDOWN_MS = 90_000;                   // heat for mugging; one mugging per victim per 90 s
+export const CARJACK_RANGE = 6, CARJACK_HEAT = 70;                      // steal a real player's car while they drive it
+export const KILL_HEAT = 70;                                            // heat for killing a player with a gun

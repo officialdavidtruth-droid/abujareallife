@@ -92,6 +92,23 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     return true;
   }, [name]);
 
+  // Death by gunfire: all cash is lost server-side, the player lies down for a moment, then wakes up in their house.
+  const dying = useRef(false);
+  const die = useCallback(async (killer: string) => {
+    if (dying.current) return; dying.current = true;
+    const m = NET.me; m.hp = 0; m.ko = Date.now() + 4000; NET.msg = `💀 ${killer} killed you. You lost all your money.`;
+    try { await fetch('/api/death', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ killer }) }); } catch {}
+    setTimeout(() => {
+      m.hp = 100; m.ko = 0; m.hurt = 0; m.safe = Date.now() + 8000; dying.current = false;       // 8 s of spawn protection
+      window.dispatchEvent(new Event('arl-respawn-home')); window.dispatchEvent(new Event('arl-refresh'));
+    }, 2500);
+  }, []);
+  // lets UI code (robbing, carjacking) tell the victim what just happened over the room channel
+  useEffect(() => {
+    const f = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (d.to && d.t) ch.current?.send({ type: 'broadcast', event: 'fx', payload: { u: name, to: String(d.to), t: String(d.t).slice(0, 140) } }); };
+    window.addEventListener('arl-net-fx', f); return () => window.removeEventListener('arl-net-fx', f);
+  }, [name]);
+
   const applied = useRef(new Set<string>());   // ticket ids already applied on this client
   const shoot = useCallback((to: string, weaponId: string) => {
     const now = Date.now(), rules = WEAPON_RULES[weaponId] || WEAPON_RULES.pistol;
@@ -194,7 +211,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
               const retaliating = (myHits.current[u] || 0) > t2 - 20_000;
               m.hp = Math.max(0, m.hp - d.damage); m.hurt = t2;
               if (!retaliating && !aggressor.current[u]) { aggressor.current[u] = t2; NET.msg = `🔫 ${u} shot at you!`; }   // the server already put the heat on the shooter
-              if (m.hp <= 0) { m.ko = t2 + FIGHT.koMs; NET.msg = `😵 ${u} knocked you out!`; if (aggressor.current[u] && t2 - aggressor.current[u] < 120_000) report('ko', u); }
+              if (m.hp <= 0) die(u);   // bullets kill: respawn at home with zero cash (punches still only knock you out)
             }).catch(() => {});
         })
         .on('broadcast', { event: 'fx' }, ({ payload }) => {
@@ -223,7 +240,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     };
     join(1);
     return () => { dead = true; if (cur) sb.removeChannel(cur); ch.current = null; NET.peers = {}; setRoster([]); };
-  }, [name, say, report]);
+  }, [name, say, report, die]);
 
   // outfit / hair changes: update presence without reconnecting
   useEffect(() => { if (statusRef.current === 'online') ch.current?.track({ look: lookRef.current }); }, [lk]);

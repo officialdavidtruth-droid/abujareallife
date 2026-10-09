@@ -264,7 +264,8 @@ function StreetLamps() {
 }
 
 /* ───────────── shared world state (cars, pedestrians and the player talk through these) ───────────── */
-const TPOS: { x: number; z: number; r: number }[] = []; // live position of every AI car
+export const TPOS: { x: number; z: number; r: number }[] = [];
+export const PEDPOS: { x: number; z: number }[] = []; // live position of every pedestrian (1e5 when hidden), read by the crime buttons // live position of every AI car
 const OBS = [{ x: 0, z: 0, on: false, sp: 4.5 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }]; // things AI cars must stop for: [0] player on foot, [1] player's car, [2] the taxi/bike carrying the player
 const VEH = { x: 0, z: 0, r: 0, v: 0, placed: false, drv: false, brake: false }; // the player's own car
 const NIGHT = { n: 0 }; // 0 = full day, 1 = full night
@@ -824,6 +825,60 @@ function LampGlow() {
   </instancedMesh>;
 }
 
+/* ───────────── NPC police: while you are WANTED a patrol spawns, chases you on foot and arrests you ───────────── */
+const COP_MAX = 3, COP_SPEED = 6.2, COP_CATCHUP = 10, COP_ARREST_R = 2.4, COP_HOLD = 1.2, COP_SPAWN_AFTER = 5000;
+function NpcPolice() {
+  const cops = useRef<{ x: number; z: number; r: number; hold: number }[]>([]);
+  const refs = useRef<(THREE.Group | null)[]>([]), red = useRef<(THREE.Mesh | null)[]>([]), blue = useRef<(THREE.Mesh | null)[]>([]);
+  const st = useRef({ since: 0, calling: false });
+  const arrest = async () => {
+    const S = st.current; if (S.calling) return; S.calling = true;
+    try {
+      const r = await fetch('/api/npc-police', { method: 'POST' }); const d = await r.json().catch(() => ({}));
+      if (d?.ok) { GAME.notice = `🚔 Arrested by police${d.fine ? ` · fined ₦${Number(d.fine).toLocaleString()}` : ''}`; cops.current.length = 0; window.dispatchEvent(new Event('arl-refresh')); }
+    } catch {}
+    setTimeout(() => { S.calling = false; }, 4000);
+  };
+  useFrame((state, dtRaw) => {
+    const dt = Math.min(dtRaw, .05), now = Date.now(), P = GAME.player, S = st.current, C = cops.current;
+    const wanted = GAME.heat >= 40 && !GAME.jailed;
+    if (!wanted) { S.since = 0; C.length = 0; }
+    else {
+      if (!S.since) { S.since = now; GAME.notice = '🚨 You are WANTED: police are on their way. Get away or hide inside a building.'; }
+      const want = GAME.heat >= 110 ? 3 : GAME.heat >= 70 ? 2 : 1;
+      if (now - S.since > COP_SPAWN_AFTER && C.length < want) {
+        const a = Math.random() * Math.PI * 2, d = 55 + Math.random() * 15;
+        const c = { x: Math.max(-140, Math.min(140, P.x + Math.sin(a) * d)), z: Math.max(-140, Math.min(140, P.z + Math.cos(a) * d)), r: 0, hold: 0 };
+        pushOut(c, .6); C.push(c);
+        if (C.length === 1) GAME.notice = '🚔 Police spotted you. Run!';
+      }
+    }
+    const fleeing = VEH.drv || !!GAME.ride;
+    for (const c of C) {
+      const dx = P.x - c.x, dz = P.z - c.z, d = Math.hypot(dx, dz) || 1, sp = d > 40 ? COP_CATCHUP : COP_SPEED;
+      if (d > COP_ARREST_R * .8) { c.x += dx / d * sp * dt; c.z += dz / d * sp * dt; pushOut(c, .6); }
+      c.r = Math.atan2(dx, dz);
+      if (d < COP_ARREST_R && !fleeing) { c.hold += dt; if (c.hold >= COP_HOLD) arrest(); } else c.hold = Math.max(0, c.hold - dt * 2);
+    }
+    const blink = Math.floor(state.clock.elapsedTime * 4) % 2 === 0;
+    for (let i = 0; i < COP_MAX; i++) {
+      const g = refs.current[i], c = C[i]; if (!g) continue;
+      g.visible = !!c; if (!c) continue;
+      g.position.set(c.x, Math.abs(Math.sin(state.clock.elapsedTime * 9 + i)) * .08, c.z); g.rotation.y = c.r;
+      if (red.current[i]) red.current[i]!.visible = blink; if (blue.current[i]) blue.current[i]!.visible = !blink;
+    }
+  });
+  return <>{Array.from({ length: COP_MAX }, (_, i) => <group key={i} ref={el => { refs.current[i] = el; }} visible={false}>
+    <mesh position={[-.13, .4, 0]}><boxGeometry args={[.2, .8, .22]} /><meshStandardMaterial color="#111827" /></mesh>
+    <mesh position={[.13, .4, 0]}><boxGeometry args={[.2, .8, .22]} /><meshStandardMaterial color="#111827" /></mesh>
+    <mesh position={[0, 1.1, 0]}><boxGeometry args={[.58, .8, .32]} /><meshStandardMaterial color="#1e3a8a" /></mesh>
+    <mesh position={[0, 1.65, 0]}><sphereGeometry args={[.17, 12, 12]} /><meshStandardMaterial color="#6b4429" /></mesh>
+    <mesh position={[0, 1.82, 0]}><boxGeometry args={[.4, .1, .4]} /><meshStandardMaterial color="#0f172a" /></mesh>
+    <mesh ref={el => { red.current[i] = el; }} position={[-.12, 2.05, 0]}><sphereGeometry args={[.09, 8, 8]} /><meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2} /></mesh>
+    <mesh ref={el => { blue.current[i] = el; }} position={[.12, 2.05, 0]}><sphereGeometry args={[.09, 8, 8]} /><meshStandardMaterial color="#3b82f6" emissive="#3b82f6" emissiveIntensity={2} /></mesh>
+  </group>)}</>;
+}
+
 /* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
 type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number]; vis:number; yaw:number; off:number; vf:number; tc:number; rest:number; ox:number; oz:number };
 const SHIRTS = ['#c0392b', '#2c5aa0', '#e8e8ea', '#1e9e55', '#f1c40f', '#7c3aed', '#0f766e', '#d97706', '#111827', '#be185d'];
@@ -841,6 +896,7 @@ const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return a
 const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis) === 'r' && timeToGreen(t, carAxis) > 5.5;
 function Pedestrians() {
   const peds = useMemo(makePeds, []);
+  useFrame(() => { for (let i = 0; i < peds.length; i++) { const p = peds[i], e = PEDPOS[i] || (PEDPOS[i] = { x: 1e5, z: 1e5 }); e.x = p.hidden ? 1e5 : p.x; e.z = p.hidden ? 1e5 : p.z; } });
   const torso = useRef<THREE.InstancedMesh>(null!), head = useRef<THREE.InstancedMesh>(null!), legs = useRef<THREE.InstancedMesh>(null!), arms = useRef<THREE.InstancedMesh>(null!);
   const T = useMemo(() => ({ base: new THREE.Matrix4(), m: new THREE.Matrix4(), t: new THREE.Matrix4(), r: new THREE.Matrix4(), pos: new THREE.Vector3(), one: new THREE.Vector3(1, 1, 1), sc: new THREE.Vector3(1, 1, 1), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0), Z: new THREE.Vector3(0, 0, 1) }), []);
   useLayoutEffect(() => {
@@ -1072,7 +1128,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
 
 /* ───────────── the 3D scene ───────────── */
 const START = { x: 0, z: 16, r: Math.PI }; // overwritten with a random sidewalk spot each time a player steps outside (see CityWorld)
-export const GAME = { jailed: false, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string; mission?: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
+export const GAME = { jailed: false, heat: 0, hasCar: false, vehicleModel: 'Toyota Camry', notice: '', tp: null as { x: number; z: number } | null, nav: null as { x: number; z: number; name: string; mission?: string } | null, player: { x: START.x, z: START.z, r: 0 }, ride: null as null | { kind: 'taxi' | 'bike' | 'bus'; x: number; z: number; r: number; name: string; path: [number, number][]; i: number; speed: number; stand?: number } }; // set by the game layer
 const CELL = { x: JAIL_CELL_POS.x, z: JAIL_CELL_POS.z, h: 2.6 };
 const sm = THREE.MathUtils.smoothstep;
 const WX = { over: new THREE.Color('#7d8791'), dust: new THREE.Color('#d6bf9b'), flash: new THREE.Color('#e8f0ff'), tmp: new THREE.Color() };
@@ -1415,6 +1471,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       {BUILDS.map(b => <Building key={b.id} b={b} />)}
       <Traffic />
       <Pedestrians />
+      <NpcPolice />
       <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} />
       <TrainLine />
       <WeatherEffects />

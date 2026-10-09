@@ -206,9 +206,11 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
   const send = useCallback((txt: string) => {
     const t = txt.trim().slice(0, 120), now = Date.now();
     if (!t || now - lastSend.current < 350) return false;
-    lastSend.current = now; say(name, t, true);
     const c = ch.current;
-    if (!c || statusRef.current === 'off') { NET.msg = 'Chat is offline: multiplayer is not connected.'; return true; }
+    if (!c || statusRef.current === 'off') { NET.msg = 'Chat is offline: multiplayer is not connected.'; return false; }
+    if (statusRef.current !== 'online') { NET.msg = 'Still connecting to the city. Try again in a moment.'; return false; } // keep the text in the box instead of losing it
+    lastSend.current = now; say(name, t, true);
+    if (!Object.keys(NET.peers).length) NET.msg = 'Nobody else is in this city right now, so no one received that.';
     Promise.resolve(c.send({ type: 'broadcast', event: 'chat', payload: { u: name, t } })).then(r => { if (r && r !== 'ok') NET.msg = 'Message not delivered. Check your connection.'; }).catch(() => { NET.msg = 'Message not delivered. Check your connection.'; });
     return true;
   }, [name, say]);

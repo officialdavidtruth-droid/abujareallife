@@ -11,6 +11,7 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 const ago = (t: number) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'now' : s < 3600 ? Math.floor(s / 60) + 'm' : s < 86400 ? Math.floor(s / 3600) + 'h' : Math.floor(s / 86400) + 'd'; };
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const j = async (url: string, body?: object) => { try { const r = await fetch(url, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' }); return { ok: r.ok, d: await r.json().catch(() => ({})) as any }; } catch { return { ok: false, d: { error: 'No connection.' } as any }; } };
+const FAILED: Record<string, Msg[]> = {}; // unsent texts survive closing the chat or the phone
 const preview = (m: Msg) => (m.mine ? 'You: ' : '') + (m.kind === 'loc' ? '📍 Location' : m.kind === 'cash' ? '💸 ' + naira(m.data?.amount || 0) : m.body);
 
 export default function Messages({ start, onCash, onClose, onUnread }: { start: string | null; onCash: (n: number) => void; onClose: () => void; onUnread: (n: number) => void }) {
@@ -24,7 +25,7 @@ export default function Messages({ start, onCash, onClose, onUnread }: { start: 
   const loadList = useCallback(async () => { const r = await j('/api/messages'); if (r.ok) { setConvs(r.d.convs || []); setCash(r.d.cash || 0); onUnread(r.d.unread || 0); setLoaded(true); } else if (!loaded) { say(r.d.error || 'Messages are unavailable.', true); setLoaded(true); } }, [onUnread]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadThread = useCallback(async (name: string) => { const r = await j('/api/messages?with=' + encodeURIComponent(name)); if (r.ok) { const srv: Msg[] = r.d.messages || []; const ids = new Set(srv.map(m => m.id)); local.current = local.current.filter(m => m.pending || m.failed || (!ids.has(m.id) && Date.now() - m.at < 15000)); setThread([...srv, ...local.current.filter(m => !ids.has(m.id))].sort((a, b) => a.at - b.at)); if (r.d.name && r.d.name !== name) setOpen(r.d.name); } else { say(r.d.error || 'Could not open that chat.', true); setOpen(null); } }, []);
   useEffect(() => { loadList(); const id = setInterval(loadList, open ? 6000 : 3500); return () => clearInterval(id); }, [loadList, open]);
-  useEffect(() => { local.current = []; if (!open) { setThread([]); return; } loadThread(open); const id = setInterval(() => loadThread(open), 1500); return () => clearInterval(id); }, [open, loadThread]);
+  useEffect(() => { local.current = open ? (FAILED[open.toLowerCase()] || []).slice() : []; if (!open) { setThread([]); return; } loadThread(open); const id = setInterval(() => loadThread(open), 1500); return () => clearInterval(id); }, [open, loadThread]);
   useEffect(() => { if (stick.current) box.current?.scrollTo(0, 1e9); }, [thread.length, open]);
 
   async function send(kind: 'text' | 'loc' | 'cash' = 'text', extra: object = {}) {
@@ -35,7 +36,7 @@ export default function Messages({ start, onCash, onClose, onUnread }: { start: 
       local.current = [...local.current, tmp]; stick.current = true; setThread(t => [...t, tmp]); setText('');
       const to = open, r = await j('/api/messages', { to, kind, body });
       if (r.ok) { const real: Msg = r.d.message; local.current = local.current.map(m => (m.id === tmp.id ? real : m)); setThread(t => t.map(m => (m.id === tmp.id ? real : m))); }
-      else { local.current = local.current.map(m => (m.id === tmp.id ? { ...m, pending: false, failed: true } : m)); setThread(t => t.map(m => (m.id === tmp.id ? { ...m, pending: false, failed: true } : m))); say(r.d.error || 'Could not send.', true); }
+      else { local.current = local.current.map(m => (m.id === tmp.id ? { ...m, pending: false, failed: true } : m)); FAILED[to.toLowerCase()] = local.current.filter(m => m.failed); setThread(t => t.map(m => (m.id === tmp.id ? { ...m, pending: false, failed: true } : m))); say(r.d.error || 'Could not send.', true); }
       return;
     }
     if (busy) return;
@@ -45,7 +46,7 @@ export default function Messages({ start, onCash, onClose, onUnread }: { start: 
     if (kind === 'cash') { setCash(r.d.cash); onCash(r.d.cash); setAmount(''); say(`💸 Sent ${naira(r.d.message.data?.amount || 0)} to ${open}`); }
     loadList();
   }
-  const retry = (m: Msg) => { local.current = local.current.filter(x => x.id !== m.id); setThread(t => t.filter(x => x.id !== m.id)); setText(m.body); };
+  const retry = (m: Msg) => { local.current = local.current.filter(x => x.id !== m.id); if (open) FAILED[open.toLowerCase()] = local.current.filter(x => x.failed); setThread(t => t.filter(x => x.id !== m.id)); setText(m.body); };
   const navigate = (m: Msg, from: string) => { GAME.nav = { x: m.data.x, z: m.data.z, name: `${from}'s location` }; GAME.notice = '🗺️ Following the map…'; onClose(); };
   const startNew = () => { const n = newName.trim(); if (n) { setNewName(''); setOpen(n); } };
 

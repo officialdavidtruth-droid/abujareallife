@@ -30,7 +30,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   useEffect(() => { // unread badge + a pop-up when a new text arrives
     let dead = false;
     const poll = async () => { try { const r = await fetch('/api/messages?count=1', { cache: 'no-store' }); if (!r.ok || dead) return; const d = await r.json(); setUnread(d.unread || 0); const l = d.latest; if (l && l.id !== seenMsg.current) { const first = seenMsg.current === ''; seenMsg.current = l.id; if (!first) say(`💬 ${l.from}: ${l.kind === 'loc' ? '📍 shared a location' : l.kind === 'cash' ? '💸 sent you money' : String(l.body).slice(0, 60)}`); } else if (!l) seenMsg.current = seenMsg.current || '-'; } catch { /* offline */ } };
-    poll(); const id = setInterval(poll, 6000); return () => { dead = true; clearInterval(id); };
+    poll(); const id = setInterval(poll, 3000); return () => { dead = true; clearInterval(id); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
   const refresh = useCallback(async () => { const r = await fetch('/api/status'); if (r.ok) { const d = await r.json(); setSt(d); GAME.hasCar = !!d.hasCar; onCash(d.cash); } }, [onCash]);

@@ -58,6 +58,7 @@ export default function Wallet() {
       <header><div><small>ABUJA REAL LIFE</small><h2>💰 Wallet</h2></div><button className="wlClose" onClick={() => setOpen(false)}>×</button></header>
       <div className="wlBal"><span>Your balance</span><b>{info ? n(info.cash) : '…'}</b></div>
       <p className="wlNote">Add game money with a real-money payment (Paystack: card, bank transfer, USSD). Game money is for use in the game only and cannot be withdrawn or refunded as cash.</p>
+      <p className="wlNote">⚠️ In this no-rules city you can lose game money: other players can rob you, and if you are shot dead you lose ALL the cash you are carrying. Lost game money is not refundable.</p>
       {info && !info.hasEmail && <input className="wlEmail" type="email" inputMode="email" placeholder="Your email (for the payment receipt)" value={email} onChange={e => setEmail(e.target.value)} />}
       {info && !info.configured && <p className="wlErr">Payments are not switched on yet.</p>}
       <div className="wlGrid">{TOPUPS.map(p => <button key={p.id} className="wlPack" disabled={!!busy || (info ? !info.configured : false)} onClick={() => void pay(p)}>

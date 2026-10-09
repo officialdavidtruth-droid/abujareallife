@@ -85,12 +85,13 @@ function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSele
 }
 
 export default function City({ look, onNear, getMinute, onSocial, tab: tabProp, onTab }: { look: Look; onNear: (b: Business | null) => void; getMinute?: () => number; onSocial?: (a?: number) => void; tab?: Tab; onTab?: (t: Tab) => void }) {
-  const [own, setOwn] = useState<Tab>(null), [near, setNear] = useState<Business | null>(null), [focus, setFocus] = useState<Business | null>(null), [entering, setEntering] = useState(false);
+  const [own, setOwn] = useState<Tab>(null), [near, setNear] = useState<Business | null>(null), [focus, setFocus] = useState<Business | null>(null), [entering, setEntering] = useState(false), [dismissed, setDismissed] = useState<string | null>(null);
   const controlled = onTab !== undefined, tab = controlled ? (tabProp ?? null) : own, setTab = (t: Tab) => (controlled ? onTab!(t) : setOwn(t));
   return <div className="cityShell">
-    <CityWorld look={look} onNear={b => { setNear(b); onNear(b); }} getMinute={getMinute} onSocial={onSocial} onOpenMap={() => setTab('map')} />
+    <CityWorld look={look} onNear={b => { setNear(b); setDismissed(d => (b && d === b.id ? d : null)); onNear(b); }} getMinute={getMinute} onSocial={onSocial} onOpenMap={() => setTab('map')} />
     {!controlled && <div className="cityActions"><button onClick={() => setTab(tab === 'map' ? null : 'map')}>🗺️<em> Map</em></button><button onClick={() => setTab(tab === 'jobs' ? null : 'jobs')}>💼<em> Jobs</em></button><button onClick={() => setTab(tab === 'businesses' ? null : 'businesses')}>🏪<em> Businesses</em></button></div>}
-    {near && !tab && (() => { const bs = businessStatus(near.type, getMinute ? getMinute() : 0); return <div className="nearCard" role="dialog" aria-label={`Nearby building: ${near.name}`}>
+    {near && !tab && dismissed !== near.id && (() => { const bs = businessStatus(near.type, getMinute ? getMinute() : 0); return <div className="nearCard" role="dialog" aria-label={`Nearby building: ${near.name}`}>
+      <button type="button" className="ncClose" aria-label="Close" onClick={() => setDismissed(near.id)}>×</button>
       <div className="nearIdentity"><div className="nearIcon">🏢</div><div className="nearCopy"><b>{near.name}</b><span>{near.type} · {near.district}</span><em className={bs.open ? 'openNow' : 'closedNow'}>{bs.open ? '● OPEN' : '● CLOSED'} · {bs.hours}</em></div></div>
       <div className="nearActions"><button onClick={() => { setFocus(null); setTab('jobs'); }}>💼 Jobs</button><button className="ncEnter" disabled={!bs.open || entering} onClick={() => { setEntering(true); window.dispatchEvent(new CustomEvent('arl-enter', { detail: near.id })); setTimeout(() => setEntering(false), 1200); }}>{entering ? '⏳ Entering…' : bs.open ? '🚪 Enter' : '🔒 Closed'}</button></div>
     </div>; })()}

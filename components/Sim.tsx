@@ -937,12 +937,15 @@ export default function Sim() {
   useEffect(() => { // heartbeat (also what the server uses to know how long you were away)
     if (!user) return; let dead = false, first = true;
     const beat = async () => { try {
+      if (document.hidden) { fetch('/api/autowork?hidden=1', { cache: 'no-store' }).catch(() => {}); return; } // screen left: the character carries on working on the server
       const r = await fetch('/api/autowork', { cache: 'no-store' }); if (!r.ok || dead) return; const d = await r.json();
       if (first) { first = false; S.free = !!d.freeWill; AUTO.free = S.free; AUTO.blocked = false; }
       AUTO.work = d.work || null;
       if (d.away) { const a = d.away; S.cash = d.cash; for (let i = 0; i < Math.min(a.shifts, 4); i++) AUTO.drain?.(); const m = `💼 While you were away you worked ${a.shifts} shift${a.shifts > 1 ? 's' : ''} at ${a.where}: +₦${a.earned.toLocaleString()}`; say(m); GAME.notice = m; }
     } catch { /* offline */ } };
-    beat(); const i = setInterval(beat, 30000); return () => { dead = true; clearInterval(i); };
+    const vis = () => { if (!document.hidden) beat(); }; // back on the screen: collect what the character earned right away
+    document.addEventListener('visibilitychange', vis);
+    beat(); const i = setInterval(beat, 30000); return () => { dead = true; clearInterval(i); document.removeEventListener('visibilitychange', vis); };
   }, [user]);
   useEffect(() => {
     let lastEnter = 0, tries = 0;

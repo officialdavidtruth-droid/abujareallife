@@ -7,8 +7,11 @@ import { shiftJobs } from '../../../lib/work';
 export const dynamic = 'force-dynamic';
 
 // Heartbeat from the open game (every ~30 s). The first beat after an absence pays out the shifts the character worked while you were away.
-export async function GET() {
+export async function GET(req: Request) {
   const u = await currentUser(); if (!u) return err('Not signed in.', 401);
+  // A hidden tab (switched away, minimised, phone locked) counts as away: do not refresh seenAt, so the time keeps adding up
+  // and the first beat after the player looks at the game again pays the shifts the character worked in the meantime.
+  if (new URL(req.url).searchParams.get('hidden') === '1') return NextResponse.json({ ok: true, hidden: true });
   const away = await settleAway(u.id).catch(() => null);
   await prisma.save.updateMany({ where: { userId: u.id }, data: { seenAt: new Date() } });
   const s = await prisma.save.findUnique({ where: { userId: u.id }, select: { freeWill: true, workBiz: true, workJob: true, cash: true } });

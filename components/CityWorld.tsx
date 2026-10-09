@@ -737,7 +737,7 @@ function LampGlow() {
 }
 
 /* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
-type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number] };
+type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number]; vis:number; yaw:number; off:number; vf:number; tc:number; rest:number; ox:number; oz:number };
 const SHIRTS = ['#c0392b', '#2c5aa0', '#e8e8ea', '#1e9e55', '#f1c40f', '#7c3aed', '#0f766e', '#d97706', '#111827', '#be185d'];
 const PANTS = ['#1f2937', '#374151', '#4b5563', '#111827', '#2b3a55', '#5b4636'];
 const SKINS = ['#3b2417', '#4a2e1c', '#5a3825', '#6b4429', '#7a4f32', '#8d5f3d'];
@@ -746,7 +746,7 @@ const pick = <T,>(a: T[], k: string) => a[Math.floor(hs(k) * a.length) % a.lengt
 function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {
     const ri = Math.floor(hs('pi' + n) * 11) - 5, side = hs('ps' + n) < .5 ? 1 : -1, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
-    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0] };
+    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0 };
   });
 }
 const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 0 : 32 - c) : (c >= 16 && c < 30 ? 0 : c < 16 ? 16 - c : 48 - c); };
@@ -754,7 +754,7 @@ const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis) === '
 function Pedestrians() {
   const peds = useMemo(makePeds, []);
   const torso = useRef<THREE.InstancedMesh>(null!), head = useRef<THREE.InstancedMesh>(null!), legs = useRef<THREE.InstancedMesh>(null!), arms = useRef<THREE.InstancedMesh>(null!);
-  const T = useMemo(() => ({ base: new THREE.Matrix4(), m: new THREE.Matrix4(), t: new THREE.Matrix4(), r: new THREE.Matrix4(), pos: new THREE.Vector3(), one: new THREE.Vector3(1, 1, 1), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0), Z: new THREE.Vector3(0, 0, 1) }), []);
+  const T = useMemo(() => ({ base: new THREE.Matrix4(), m: new THREE.Matrix4(), t: new THREE.Matrix4(), r: new THREE.Matrix4(), pos: new THREE.Vector3(), one: new THREE.Vector3(1, 1, 1), sc: new THREE.Vector3(1, 1, 1), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0), Z: new THREE.Vector3(0, 0, 1) }), []);
   useLayoutEffect(() => {
     const c = new THREE.Color();
     peds.forEach((p, i) => {
@@ -779,24 +779,42 @@ function Pedestrians() {
       p.mode = (hour < 6 || hour >= 22) ? 'home' : (hour < 10 || (hour >= 16 && hour < 19)) ? 'commute' : hour >= 19 ? 'social' : 'work';
       if (eventActive && i % 11 === 0) p.mode='flee';
       const prof = CITY.districts.find(d=>d.name===((p.mode==='home'||p.mode==='social')?p.home:p.work));
-      if(prof) p.target=[prof.x,prof.z];
+      if(prof) p.target=[prof.x+p.ox,prof.z+p.oz];
       if(p.mode==='flee'){ const dx=p.x-(p.target[0]||0),dz=p.z-(p.target[1]||0),len=Math.hypot(dx,dz)||1;p.target=[p.x+dx/len*18,p.z+dz/len*18]; if(i%11===0 && Math.random()<.002) window.dispatchEvent(new CustomEvent('arl-npc-alert',{detail:`🚨 NPC ${i+1} reported an incident to police.`})); }
       const td=Math.hypot(p.x-p.target[0],p.z-p.target[1]);
-      if(td<3.5 && (p.mode==='home'||p.mode==='work')) { p.hidden=true; p.moving=false; }
-      if(p.hidden && td>5) p.hidden=false;
+      p.tc=Math.max(0,p.tc-dt);
+      const wander=()=>(Math.random()<.5?-1:1)*(20+Math.random()*25);
+      if(p.hidden){ p.rest-=dt; if(p.rest<=0){ p.ox=wander(); p.oz=wander(); p.hidden=false; p.tc=0; } else if(td>16){ p.hidden=false; p.tc=0; } } // inside a shop/home for a while, then comes back out and walks somewhere else
+      else if(td<12 && p.mode!=='flee'){ p.hidden=true; p.rest=12+Math.random()*30; }
+      if(p.hidden) p.moving=false;
       if (p.down > 0) { p.down -= dt; fall = Math.min(1, (3.2 - p.down) / .25) * Math.min(1, Math.max(0, p.down) / .35); }
       else {
-        let go = true;
-        if(!p.hidden && td>4){ const tx=p.target[0],tz=p.target[1]; if(p.axis==='x'){ if(Math.abs(tz-p.z)>4){p.axis='z';p.line=p.x;} else p.dir=tx>p.x?1:-1; } else { if(Math.abs(tx-p.x)>4){p.axis='x';p.line=p.z;} else p.dir=tz>p.z?1:-1; } p.sp = p.mode==='flee'?2.8:(p.mode==='commute'?1.8:p.mode==='social'?1.35:1.1); }
+        let go = !p.hidden;
+        if(p.mode==='flee'){ p.dir = p.axis==='x' ? (p.target[0]>=p.x?1:-1) : (p.target[1]>=p.z?1:-1); p.sp=2.8*p.vf; }
+        else if(!p.hidden && td>4){
+          const tx=p.target[0],tz=p.target[1],ox=p.x,oz=p.z;
+          if(p.tc<=0){ // walk the pavements: go along the road to the junction nearest the target, turn there, never cut across blocks
+            if(p.axis==='x'){
+              if(Math.abs(tz-oz)>6){ const kt=Math.max(-5,Math.min(5,Math.round(tx/GRID))); if(Math.abs(ox-kt*GRID)<halfW(kt)+2.5){ p.axis='z'; p.line=kt*GRID+(ox>=kt*GRID?1:-1)*(halfW(kt)+2+p.off); p.u=oz; p.dir=tz>oz?1:-1; p.tc=2.5; } else p.dir=kt*GRID>ox?1:-1; }
+              else p.dir=tx>ox?1:-1;
+            } else {
+              if(Math.abs(tx-ox)>6){ const kr=Math.max(-5,Math.min(5,Math.round(tz/GRID))); if(Math.abs(oz-kr*GRID)<halfW(kr)+2.5){ p.axis='x'; p.line=kr*GRID+(oz>=kr*GRID?1:-1)*(halfW(kr)+2+p.off); p.u=ox; p.dir=tx>ox?1:-1; p.tc=2.5; } else p.dir=kr*GRID>oz?1:-1; }
+              else p.dir=tz>oz?1:-1;
+            }
+          }
+          p.sp = (p.mode==='commute'?1.8:p.mode==='social'?1.35:1.1)*p.vf;
+        }
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
         if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x')) go = false; } // wait at the kerb for a red light
         if (go) { const activityFactor = night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
       }
       if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }
       if (p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 3.5) { const dx = p.x - VEH.x, dz = p.z - VEH.z; if (dx * dx + dz * dz < 3.6) { p.down = 3.2; VEH.v *= .9; thud(.5); } } // clipped by the player's car
-      const yaw = p.axis === 'x' ? (p.dir > 0 ? 0 : Math.PI) : -p.dir * Math.PI / 2, sw = p.moving ? Math.sin(p.ph) : 0;
-      T.qa.setFromAxisAngle(T.Y, yaw); T.qb.setFromAxisAngle(T.Z, -fall * Math.PI / 2); T.q.copy(T.qa).multiply(T.qb);
-      T.pos.set(p.x, .12 * fall + (p.moving ? Math.abs(sw) * .03 : 0), p.z); T.base.compose(T.pos, T.q, T.one);
+      const yawT = p.axis === 'x' ? (p.dir > 0 ? 0 : Math.PI) : -p.dir * Math.PI / 2, sw = p.moving ? Math.sin(p.ph) : 0;
+      if (Number.isNaN(p.yaw)) p.yaw = yawT; let dyw = yawT - p.yaw; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw)); p.yaw += dyw * Math.min(1, dt * 9); // turn smoothly instead of snapping 180°
+      p.vis += ((p.hidden ? 0 : 1) - p.vis) * Math.min(1, dt * 5); const sc = Math.max(.001, p.vis); T.sc.set(sc, sc, sc);
+      T.qa.setFromAxisAngle(T.Y, p.yaw); T.qb.setFromAxisAngle(T.Z, -fall * Math.PI / 2); T.q.copy(T.qa).multiply(T.qb);
+      T.pos.set(p.x, .12 * fall + (p.moving ? Math.abs(sw) * .03 : 0), p.z); T.base.compose(T.pos, T.q, T.sc);
       part(torso.current, i, 0, 1.05, 0); part(head.current, i, 0, 1.52, 0);
       part(legs.current, i * 2, 0, .78, .1, sw * .7, -.38); part(legs.current, i * 2 + 1, 0, .78, -.1, -sw * .7, -.38);
       part(arms.current, i * 2, 0, 1.3, .27, -sw * .6, -.25); part(arms.current, i * 2 + 1, 0, 1.3, -.27, sw * .6, -.25);

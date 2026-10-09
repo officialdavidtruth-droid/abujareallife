@@ -20,6 +20,9 @@ export const NET = {
 };
 
 /* Fighting: any real player can punch any other real player. Damage is applied on the VICTIM's client; the victim also reports who started it to /api/fight (heat, fine, wanted). */
+/* Peer-to-peer voice signalling message (used only by the optional mesh voice fallback). */
+export type RtcMsg = { u: string; t: string; d?: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
+
 export const FIGHT = { range: 2.6, dmg: 10, cooldown: 600, koMs: 10_000 };
 
 export const MAX_ROOM = 40;   // players per city instance; the 41st player is moved to instance #2, etc.

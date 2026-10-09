@@ -16,6 +16,7 @@ export const NET = {
   peers: {} as Record<string, NetPeer>,
   reason: '' as string, // why multiplayer is offline, shown in the chat panel
   msg: '' as string, // one-line toast written by the net layer, shown by the scene
+  talk: {} as Record<string, number>, // username -> time (ms) until which they count as speaking (voice chat indicator)
 };
 
 /* Fighting: any real player can punch any other real player. Damage is applied on the VICTIM's client; the victim also reports who started it to /api/fight (heat, fine, wanted). */

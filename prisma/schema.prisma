@@ -234,6 +234,10 @@ model Save {
   fameDay   String?
   fameToday Int      @default(0)
   mgrTasks  Int      @default(0) // management tasks completed toward the next manager appointment
+  freeWill  Boolean  @default(true) // character acts on its own (and keeps working while the browser is closed)
+  workBiz   String?              // workplace: the business of the last shift you started
+  workJob   Int?                 // index into that business's shift jobs
+  seenAt    DateTime?            // last heartbeat from the open game (gap = time away)
   updatedAt DateTime @updatedAt
 
   @@index([fame])

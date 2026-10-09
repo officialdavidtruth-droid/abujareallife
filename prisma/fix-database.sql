@@ -90,3 +90,9 @@ CREATE TABLE IF NOT EXISTS "Message" (
 CREATE INDEX IF NOT EXISTS "Message_toName_readAt_idx" ON "Message"("toName", "readAt");
 CREATE INDEX IF NOT EXISTS "Message_fromName_createdAt_idx" ON "Message"("fromName", "createdAt");
 CREATE INDEX IF NOT EXISTS "Message_toName_createdAt_idx" ON "Message"("toName", "createdAt");
+
+-- auto work / free will
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "freeWill" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "workBiz" TEXT;
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "workJob" INTEGER;
+ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "seenAt" TIMESTAMP(3);

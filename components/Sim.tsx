@@ -11,6 +11,8 @@ import Account, { type AccountUser } from './Account';
 import AuthScreen from './AuthScreen';
 import Loader from './Loader';
 import { worldMinute, worldCalendar, weatherAt } from '../lib/worldClock';
+import { businessStatus } from '../lib/businessHours';
+import { AUTO, idleFor } from '../lib/autoState';
 import AssetLoader from './AssetLoader';
 import City from './City';
 import { setMusicMood, sfx } from '../lib/audio';
@@ -212,6 +214,8 @@ const NEW = () => ({ pos: [0, .5] as [number, number], rot: 0, pose: 'stand' as 
   min: worldMinute(), cash: 0, meals: 0, supplies: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
 const S = NEW();
 const say = (m: string) => { S.toast = m; S.toastT = Date.now(); };
+AUTO.minNeed = () => Math.min(...Object.values(S.needs)); // free-will work: the building / city drivers read these
+AUTO.drain = () => { (['hunger', 'energy', 'hygiene', 'bladder', 'fun'] as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - (k === 'hunger' || k === 'energy' ? 7 : 4)); }); };
 const walk = (x: number, z: number) => { S.cur = null; S.q = route(S.pos as P, [x, z]); };
 const tail = (): P => { let p: P = [S.pos[0], S.pos[1]]; if (S.cur?.t === 'walk') p = [S.cur.x, S.cur.z]; for (const t of S.q) if (t.t === 'walk') p = [t.x, t.z]; return p; };
 const enq = (o: Obj, a: Act) => { if (S.q.length > 12) return; S.q.push(...route(tail(), o.spot, o), { t: 'act', a, o }); };
@@ -917,6 +921,54 @@ export default function Sim() {
   }
   async function logout() {
     setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); F.reset(); setLook(null); setEditing(false); setUser(null); }
+
+  /* ───────── free will: go to work on your own, and keep working while the browser is closed ─────────
+   * Online: when Free will is ON and the player has been idle, the character leaves home for their workplace (the business of their last shift),
+   * walks there, goes in and starts shifts (see Interior.tsx), and heads home when the building closes or their needs run low.
+   * Offline: the server pays the shifts worked while you were away (lib/autowork.ts) on the first heartbeat after you come back. */
+  const live = useRef<any>({});
+  live.current = { outside, inside, nearB, user, look, profile, busy: homeEdit || editing || wardrobe || homeUp || famModal || menu };
+  useEffect(() => { AUTO.free = ui.free; }, [ui.free]);
+  useEffect(() => {
+    const f = () => { AUTO.lastInput = Date.now(); }, evs = ['keydown', 'pointerdown', 'touchstart', 'wheel'];
+    evs.forEach(e => window.addEventListener(e, f, { passive: true })); return () => evs.forEach(e => window.removeEventListener(e, f));
+  }, []);
+  useEffect(() => { // heartbeat (also what the server uses to know how long you were away)
+    if (!user) return; let dead = false, first = true;
+    const beat = async () => { try {
+      const r = await fetch('/api/autowork', { cache: 'no-store' }); if (!r.ok || dead) return; const d = await r.json();
+      if (first) { first = false; S.free = !!d.freeWill; AUTO.free = S.free; AUTO.blocked = false; }
+      AUTO.work = d.work || null;
+      if (d.away) { const a = d.away; S.cash = d.cash; for (let i = 0; i < Math.min(a.shifts, 4); i++) AUTO.drain?.(); const m = `💼 While you were away you worked ${a.shifts} shift${a.shifts > 1 ? 's' : ''} at ${a.where}: +₦${a.earned.toLocaleString()}`; say(m); GAME.notice = m; }
+    } catch { /* offline */ } };
+    beat(); const i = setInterval(beat, 30000); return () => { dead = true; clearInterval(i); };
+  }, [user]);
+  useEffect(() => {
+    let lastEnter = 0, tries = 0;
+    const iv = setInterval(() => {
+      const L = live.current, w = AUTO.work;
+      if (!S.free || !w || AUTO.blocked || !L.user || !L.look || !L.profile || L.busy || GAME.jailed || GAME.ride) return;
+      const biz = CITY.businesses.find(b => b.id === w.bizId); if (!biz) return;
+      if (L.inside) { tries = 0; return; } // the building (Interior.tsx) drives the shifts
+      const open = businessStatus(biz.type, worldMinute()).open;
+      if (!L.outside) { // at home: go to work once the needs are tended and the player is not busy
+        if (S.cur || S.q.length || idleFor() < 8000) return;
+        if (open && AUTO.minNeed() > 25) { say(`💼 Heading to work at ${biz.name}`); setSel(null); setOutside(true); tries = 0; }
+        return;
+      }
+      if (idleFor() < 20000 || GAME.nav) return; // in the city: only act when the player has let go of the controls
+      if (!open || AUTO.minNeed() <= 25) { setOutside(false); return; } // closed, or hungry / tired: go home
+      if (L.nearB?.id === w.bizId) {
+        if (Date.now() - lastEnter < 6000) return; lastEnter = Date.now();
+        if (++tries > 3) { AUTO.blocked = true; GAME.notice = `⛔ Could not get into ${biz.name}: auto-work paused.`; return; }
+        window.dispatchEvent(new CustomEvent('arl-enter', { detail: w.bizId })); return;
+      }
+      const build = CITY.buildings.find(x => x.business?.id === biz.id), pl = GAME.player; let tx = biz.x, tz = biz.z;
+      if (build) { const dx = pl.x - biz.x, dz = pl.z - biz.z; if (Math.abs(dx) >= Math.abs(dz)) tx = biz.x + (dx >= 0 ? build.w / 2 + 5.2 : -build.w / 2 - 5.2); else tz = biz.z + (dz >= 0 ? build.d / 2 + 5.2 : -build.d / 2 - 5.2); }
+      GAME.nav = { x: tx, z: tz, name: biz.name };
+    }, 2000);
+    return () => clearInterval(iv);
+  }, []);
   useEffect(() => {
     H.door = () => { setSel(null); setOutside(true); };
     H.outfit = () => setWardrobe(true);
@@ -953,7 +1005,7 @@ export default function Sim() {
         {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !outside && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
-        <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
+        <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; AUTO.free = S.free; fetch('/api/autowork', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ freeWill: S.free }) }).catch(() => {}); }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
       </div></div>
     <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
       {NEEDS.map(([k, l, e]) => <div key={k} className={'nrow' + (ui.needs[k] < 25 ? ' low' : '')}><span>{e}<em> {l}</em></span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>

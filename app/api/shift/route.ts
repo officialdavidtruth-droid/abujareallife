@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     if (st.save.questId && st.save.questAt && !mine) { /* another job type in progress: starting a shift replaces it */ }
     if (mine?.job && mine.task) return err('You are already on a shift. Finish it first.', 409);
     const task = tasks[Math.floor(Math.random() * tasks.length)], secs = shiftMins(job, task) * 60;
-    await prisma.save.update({ where: { userId: u.id }, data: { questId: `shift:${biz.id}:${idx}:${task.id}`, questAt: new Date(), insideAt: new Date() } });
+    await prisma.save.update({ where: { userId: u.id }, data: { questId: `shift:${biz.id}:${idx}:${task.id}`, questAt: new Date(), insideAt: new Date(), workBiz: biz.id, workJob: idx } });
     return NextResponse.json({ ok: true, secs, mins: secs / 60, task: task.label, label: job.title });
   }
   // finish

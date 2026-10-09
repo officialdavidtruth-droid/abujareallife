@@ -594,18 +594,18 @@ function TransportVehicles({ look }: { look: Look }) {
       const dt = Math.min(dtRaw, .05), A = actor.current, D = doorG.current, H = hinge.current, P = doorPts(cn.car, cn.side, cn.bike);
       cn.t += dt;
       const goTo = (tx: number, tz: number, sp: number) => { const dx = tx - cn.ax, dz = tz - cn.az, d = Math.hypot(dx, dz); if (d > .02) cn.yaw = Math.atan2(dx, dz); const s = Math.min(d, sp * dt); if (d > 1e-4) { cn.ax += dx / d * s; cn.az += dz / d * s; } return d - s; };
-      const door = (want: number) => { cn.ang += (want - cn.ang) * Math.min(1, dt * 7); };
+      const door = (want: number) => { cn.ang += (want - cn.ang) * Math.min(1, dt * 16); };
       const OPEN = 1.1;
-      if (cn.ph === 'walk') { const left = goTo(P.out[0], P.out[1], 3.6); cn.walk = true; door(Math.hypot(P.out[0] - cn.ax, P.out[1] - cn.az) < 2.6 ? OPEN : 0); if (left < .05) { cn.ph = 'enter'; cn.t = 0; } }
+      if (cn.ph === 'walk') { const left = goTo(P.out[0], P.out[1], 8); cn.walk = true; door(Math.hypot(P.out[0] - cn.ax, P.out[1] - cn.az) < 2.6 ? OPEN : 0); if (left < .05) { cn.ph = 'enter'; cn.t = 0; } }
       else if (cn.ph === 'enter') {
-        const u = Math.min(1, cn.t / .95); cn.walk = true; door(OPEN);
+        const u = Math.min(1, cn.t / .45); cn.walk = true; door(OPEN);
         const a = u < .5 ? P.out : P.door, b = u < .5 ? P.door : P.seat, k = smooth(u < .5 ? u * 2 : (u - .5) * 2);
         cn.ax = a[0] + (b[0] - a[0]) * k; cn.az = a[1] + (b[1] - a[1]) * k; cn.yaw = Math.atan2(b[0] - a[0], b[1] - a[1]);
         if (u >= 1) { cn.ph = 'close'; cn.t = 0; A.visible = false; cn.walk = false; }
-      } else if (cn.ph === 'close') { door(0); if (cn.t > .5) { cn.ang = 0; cn.fin(); return; } }
-      else if (cn.ph === 'open') { cn.walk = false; door(OPEN); A.visible = false; if (cn.t > .6) { cn.ph = 'exit'; cn.t = 0; A.visible = true; } }
+      } else if (cn.ph === 'close') { door(0); if (cn.t > .2) { cn.ang = 0; cn.fin(); return; } }
+      else if (cn.ph === 'open') { cn.walk = false; door(OPEN); A.visible = false; if (cn.t > .3) { cn.ph = 'exit'; cn.t = 0; A.visible = true; } }
       else if (cn.ph === 'exit') {
-        const u = Math.min(1, cn.t / .95); cn.walk = true; door(OPEN);
+        const u = Math.min(1, cn.t / .55); cn.walk = true; door(OPEN);
         const a = u < .5 ? P.seat : P.door, b = u < .5 ? P.door : P.out, k = smooth(u < .5 ? u * 2 : (u - .5) * 2);
         cn.ax = a[0] + (b[0] - a[0]) * k; cn.az = a[1] + (b[1] - a[1]) * k; cn.yaw = Math.atan2(b[0] - a[0], b[1] - a[1]);
         if (u >= 1) { cn.ph = 'off'; cn.t = 0; }
@@ -664,7 +664,7 @@ function TransportVehicles({ look }: { look: Look }) {
   };
   const openKind = open !== null ? (ROAM.cars[open]?.c.role === 'bike' ? 'bike' : 'taxi') : 'taxi';
   return <>
-    <group ref={actor} visible={false}><Human look={look} getState={() => (walking.current ? 'walk' : 'idle')} getSpeed={() => 1.15} /></group>
+    <group ref={actor} visible={false}><Human look={look} getState={() => (walking.current ? 'walk' : 'idle')} getSpeed={() => 1.9} /></group>
     <group ref={doorG} visible={false}><group ref={hinge} position={[.15, 0, .93]}>
       <mesh position={[-.45, .72, 0]}><boxGeometry args={[.9, .56, .05]} /><meshStandardMaterial color="#e5b72f" metalness={.35} roughness={.45} /></mesh>
       <mesh position={[-.45, 1.17, 0]}><boxGeometry args={[.8, .3, .04]} /><meshStandardMaterial color="#1b2a38" metalness={.6} roughness={.15} /></mesh>

@@ -18,6 +18,7 @@ import { NET } from '../lib/cityNet';
 import { CRIMES, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
 import type { Look } from '../lib/characterModels';
 import { businessStatus } from '../lib/businessHours';
+import { AUTO, idleFor } from '../lib/autoState';
 
 import RuntimeStyle from './RuntimeStyle';
 type Go = { path: [number, number][]; i: number; stuck: number; open?: { kind: 'spot'; id: string } | { kind: 'npc'; idx: number } };
@@ -192,11 +193,29 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     const p = job?.kind === 'shift' ? room.posts.find(x => x.idx === job.id) : undefined; ROOM.me.w = p ? (p.anim ? 1 : -1) * (p.idx + 1) : 0; return () => { ROOM.me.w = 0; };
   }, [job, room]);
 
+  const autoShift = useRef(false), autoBusy = useRef(false), liveI = useRef<any>({});
+  liveI.current = { job, store, menu, onExit };
+  useEffect(() => { // free will: at my workplace, keep taking shifts while it is open and my needs are fine, then walk out
+    const iv = setInterval(async () => {
+      const w = AUTO.work, L = liveI.current;
+      if (!AUTO.free || !w || AUTO.blocked || w.bizId !== bizId || L.job || L.store || L.menu || autoBusy.current || idleFor() < 8000) return;
+      if (!businessStatus(biz.type, getMinute ? getMinute() : 0).open || AUTO.minNeed() <= 25) { L.onExit(); return; }
+      autoBusy.current = true;
+      try {
+        const r = await post('/api/shift', { action: 'start', idx: w.idx });
+        if (!r.ok) { if (!/already on a shift/i.test(r.d.error || '')) { AUTO.blocked = true; toast(r.d.error || 'Auto-work paused.', true); L.onExit(); } return; }
+        autoShift.current = true; setJob({ kind: 'shift', id: w.idx, end: Date.now() + r.d.secs * 1000, label: `${w.job} · ${r.d.task}` });
+        const po = room.posts.find(x => x.idx === w.idx); if (po) snap.current = stand(po);
+        toast(`📍 ${w.job}: ${r.d.task} (${Math.round(r.d.secs / 60)} min)`);
+      } finally { autoBusy.current = false; }
+    }, 2500);
+    return () => clearInterval(iv);
+  }, [bizId]); // eslint-disable-line react-hooks/exhaustive-deps
   const cops = () => Object.values(ROOM.peers).filter(q => isCop(q.look) && Math.hypot(q.x - ROOM.me.x, q.z - ROOM.me.z) < 25).length;
   useEffect(() => { if (job && left === 0) (async () => {
     const r = job.kind === 'shift' ? await post('/api/shift', { action: 'finish' }) : job.kind === 'mtask' ? await post('/api/manager', { action: 'task_finish' }) : await post('/api/quest', { action: 'finish', id: job.id }); setJob(null);
     if (r.ok && r.d.info) setMgr(r.d.info);
-    if (r.ok) { onCash(r.d.cash); toast(`Done: +${naira(r.d.pay ?? r.d.reward)}${r.d.heatAdded ? ' · heat up 🔥' : ''}`); } else toast(r.d.error, true);
+    if (r.ok) { onCash(r.d.cash); toast(`Done: +${naira(r.d.pay ?? r.d.reward)}${r.d.heatAdded ? ' · heat up 🔥' : ''}`); if (autoShift.current) { autoShift.current = false; AUTO.drain?.(); } } else toast(r.d.error, true);
   })(); }, [left, job]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (o: Opt) => {
     if (job && (o.t === 'shift' || o.t === 'quest' || o.t === 'crime')) return toast('Finish what you are doing first.', true);

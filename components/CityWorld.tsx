@@ -28,7 +28,7 @@ import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
 import { BuildingDress, Graffiti, LOOK_SOLIDS, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
-import { BOLT_LINES, OWNER, OWNER_LINES, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, duration, lineFor, ownerSay, perceive, personaOf, pushCrime, reportCrime, shout, wnow, type Reaction } from '../lib/witness';
+import { BOLT_LINES, DRVVIEW, DRV_PRI, DRV_SHOUT, OWNER, OWNER_LINES, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, drainDriverCrimes, driverDecide, driverLine, duration, lineFor, ownerSay, perceive, perceiveDriver, personaOf, pushCrime, reportCrime, shout, wnow, type DriverReaction, type Reaction } from '../lib/witness';
 import { GRID, CURB, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
@@ -565,11 +565,12 @@ function makeLanes(): Lane[] {
   return lanes;
 }
 const nextCenter = (s: number, dir: 1 | -1) => (dir === 1 ? Math.floor(s / GRID + 1e-6) * GRID + GRID : Math.ceil(s / GRID - 1e-6) * GRID - GRID);
+const v0 = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
 /* Roaming taxis & bike taxis: they drive the city like normal traffic. Tap one to hail it; it pulls over to the kerb, then tap again to choose a destination. */
 function Traffic() {
   const lanes = useMemo(makeLanes, []), kit = useMemo(carKit, []);
   const flat = useMemo(() => lanes.flatMap(l => l.cars.map(c => ({ l, c }))), [lanes]);
-  const refs = useRef<(THREE.Group | null)[]>([]);
+  const refs = useRef<(THREE.Group | null)[]>([]), DR = useRef<(DriverReaction | null)[]>([]);   // DR: how each AI driver is reacting to a crime right now
   const lbl = useRef<THREE.Group>(null!), lblEl = useRef<HTMLDivElement | null>(null), lblKey = useRef('');
   useEffect(() => {
     ROAM.cars = flat; ROAM.lanes = lanes;
@@ -593,14 +594,47 @@ function Traffic() {
     let nearI = -1, nearD = 90;
     const ROBS: typeof OBS = []; for (const [n, q] of Object.entries(NET.peers)) { if (!q.init) continue; if (q.drv || q.cp) { if (!JACK.hides(n)) ROBS.push({ x: q.cx, z: q.cz, on: true, sp: 7 }); } if (!q.drv) ROBS.push({ x: q.x, z: q.z, on: true, sp: 4.5 }); }   // traffic stops for every real player, in a car or on foot
     const OB = ROBS.length ? OBS.concat(ROBS) : OBS;
+    const nowS = wnow(), me = GAME.player, crimes = drainDriverCrimes(), brandishing = !!(window as any).__arlWeapon && !VEH.drv && !GAME.jailed;   // witness AI for drivers (same crimes the pedestrians see)
     flat.forEach(({ l, c }, i) => {
-      const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }), g = refs.current[i];
-      if (c.busy) { tp.x = 1e5; tp.z = 1e5; if (g) g.visible = false; return; } // it is carrying a player (the ride has its own model)
+      const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }), g = refs.current[i], vw = DRVVIEW[i] || (DRVVIEW[i] = { x: 1e5, z: 1e5, yaw: 0, on: false });
+      vw.on = false;
+      if (c.busy) { tp.x = 1e5; tp.z = 1e5; vw.x = 1e5; vw.z = 1e5; DR.current[i] = null; if (g) g.visible = false; return; } // it is carrying a player (the ride has its own model)
       if (g) g.visible = true;
+      /* ── drivers react to crimes (police cars and cars in a hail / carjack are left alone) ── */
+      let rk: DriverReaction | null = DR.current[i] && DR.current[i]!.until > nowS ? DR.current[i] : null;
+      if (DR.current[i] && !rk) DR.current[i] = null;
+      if (c.role === 'police' || c.hail || c.hold) { rk = DR.current[i] = null; }
+      else {
+        vw.x = tp.x; vw.z = tp.z; vw.yaw = l.rot; vw.on = true;
+        const persona = personaOf(i), start = (kind: DriverReaction['kind'], secs: number, fx: number, fz: number) => {
+          if (rk && DRV_PRI[rk.kind] >= DRV_PRI[kind]) return;
+          rk = DR.current[i] = { kind, until: nowS + secs, fx, fz, shoutAt: nowS + .2 + Math.random() * .8, callAt: kind === 'film' ? nowS + 2.5 + Math.random() * 2 : 0, calledIn: false, honked: false };
+        };
+        for (const cr of crimes) {
+          const dx = cr.x - tp.x, dz = cr.z - tp.z, d = Math.hypot(dx, dz) || .01;
+          const sense = perceiveDriver(cr.kind, d, (Math.cos(l.rot) * dx - Math.sin(l.rot) * dz) / d); if (!sense) continue;
+          const r = driverDecide(persona, cr.kind, sense, d, false, Math.random()); if (r) start(r.kind, r.secs, cr.x, cr.z);
+        }
+        if (brandishing && !rk && Math.random() < dt * 1.5) {   // a drawn gun: drivers who can see it react too
+          const dx = me.x - tp.x, dz = me.z - tp.z, d = Math.hypot(dx, dz) || .01;
+          if (d < 14 && perceiveDriver('armed', d, (Math.cos(l.rot) * dx - Math.sin(l.rot) * dz) / d) === 'saw') { const r = driverDecide(persona, 'armed', 'saw', d, false, Math.random()); if (r) start(r.kind, r.secs, me.x, me.z); }
+        }
+        if (rk) {
+          const R = rk as DriverReaction, near = Math.hypot(tp.x - me.x, tp.z - me.z) < 45;
+          if (nowS >= R.shoutAt) { if (near) shout(DRV_SHOUT + i, driverLine(R.kind), 2.6); R.shoutAt = R.kind === 'flee' || R.kind === 'honk' ? nowS + 4 + Math.random() * 3 : 1e9; }
+          if (R.kind === 'honk' && !R.honked && v0(tp, me) < 30) { R.honked = true; honk(); }   // lean on the horn once if you are close enough to hear it
+          if (R.kind === 'film' && !R.calledIn && R.callAt && nowS >= R.callAt) { R.calledIn = true; if (reportCrime(R.fx, R.fz)) GAME.notice = '📞 A driver is calling the police on you!'; }
+        }
+      }
       const base = l.speed * c.mul * rainFactor * rush, EX = halfW(l.road) * .5 + CURB; // EX: how far the vehicle slides sideways to reach the kerb
       let v = c.v ?? base;
       if (c.hold) { v = Math.max(0, v - 14 * dt); c.v = v; } // being carjacked: brake to a stop
-      else if (c.hail === 1) {
+      else if (rk) {   // witnessed a crime: stop and stare / film / honk, or floor it away from it (but never straight towards it)
+        const R = rk as DriverReaction, fc = l.axis === 'x' ? R.fx : R.fz, ahead = (fc - c.s) * l.dir;
+        if (R.kind === 'flee' && !(ahead > 0 && ahead < 30)) v = Math.min(base * 1.7, (c.v ?? base) + 9 * dt);
+        else v = Math.max(0, (c.v ?? base) - 18 * dt);
+        c.v = v;
+      } else if (c.hail === 1) {
         const prev = l.dir === 1 ? c.s - Math.floor(c.s / GRID) * GRID : Math.ceil(c.s / GRID) * GRID - c.s; // metres past the last junction
         if (prev >= 3 && prev <= 14) c.stopping = true; // brake only mid-block, never inside a junction
         if (c.stopping) v = Math.max(0, v - 16 * dt);
@@ -1415,7 +1449,7 @@ function Pedestrians() {
 function NpcShouts() {
   const slots = useRef<(THREE.Group | null)[]>([]), [list, setList] = useState<typeof SHOUTS>([]);
   useEffect(() => { const id = setInterval(() => { const now = wnow(), act = SHOUTS.filter(s => s.until > now).slice(-4); setList(prev => (prev.map(s => s.id).join() === act.map(s => s.id).join() ? prev : act)); }, 200); return () => clearInterval(id); }, []);
-  useFrame(() => { list.forEach((s, k) => { const g = slots.current[k], q = PEDPOS[s.i]; if (g && q && q.x < 9e4) g.position.set(q.x, 2.15, q.z); }); });
+  useFrame(() => { list.forEach((s, k) => { const g = slots.current[k], q = s.i >= DRV_SHOUT ? TPOS[s.i - DRV_SHOUT] : PEDPOS[s.i]; if (g && q && q.x < 9e4) g.position.set(q.x, s.i >= DRV_SHOUT ? 3.2 : 2.15, q.z); }); });
   return <>
     <RuntimeStyle id="arl-npc-shout" css={`.npcShout{background:#fffffff2;color:#111;border-radius:12px;padding:4px 9px;font-size:12px;font-weight:800;white-space:nowrap;box-shadow:0 3px 10px #0007;pointer-events:none;animation:popIn .15s both}.npcShout:after{content:'';position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:#fffffff2}`} />
     {list.map((s, k) => <group key={s.id} ref={el => { slots.current[k] = el; }}><Html center zIndexRange={[6, 0]}><div className="npcShout" style={{ position: 'relative' }}>{s.text}</div></Html></group>)}

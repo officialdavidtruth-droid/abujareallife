@@ -100,7 +100,7 @@ export const assaultQuiet = () => wnow() < quietUntil;
 
 /** Queues a crime for the pedestrians and returns how many of them SAW it right now (victim not counted). */
 export function pushCrime(c: Crime): number {
-  QUEUE.push(c);
+  QUEUE.push(c); DQUEUE.push(c);
   if (c.kind === 'pickpocket') quietUntil = wnow() + .8;   // the swing animation of a pickpocket must not count as a street fight
   let saw = 0;
   for (let i = 0; i < PEDVIEW.length; i++) {
@@ -108,7 +108,49 @@ export function pushCrime(c: Crime): number {
     const dx = c.x - p.x, dz = c.z - p.z, d = Math.hypot(dx, dz) || .01;
     if (perceive(c.kind, d, (Math.cos(p.yaw) * dx - Math.sin(p.yaw) * dz) / d) === 'saw') saw++;
   }
+  for (let i = 0; i < DRVVIEW.length; i++) {   // AI drivers are witnesses too (through the windscreen)
+    const p = DRVVIEW[i]; if (!p || !p.on) continue;
+    const dx = c.x - p.x, dz = c.z - p.z, d = Math.hypot(dx, dz) || .01;
+    if (perceiveDriver(c.kind, d, (Math.cos(p.yaw) * dx - Math.sin(p.yaw) * dz) / d) === 'saw') saw++;
+  }
   return saw;
+}
+
+/* ───────────── AI drivers as witnesses ───────────── */
+
+/** Live view of every AI car, written by Traffic each frame. yaw = the lane rotation (forward is (cos yaw, -sin yaw) in (x, z), same as pedestrians). */
+export const DRVVIEW: { x: number; z: number; yaw: number; on: boolean }[] = [];
+const DQUEUE: Crime[] = [];
+export const drainDriverCrimes = () => DQUEUE.splice(0, DQUEUE.length);
+
+/** Speech bubbles for cars use index DRV_SHOUT + car index (NpcShouts looks those up in TPOS instead of PEDPOS). */
+export const DRV_SHOUT = 1000;
+
+/** Drivers sit behind glass: they see a bit less far, hear much less, and the windscreen + side windows cover most of the way round (not straight behind). */
+export function perceiveDriver(kind: CrimeKind, d: number, facing: number): 'saw' | 'heard' | null {
+  const R = RANGE[kind];
+  if (d <= R.see * .8 && (d < R.near || facing >= -.5)) return 'saw';
+  if (d <= R.hear * .6) return 'heard';
+  return null;
+}
+
+/* stop: brake to a halt and stare   flee: floor it away from the crime   film: stop, phone out, call the police   honk: stop and lean on the horn / shout */
+export type DriverKind = 'stop' | 'flee' | 'film' | 'honk';
+export type DriverReaction = { kind: DriverKind; until: number; fx: number; fz: number; shoutAt: number; callAt: number; calledIn: boolean; honked: boolean };
+export const DRV_PRI: Record<DriverKind, number> = { stop: 1, honk: 2, film: 2, flee: 3 };
+export const DRV_LINES: Record<DriverKind, string[]> = {
+  stop: ['Wetin be that?', 'Eh? What happened?'],
+  flee: ['Gun! Gun!', 'Wahala! Drive!', 'Abeg, move!', 'Oga, I no dey here!'],
+  film: ['I dey call police!', 'I dey record you!', 'Police! Police!'],
+  honk: ['Oga, what are you doing?!', 'Are you mad?!', 'Thief! Thief!'],
+};
+export const driverLine = (k: DriverKind) => DRV_LINES[k][Math.floor(Math.random() * DRV_LINES[k].length)];
+
+/** Same personalities and same decide() as pedestrians, mapped onto what a person in a car can actually do. */
+export function driverDecide(persona: Persona, kind: CrimeKind, sense: 'saw' | 'heard', d: number, aimed: boolean, rnd: number): { kind: DriverKind; secs: number } | null {
+  const k = decide(persona, kind, sense, d, false, aimed, rnd); if (!k) return null;
+  const m: DriverKind = k === 'flee' ? 'flee' : k === 'film' ? 'film' : k === 'confront' ? 'honk' : 'stop';
+  return { kind: m, secs: duration(k, rnd) };
 }
 
 /* A witness phoned the police. Returns true at most once per 15 s so the HUD is not spammed.

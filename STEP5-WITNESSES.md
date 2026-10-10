@@ -25,6 +25,14 @@ All in `lib/witness.ts` (RANGE, decide, duration, LINES, personaOf) and `lib/pro
 - Witness count and shots are client-reported, like `policeNearby` already is. The server caps the effect (max +18 heat).
 - Pedestrians are still on pavement lines, so fleeing means sprinting along the pavement, not through the city.
 - Confronting peds only shout and gesture; they do not damage the player.
-- Only the 32 ambient pedestrians react. Real players and AI drivers are unchanged.
+- AI drivers (traffic cars) now witness crimes too: see "AI drivers" below. Real players are unchanged.
 - I could not run `next build` here (no dependencies / network). `witness.ts` is strict-typechecked and unit-tested;
   the TSX edits were syntax-checked. Run `npm run build` once and send me any errors.
+
+## AI drivers (witnesses)
+- Every non-police traffic car is a witness (`DRVVIEW` in `lib/witness.ts`, written by `Traffic` each frame). Same crimes, same personalities (`personaOf(carIndex)`), same `decide()`, mapped to what a driver can do:
+  `stop` (brakes to a halt), `film` (stops, phone out, calls police after 2.5-4.5 s via `reportCrime`), `honk` (stops, leans on the horn once if within 30 m, shouts), `flee` (floors it to 1.7x speed away from the crime; brakes instead if the crime is straight ahead within 30 m).
+- Drivers sit behind glass: sight x0.8, hearing x0.6, and they cannot see straight behind (`perceiveDriver`).
+- Drivers also react to a drawn gun within 14 m. Their speech bubbles use shout ids `DRV_SHOUT + carIndex` and follow the car.
+- Drivers who SAW a crime count towards the `witnesses` sent to `/api/crime` (still capped at `WITNESS_MAX`).
+- Left alone: police cars, and any car being hailed or carjacked. Cars still obey red lights and keep their following distance while reacting, so a fleeing car never rams the one in front.

@@ -13,6 +13,8 @@ export type Axis = 'x' | 'z';
 
 const MAXI = 5;             // roads exist for indices -5..5
 export const CURB = 1.45;   // distance from the road edge to the middle of a parked vehicle (the sidewalk strip is >= 2.8 m wide)
+/** Buses are 2.2 m wide and 6 m long, so they stop with their body mostly IN the road (like a real bus stop) instead of on the pavement, where they clipped trees, lamps and billboards. */
+export const CURB_BUS = -.3;
 const PULL_OUT = 5;         // metres the vehicle drives before it has merged into its lane
 const CORNER_R = 4.2;       // turning radius at junctions
 const clampI = (i: number) => Math.max(-MAXI, Math.min(MAXI, i));
@@ -46,7 +48,7 @@ function snapRoad(p: XZ): { axis: Axis; road: number; t: number } {
 
 /** Plan a ride from a parked spot to (roughly) `dest`: pull out, follow the right-hand lane along the roads, turn at junctions with a radius,
     pull in to the kerb well clear of the crossing. Returns null if the spot is too close to the edge of the road network. */
-export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 'h'>, dest: XZ): Route | null {
+export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 'h'>, dest: XZ, curb: number = CURB): Route | null {
   const t0 = st.along + PULL_OUT * st.h;
   const nodeAhead = st.h === 1 ? Math.floor(t0 / GRID + 1e-9) + 1 : Math.ceil(t0 / GRID - 1e-9) - 1;
   if (Math.abs(nodeAhead) > MAXI) return null;
@@ -108,8 +110,9 @@ export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 
   const back = Math.max(3, Math.min(8, segLen[segLen.length - 1] - CORNER_R - 1.5));
   pts.pop();
   pts.push([qe[0] - dl[0] * back + rl[0] * Ll, qe[1] - dl[1] * back + rl[1] * Ll]);
-  const kerb = halfW(endRoad) + CURB; pts.push([qe[0] + rl[0] * kerb, qe[1] + rl[1] * kerb]);
-  const drop: XZ = [qe[0] + rl[0] * (kerb + .65), qe[1] + rl[1] * (kerb + .65)];
+  const kerb = halfW(endRoad) + curb; pts.push([qe[0] + rl[0] * kerb, qe[1] + rl[1] * kerb]);
+  const walk = halfW(endRoad) + CURB + .65; // the passenger always lands on the pavement, whatever the vehicle's width
+  const drop: XZ = [qe[0] + rl[0] * walk, qe[1] + rl[1] * walk];
 
   const cum = [0]; for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
   const endAxis: Axis = Math.abs(dl[0]) > .5 ? 'x' : 'z', last = pts[pts.length - 1];
@@ -126,8 +129,8 @@ export function routeAt(rt: Route, s: number): XZ {
 }
 const headingOf = (a: XZ, b: XZ) => Math.atan2(-(b[1] - a[1]), b[0] - a[0]); // vehicle rotation.y for travelling a -> b
 
-export type RideState = { s: number; v: number; r: number; x: number; z: number; wait: number; done: boolean };
-export const newRide = (rt: Route, r0: number): RideState => ({ s: 0, v: 0, r: r0, x: rt.pts[0][0], z: rt.pts[0][1], wait: 0, done: false });
+export type RideState = { s: number; v: number; r: number; x: number; z: number; wait: number; done: boolean; pushCars?: number; pushLights?: number };
+export const newRide = (rt: Route, r0: number): RideState => ({ s: 0, v: 0, r: r0, x: rt.pts[0][0], z: rt.pts[0][1], wait: 0, done: false, pushCars: 0, pushLights: 0 });
 
 /** Advance a ride by dt seconds: follows the route exactly, slows for bends, stops at red lights, keeps a gap to cars ahead, eases to a stop at the kerb. */
 export function stepRide(rs: RideState, rt: Route, dt: number, env: { vmax: number; t: number; light: (t: number, axis: Axis) => string; cars: { x: number; z: number; r: number }[] }) {
@@ -137,11 +140,15 @@ export function stepRide(rs: RideState, rt: Route, dt: number, env: { vmax: numb
   const bend = Math.abs(wrapA(headingOf(h1, h2) - headingOf(here, h1)));
   let vt = env.vmax * (1 - .6 * Math.min(1, bend / 1.1));
   const rem = rt.len - rs.s; vt = Math.min(vt, Math.max(2.2, rem * .75));
-  for (const L of rt.lights) { // same stop line rule as the AI traffic
+  // Give-way timers. After being stopped a while the ride may edge past what is holding it, and it keeps that licence for several seconds:
+  // without this the licence ended the moment the ride moved a centimetre, so it re-stopped behind the same car and never got past it.
+  if (rs.wait >= 14) rs.pushCars = 7; else if ((rs.pushCars || 0) > 0) rs.pushCars! -= dt;
+  if (rs.wait >= 30) rs.pushLights = 6; else if ((rs.pushLights || 0) > 0) rs.pushLights! -= dt;
+  if (!((rs.pushLights || 0) > 0)) for (const L of rt.lights) { // same stop line rule as the AI traffic (a ride that has been stuck for 30 s ignores the light)
     const d = L.s - rs.s, stop = halfW(L.ci) + 5.2;
     const ls = env.light(env.t, L.axis); if (d > -.5 && d < 60 && (ls === 'r' || (ls === 'y' && d - stop > 9)) && d >= stop - .05) vt = Math.min(vt, Math.sqrt(2 * 9 * Math.max(0, d - stop)));
   }
-  if (rs.wait < 14) { const f: XZ = [Math.cos(rs.r), -Math.sin(rs.r)]; // do not drive into the car in front
+  if (!((rs.pushCars || 0) > 0)) { const f: XZ = [Math.cos(rs.r), -Math.sin(rs.r)]; // do not drive into the car in front
     for (const c of env.cars) { const rx = c.x - rs.x, rz = c.z - rs.z, along = rx * f[0] + rz * f[1], lat = Math.abs(-rx * f[1] + rz * f[0]); if (along > 0 && along < 16 && lat < 1.8) vt = Math.min(vt, Math.sqrt(2 * 9 * Math.max(0, along - 6.5))); } }
   rs.v += Math.max(-14 * dt, Math.min(7 * dt, vt - rs.v));
   rs.wait = rs.v < .3 ? rs.wait + dt : 0;
@@ -164,4 +171,21 @@ export function sidewalkSpawn(rand: () => number = Math.random, taken?: (x: numb
     if (!taken || !taken(out.x, out.z)) break;
   }
   return out;
+}
+
+/** True while (x, z) is inside, or right at the stop lines of, a junction. */
+export function inJunction(x: number, z: number, margin = 4.5): boolean {
+  const ix = Math.round(x / GRID), iz = Math.round(z / GRID);
+  if (Math.abs(ix) > MAXI || Math.abs(iz) > MAXI) return false;
+  return Math.abs(x - ix * GRID) < halfW(ix) + margin && Math.abs(z - iz * GRID) < halfW(iz) + margin;
+}
+
+/** Where a passenger lands when they get off a vehicle that has stopped at (x, z) heading r (rotation.y): on the pavement on the side of the road the vehicle is driving on.
+ *  Also returns the road it is on, for the pull-away. */
+export function exitSpot(x: number, z: number, r: number): { drop: XZ; axis: Axis; road: number } {
+  const axis: Axis = Math.abs(Math.cos(r)) >= Math.abs(Math.sin(r)) ? 'x' : 'z';
+  const road = clampI(Math.round((axis === 'x' ? z : x) / GRID)), dev = (axis === 'x' ? z : x) - road * GRID;
+  const rx = Math.sin(r), rz = Math.cos(r), right = axis === 'x' ? rz : rx;               // which way is the right-hand side along the cross axis
+  const sg = Math.abs(dev) > .3 ? Math.sign(dev) : (right >= 0 ? 1 : -1), lat = road * GRID + sg * (halfW(road) + CURB + .85);
+  return { drop: axis === 'x' ? [x, lat] : [lat, z], axis, road };
 }

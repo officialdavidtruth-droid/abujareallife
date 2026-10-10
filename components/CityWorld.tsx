@@ -29,7 +29,7 @@ import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
 import { BuildingDress, Graffiti, LOOK_SOLIDS, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
 import { BOLT_LINES, DRVVIEW, DRV_PRI, DRV_SHOUT, OWNER, OWNER_LINES, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, drainDriverCrimes, driverDecide, driverLine, duration, lineFor, ownerSay, perceive, perceiveDriver, personaOf, pushCrime, reportCrime, shout, wnow, type DriverReaction, type Reaction } from '../lib/witness';
-import { GRID, CURB, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
+import { GRID, CURB, CURB_BUS, inJunction, exitSpot, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
@@ -626,7 +626,7 @@ function Traffic() {
           if (R.kind === 'film' && !R.calledIn && R.callAt && nowS >= R.callAt) { R.calledIn = true; if (reportCrime(R.fx, R.fz)) GAME.notice = '📞 A driver is calling the police on you!'; }
         }
       }
-      const base = l.speed * c.mul * rainFactor * rush, EX = halfW(l.road) * .5 + CURB; // EX: how far the vehicle slides sideways to reach the kerb
+      const base = l.speed * c.mul * rainFactor * rush, EX = halfW(l.road) * .5 + (c.role === 'bus' ? CURB_BUS : CURB); // (a bus is wide: it stops mostly in the road, not on the pavement) EX: how far the vehicle slides sideways to reach the kerb
       let v = c.v ?? base;
       if (c.hold) { v = Math.max(0, v - 14 * dt); c.v = v; } // being carjacked: brake to a stop
       else if (rk) {   // witnessed a crime: stop and stare / film / honk, or floor it away from it (but never straight towards it)
@@ -866,6 +866,7 @@ function TransportSheet({ kind, manifest, onPick, onClose }: { kind: 'taxi' | 'b
 }
 /* ── passenger cinematic: the door swings open, the character walks up and gets in; at the destination the door opens and they step out ── */
 const CINE = { on: false };
+const EXIT = { req: false };   // the player pressed "Get off": the vehicle stops at the next safe spot (never inside a junction) and lets them out
 type CarPose = { x: number; z: number; r: number };
 const smooth = (u: number) => { const c = Math.max(0, Math.min(1, u)); return c * c * (3 - 2 * c); };
 // car faces local +x; local +z is its side. door sits on the rear-door spot of the chosen side.
@@ -908,7 +909,12 @@ function TransportVehicles({ look }: { look: Look }) {
   const seat = useRef<{ front: boolean; side: 1 | -1 }>({ front: false, side: 1 }), lastKind = useRef<'taxi' | 'bike' | 'bus'>('taxi'), dep = useRef<Dep | null>(null);
   const finishDep = () => { const d = dep.current; if (!d) return; dep.current = null; if (activeRef.current) activeRef.current.visible = false; if (d.idx >= 0) respawnRoamer(d.idx); };   // the vehicle is gone: back to roaming
   const kit = useMemo(carKit, []);
-  const [open, setOpen] = useState<number | null>(null), [, setTick] = useState(0);
+  const [open, setOpen] = useState<number | null>(null), [, setTick] = useState(0), [canExit, setCanExit] = useState(false), canExitRef = useRef(false);
+  const requestExit = () => { if (!GAME.ride || !rs.current || CINE.on || EXIT.req) return; EXIT.req = true; GAME.notice = '🚪 Stopping so you can get off...'; setCanExit(false); canExitRef.current = false; };
+  useEffect(() => { // E gets you off on keyboard
+    const kd = (e: KeyboardEvent) => { if (e.code !== 'KeyE' || e.repeat) return; const t = e.target as HTMLElement | null; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return; requestExit(); };
+    window.addEventListener('keydown', kd); return () => window.removeEventListener('keydown', kd);
+  }, []);
   const activeRef = useRef<THREE.Group>(null!), rs = useRef<RideState | null>(null), route = useRef<Route | null>(null);
   const busTrip = useRef<{ stops: BusStop[]; k: number; dwell: number } | null>(null), rideId = useRef<string | null>(null); // bus stops still to serve / the id of a ride another player ordered for you
   useEffect(() => { ROAM.openSheet = (i: number) => { if (!GAME.ride) setOpen(i); }; return () => { ROAM.openSheet = () => {}; }; }, []);
@@ -923,6 +929,8 @@ function TransportVehicles({ look }: { look: Look }) {
   useFrame((st, dtRaw) => {
     const ride = GAME.ride, g = activeRef.current;
     OBS[2].on = !!ride && !!rs.current;
+    const wantExit = !!ride && !!rs.current && !CINE.on && !EXIT.req;
+    if (wantExit !== canExitRef.current) { canExitRef.current = wantExit; setCanExit(wantExit); }
     const cn = cine.current;
     if (cn && ride && g) { // ── door + walk-in / walk-out animation ──
       const dt = Math.min(dtRaw, .05), A = actor.current, D = doorG.current, H = hinge.current, P = doorPts(cn.car, cn.side, cn.bike, cn.bus, cn.front);
@@ -962,27 +970,30 @@ function TransportVehicles({ look }: { look: Look }) {
     if (!ride && dpn && g) { stepDep(dpn, Math.min(dtRaw, .05)); g.visible = true; g.position.set(dpn.x, 0, dpn.z); g.rotation.y = dpn.r; if (paxRef.current) paxRef.current.visible = false; if (dpn.t > 5) finishDep(); return; }   // it has dropped you: it drives away, then goes back to roaming
     if (!ride || !g || !rs.current || !route.current) { if (g) g.visible = false; return; }
     const r = rs.current, rt = route.current;
-    stepRide(r, rt, Math.min(dtRaw, .05), { vmax: ride.kind === 'taxi' ? 11 : ride.kind === 'bus' ? 8.5 : 7.5, t: st.clock.elapsedTime, light: lightState, cars: TPOS });
+    const inJ = EXIT.req && inJunction(r.x, r.z);   // asked to get off: keep rolling until clear of the junction, then stop
+    stepRide(r, rt, Math.min(dtRaw, .05), { vmax: EXIT.req && !inJ ? 0 : ride.kind === 'taxi' ? 11 : ride.kind === 'bus' ? 8.5 : 7.5, t: st.clock.elapsedTime, light: lightState, cars: TPOS });
+    if (!EXIT.req && !r.done && r.wait > 40) { r.s = Math.min(rt.len, r.s + 12); r.wait = 0; GAME.notice = '🚌 Traffic cleared: moving on.'; }   // never stay stuck for good
     ride.x = r.x; ride.z = r.z; ride.r = r.r;
     g.visible = true; g.position.set(r.x, 0, r.z); g.rotation.y = r.r; if (paxRef.current) paxRef.current.visible = true;   // you can be seen sitting inside
     OBS[2].x = r.x; OBS[2].z = r.z; GAME.player.x = r.x; GAME.player.z = r.z;
-    if (r.done) { // arrived: the door opens, the rider steps out onto the sidewalk, the door shuts and the taxi / bike goes back to roaming the city
-      const bt = busTrip.current;
-      if (bt && !bt.stops[bt.k]?.mine) { // a bus stop that is not yours: the other passengers get off, then the bus drives on to the next stop
+    const exitNow = EXIT.req && !r.done && r.v < .3 && !inJ;
+    if (r.done || exitNow) { // arrived (or the player asked to get off and the vehicle has stopped): the door opens, the rider steps out onto the sidewalk, the door shuts and the taxi / bike goes back to roaming the city
+      const bt = busTrip.current, offHere = EXIT.req;   // offHere: get off right here, not at the planned stop
+      if (!offHere && bt && !bt.stops[bt.k]?.mine) { // a bus stop that is not yours: the other passengers get off, then the bus drives on to the next stop
         const stop = bt.stops[bt.k];
         if (bt.dwell < 0) { bt.dwell = 2.6; GAME.notice = `🚌 ${stop.name}: ${stop.n} passenger${stop.n === 1 ? '' : 's'} got off`; }
         bt.dwell -= Math.min(dtRaw, .05);
         if (bt.dwell > 0) return;
         let leg: Route | null = null;
-        while (bt.k + 1 < bt.stops.length) { bt.k++; const nx = bt.stops[bt.k]; leg = planRide(rt.end, [nx.x, nx.z]); if (leg || nx.mine) break; }
+        while (bt.k + 1 < bt.stops.length) { bt.k++; const nx = bt.stops[bt.k]; leg = planRide(rt.end, [nx.x, nx.z], CURB_BUS); if (leg || nx.mine) break; }
         bt.dwell = -1;
         if (leg) { route.current = leg; rs.current = newRide(leg, r.r); ride.path = leg.pts; ride.i = 0; GAME.notice = `🚌 Next stop: ${bt.stops[bt.k].name}`; return; }
         busTrip.current = null; GAME.notice = '🚌 The bus cannot reach your stop from here: you get off at the last stop.'; // fall through: let the player off now
       }
-      const car: CarPose = { x: r.x, z: r.z, r: r.r }, bike = ride.kind === 'bike', bus = ride.kind === 'bus', name = ride.name, drop: [number, number] = [rt.drop[0], rt.drop[1]];
+      const car: CarPose = { x: r.x, z: r.z, r: r.r }, bike = ride.kind === 'bike', bus = ride.kind === 'bus', name = ride.name, ex = offHere ? exitSpot(r.x, r.z, r.r) : null, drop: [number, number] = ex ? [ex.drop[0], ex.drop[1]] : [rt.drop[0], rt.drop[1]];
       const side: 1 | -1 = ((drop[0] - car.x) * Math.sin(car.r) + (drop[1] - car.z) * Math.cos(car.r)) >= 0 ? 1 : -1, front = seat.current.front && side === 1 && !bike && !bus, seatPt = doorPts(car, side, bike, bus, front).seat;
-      CINE.on = true;
-      cine.current = { ph: bike ? 'exit' : 'open', t: 0, side, bike, bus, front, dep: makeDep(car, rt.end, ride.kind), ang: 0, car, ax: seatPt[0], az: seatPt[1], yaw: car.r, walk: false, drop, fin: () => {
+      CINE.on = true; EXIT.req = false;
+      cine.current = { ph: bike ? 'exit' : 'open', t: 0, side, bike, bus, front, dep: makeDep(car, ex || rt.end, ride.kind), ang: 0, car, ax: seatPt[0], az: seatPt[1], yaw: car.r, walk: false, drop, fin: () => {
         const cc = cine.current, dp = cc && cc.leaving ? cc.dep : undefined;   // the vehicle is already pulling away: let it carry on
         cine.current = null; CINE.on = false; walking.current = false; actor.current.visible = false; doorG.current.visible = false; if (busD.current) busD.current.visible = false;
         GAME.ride = null; rs.current = null; route.current = null; OBS[2].on = false; busTrip.current = null;
@@ -1002,7 +1013,7 @@ function TransportVehicles({ look }: { look: Look }) {
     const e = ROAM.cars[idx], tp = TPOS[idx]; if (!e || !tp || e.c.hail !== 2 || e.c.busy) { setOpen(null); if (pre) refundRide(pre); return; }
     const { l, c } = e, kind: 'taxi' | 'bike' | 'bus' = c.role === 'bus' ? 'bus' : c.role === 'bike' ? 'bike' : 'taxi';
     const start = { x: tp.x, z: tp.z, axis: l.axis, road: l.road, along: c.s, h: l.dir };
-    const direct = planRide(start, [d.x, d.z]);
+    const curbFor = kind === 'bus' ? CURB_BUS : CURB, direct = planRide(start, [d.x, d.z], curbFor);
     if (!direct) { GAME.notice = 'It cannot set off from here: hail one nearer the middle of the map.'; releaseRoamer(c); DISPATCH.idx = -1; if (pre) refundRide(pre); setOpen(null); return; }
     let rt = direct, stops: BusStop[] | null = null, firstK = 0, riders = 1;
     if (kind === 'bus') { // the bus visits every passenger's stop (nearest first) and ends at yours
@@ -1010,7 +1021,7 @@ function TransportVehicles({ look }: { look: Look }) {
       riders = all.reduce((a, m) => a + m.n, 1);
       const order: BusStop[] = []; let cx = tp.x, cz = tp.z;
       while (all.length) { let bi = 0, bd = Infinity; all.forEach((s2, i) => { const dd = Math.hypot(s2.x - cx, s2.z - cz); if (dd < bd) { bd = dd; bi = i; } }); const [s2] = all.splice(bi, 1); order.push(s2); cx = s2.x; cz = s2.z; if (s2.mine) break; } // passengers whose stop is after yours stay on board
-      let leg: Route | null = null; for (; firstK < order.length; firstK++) { leg = planRide(start, [order[firstK].x, order[firstK].z]); if (leg || order[firstK].mine) break; }
+      let leg: Route | null = null; for (; firstK < order.length; firstK++) { leg = planRide(start, [order[firstK].x, order[firstK].z], CURB_BUS); if (leg || order[firstK].mine) break; }
       if (!leg) { leg = direct; firstK = order.length - 1; }
       rt = leg; stops = order;
     }
@@ -1023,7 +1034,7 @@ function TransportVehicles({ look }: { look: Look }) {
     const side: 1 | -1 = ((p0.x - tp.x) * Math.sin(l.rot) + (p0.z - tp.z) * Math.cos(l.rot)) >= 0 ? 1 : -1;
     const fwd = (p0.x - tp.x) * Math.cos(l.rot) - (p0.z - tp.z) * Math.sin(l.rot), front = kind === 'taxi' && side === 1 && fwd > .2;   // walk up to the front half of a taxi (kerb side) and you get in the front; otherwise the back
     finishDep(); seat.current = { front, side }; lastKind.current = kind;
-    CINE.on = true; ROAM.sel = -1; DISPATCH.idx = -1; DISPATCH.ride = null;
+    CINE.on = true; EXIT.req = false; ROAM.sel = -1; DISPATCH.idx = -1; DISPATCH.ride = null;
     GAME.ride = { kind, x: p0.x, z: p0.z, r: l.rot, name: d.name, path: rt.pts, i: 0, speed: kind === 'taxi' ? 11 : kind === 'bus' ? 8.5 : 7.5, stand: -1 };
     cine.current = { ph: 'walk', t: 0, side, bike, bus, front, ang: 0, car, ax: p0.x, az: p0.z, yaw: Math.atan2(tp.x - p0.x, tp.z - p0.z), walk: true, fin: () => { // door shut, passenger inside: off we go
       cine.current = null; CINE.on = false; walking.current = false; actor.current.visible = false; doorG.current.visible = false;
@@ -1051,9 +1062,10 @@ function TransportVehicles({ look }: { look: Look }) {
     {(() => { const dk = GAME.ride?.kind ?? lastKind.current, sp = seat.current; return <group ref={activeRef} visible={false}>{dk === 'bike' ? <BikeBody scale={1} rider /> : dk === 'bus' ? <BusBody /> : <TaxiBody kit={kit} driver />}
       <group ref={paxRef} visible={false} scale={dk === 'taxi' ? [.9, 1, .98] : [1, 1, 1]}><Passenger look={look} pos={dk === 'bus' ? [.9, 1.85, sp.side * .55] : dk === 'bike' ? [-.55, .75, 0] : sp.front ? [-.3, .92, .4] : [-.95, .92, sp.side * .4]} /></group>
     </group>; })()}
+    {canExit && typeof document !== 'undefined' && createPortal(<button className="rideExit" onClick={requestExit} aria-label="Get off">🚪 Get off<small>E</small></button>, document.body)}
     {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={openKind} manifest={MANIFEST.get(open)} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
     <RuntimeStyle css={`${DEST_PICKER_CSS}.hailTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:5px 12px 4px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;pointer-events:auto;cursor:pointer}.hailTag.go{background:var(--gold,#ffb81c)}\n.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
-.trSheet{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(320px,40vw);display:flex;flex-direction:column;overflow:hidden;background:var(--plum,#261a36);color:var(--cream,#fff3d6);border:4px solid var(--ink,#1a1410);border-radius:22px;box-shadow:0 6px 0 var(--ink,#1a1410),0 18px 34px #000a;font-family:var(--gf,system-ui);animation:trIn .24s cubic-bezier(.3,1.4,.5,1)}
+.rideExit{all:unset;box-sizing:border-box;position:fixed;z-index:61;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));min-height:48px;display:flex;align-items:center;gap:8px;padding:10px 22px;cursor:pointer;background:var(--gold,#ffb81c);color:#fff;border:4px solid var(--ink,#1a1410);border-radius:999px;box-shadow:0 4px 0 var(--ink,#1a1410),0 10px 22px #0008;font:400 18px/1 var(--gf,system-ui);letter-spacing:.04em;-webkit-text-stroke:4px var(--ink,#1a1410);paint-order:stroke fill;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.rideExit small{font-size:12px;padding:3px 7px;border:2px solid var(--ink,#1a1410);border-radius:7px;background:#fff3d6;color:#1a1410;-webkit-text-stroke:0}.rideExit:active{transform:translateX(-50%) translateY(4px);box-shadow:none}@media (hover:none){.rideExit small{display:none}}\n.trSheet{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(320px,40vw);display:flex;flex-direction:column;overflow:hidden;background:var(--plum,#261a36);color:var(--cream,#fff3d6);border:4px solid var(--ink,#1a1410);border-radius:22px;box-shadow:0 6px 0 var(--ink,#1a1410),0 18px 34px #000a;font-family:var(--gf,system-ui);animation:trIn .24s cubic-bezier(.3,1.4,.5,1)}
 .trSheet h3{flex:none;margin:0;padding:10px 54px 8px 16px;background:var(--gold,#ffb81c);border-bottom:4px solid var(--ink,#1a1410);font-weight:400;font-size:22px;line-height:1.1;letter-spacing:.04em;color:#fff;background-image:repeating-linear-gradient(135deg,#ffffff1c 0 10px,#0000 10px 20px)}.trSheet h3 span{display:block;-webkit-text-stroke:6px var(--ink,#1a1410);paint-order:stroke fill}
 .trX{all:unset;box-sizing:border-box;position:absolute;z-index:2;right:10px;top:8px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;cursor:pointer;background:var(--red,#ff5147);border:3px solid var(--ink,#1a1410);box-shadow:0 3px 0 var(--ink,#1a1410);color:#fff;font-size:15px}.trX:active{transform:translateY(3px);box-shadow:none}
 .trBody{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;scrollbar-color:var(--gold,#ffb81c) transparent}

@@ -95,9 +95,21 @@ export default function CrimeActions({ username, say, refresh }: { username: str
     }
     refresh();
   };
+  const live = useRef({ acts, go }); live.current = { acts, go };
+  useEffect(() => {   // desktop: Q = first action, X = second (phones use the round buttons)
+    const h = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const k = e.key.toLowerCase(), n = k === 'q' ? 0 : k === 'x' ? 1 : -1; if (n < 0 || e.repeat) return;
+      const a = live.current.acts[n]; if (a) live.current.go(a);
+    };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, []);
   if (!acts.length) return null;
+  const SHORT: Record<Kind, string> = { rob: 'Rob', jack: 'Carjack', pick: 'Pickpocket', mug: 'Mug', npcjack: 'Carjack', chop: 'Chop shop', demand: 'Demand' };
   return <>
-    <div className="crimeActs">{acts.map(a => { const l = left(a.k); return <button key={a.k + (a.name || '')} disabled={l > 0} onClick={() => go(a)}>{l > 0 ? `⏳ ${a.label.replace(/^\S+\s/, '')} · ${Math.ceil(l / 1000)}s` : a.label}</button>; })}</div>
-    <RuntimeStyle id="arl-crime-acts" css={`.crimeActs{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:30;display:flex;flex-direction:column;gap:8px;align-items:center}.crimeActs button{background:#7f1d1df2;color:#fff;border:1px solid #fca5a5aa;border-radius:999px;min-height:44px;padding:11px 18px;font-size:15px;font-weight:900;box-shadow:0 4px 14px #0008;touch-action:manipulation}.crimeActs button:active{transform:scale(.96)}.crimeActs button:disabled{background:#3a2020ee;border-color:#ffffff30;color:#d7b8b8;transform:none}`} />
+    <div className="crimeActs">{acts.map((a, n) => { const l = left(a.k), ic = Array.from(a.label)[0] || '⚡';
+      return <button key={a.k + (a.name || '')} className="cwBtn crimeBtn" aria-label={a.label} disabled={l > 0} onPointerDown={e => { e.preventDefault(); go(a); }} onContextMenu={e => e.preventDefault()}>
+        <span>{l > 0 ? '⏳' : ic}</span><small>{l > 0 ? Math.ceil(l / 1000) + 's' : SHORT[a.k]}</small>{n < 2 && <em>{n ? 'X' : 'Q'}</em>}</button>; })}</div>
+    <RuntimeStyle id="arl-crime-acts" css={`.crimeActs{position:fixed;right:14px;bottom:calc(172px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;flex-direction:column-reverse;gap:8px;align-items:flex-end;pointer-events:none}.crimeBtn{pointer-events:auto;position:relative;width:70px;height:70px;border-radius:50%;background:#7f1d1def;border:2px solid #fca5a5aa;color:#fff;box-shadow:0 4px 14px #0009;touch-action:manipulation;animation:crimePulse 1.6s ease-in-out infinite}.crimeBtn span{font-size:24px;line-height:1}.crimeBtn small{font-size:10px;font-weight:900;line-height:1.1;text-align:center;padding:0 4px}.crimeBtn em{position:absolute;top:-4px;left:-4px;min-width:18px;height:18px;border-radius:9px;background:#fff;color:#7f1d1d;font:900 11px/18px system-ui;font-style:normal;text-align:center}.crimeBtn:active{background:#d99a42;color:#111;transform:scale(.94)}.crimeBtn:disabled{background:#3a2020ee;border-color:#ffffff30;color:#d7b8b8;animation:none}@keyframes crimePulse{50%{box-shadow:0 0 0 7px #fca5a533,0 4px 14px #0009}}@media (pointer:coarse),(max-width:700px){.crimeActs{right:12px;bottom:calc(158px + env(safe-area-inset-bottom,0px))}.crimeBtn{width:64px;height:64px}.crimeBtn em{display:none}}`} />
   </>;
 }

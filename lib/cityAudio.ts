@@ -48,3 +48,22 @@ export function thud(strength = 1) {
   g.gain.setValueAtTime(0.35 * Math.min(1, strength), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
   o.connect(g); g.connect(sfx); o.start(t); o.stop(t + 0.25);
 }
+
+/* Step 6: police siren. One looping wail whose volume follows how close the nearest siren is (0 = silent). */
+let sir: { o: OscillatorNode; lfo: OscillatorNode; g: GainNode } | null = null;
+export function sirenSet(vol: number) {
+  const A = audioParts();
+  if (vol <= 0.01) { if (sir && A) sir.g.gain.setTargetAtTime(0.0001, A.ctx.currentTime, 0.15); return; }
+  if (!A) return;
+  if (!sir) {
+    const { ctx, sfx } = A, o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.value = 880; lfo.type = 'sine'; lfo.frequency.value = 0.55; lg.gain.value = 260; g.gain.value = 0.0001;
+    lfo.connect(lg); lg.connect(o.frequency); o.connect(g); g.connect(sfx); o.start(); lfo.start();
+    sir = { o, lfo, g };
+  }
+  sir.g.gain.setTargetAtTime(Math.min(1, vol) * 0.07, A.ctx.currentTime, 0.2);
+}
+export function sirenStop() {
+  const A = audioParts(); if (!sir) return; const s = sir; sir = null;
+  try { if (A) s.g.gain.setTargetAtTime(0.0001, A.ctx.currentTime, 0.05); s.o.stop((A?.ctx.currentTime ?? 0) + 0.3); s.lfo.stop((A?.ctx.currentTime ?? 0) + 0.3); } catch { /* already stopped */ }
+}

@@ -213,6 +213,7 @@ export const careerLadder = (profession: string) => CAREER_LADDERS[profession] |
 export const FRIEND_STATUSES = ['friends', 'best_friends', 'family'] as const;
 
 /* ───────── Physical crime, NPC police and death (v5) ───────── */
+export const EVADE_HEAT = 4, EVADE_MIN_MS = 10_000;                  // step 6: heat shaved off each time the client reports 'no officer has seen me for a while' (max once per 10 s)
 export const NPC_COP_DELAY_MS = 8_000;                                  // after you become WANTED, an NPC patrol needs this long to reach you
 export const ROB_RANGE = 3.5, ROB_PCT = 0.3, ROB_MAX = 150_000, ROB_MIN = 1_000;   // mug a real player: take 30% of their cash, max ₦150k
 /* Shop hold-up (timed). You must stay `bagSecs` to bag everything; leaving after `minSecs` takes a partial share. The police arrival time is secret,

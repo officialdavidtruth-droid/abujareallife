@@ -42,6 +42,14 @@ Open the menu (☰) → **🎉 Parties**. Four tabs: **Now** (while you are insi
 - `lib/cityNet.ts`, `components/CityPeople.tsx`, `lib/humanRig.ts`: emotes, dance circle, group social.
 - Schema: `Party` and `PartyGuest`.
 
+## Phone polish
+- Tabs and the Dance / Dance circle / Cheer row stay pinned while you scroll, so they are always in reach in landscape.
+- All tap targets are at least 44 px; buttons give a light haptic buzz on success and a longer one on failure.
+- Kick and End use a two-tap confirm (no native pop-ups, which some phone web views block).
+- Data-friendly: the panel refreshes every 5 s inside a party and every 12 s otherwise, never while the app is in the background, and refreshes at once when you come back to it.
+- If the connection drops it keeps showing the last update with a Retry button instead of freezing on "Loading".
+- Short landscape screens get a compact layout; the emote menu scrolls.
+
 ## Known limits
 - Not run against a live database or in a browser here (my sandbox could not install your dependencies, so I only type-checked the new code against stubs and unit-checked the rules). Please try it with two accounts before shipping.
 - A party is a virtual venue: you must be in its district to join, but staying inside is not enforced afterwards, and there is no 3D party room yet.

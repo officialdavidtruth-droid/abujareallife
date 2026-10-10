@@ -27,7 +27,7 @@ import { createPortal } from 'react-dom';
 import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
-import { BuildingDress, Graffiti, LOOK_SOLIDS, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
+import { BuildingDress, Graffiti, LOOK_SOLIDS, POWER_POLES, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
 import { BOLT_LINES, DRVVIEW, DRV_PRI, DRV_SHOUT, OWNER, OWNER_LINES, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, drainDriverCrimes, driverDecide, driverLine, duration, lineFor, ownerSay, perceive, perceiveDriver, personaOf, pushCrime, reportCrime, shout, wnow, type DriverReaction, type Reaction } from '../lib/witness';
 import { GRID, CURB, CURB_BUS, CURB_CAR, inJunction, exitSpot, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
@@ -240,9 +240,12 @@ function Roads() {
     <mesh position={[0, .011, i * GRID]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[250, halfW(i) * 2]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
   </group>)}</>;
 }
+/* Trees stand beside each building. On car-park / alley lots the building is pushed to the back of its plot, so some of these spots fell ON the road: those trees are dropped. */
+const onCarriageway = (x: number, z: number, m = .4) => { for (let i = -5; i <= 5; i++) { const hw = halfW(i) + m; if (Math.abs(x - i * GRID) < hw && Math.abs(z) <= 5 * GRID + 8) return true; if (Math.abs(z - i * GRID) < hw && Math.abs(x) <= 5 * GRID + 8) return true; } return false; };
+const TREE_PTS = BUILDS.flatMap(b => [[-4.2, 7], [4.2, 7], [-4.2, -7], [4.2, -7]].map(([dx, dz], k) => ({ x: b.x + dx, z: b.z + dz, s: .9 + hs(b.id + k) * .5 }))).filter(t => !onCarriageway(t.x, t.z));
 function Trees() {
   const trunks = useRef<THREE.InstancedMesh>(null!), crowns = useRef<THREE.InstancedMesh>(null!);
-  const pts = useMemo(() => BUILDS.flatMap(b => [[-4.2, 7], [4.2, 7], [-4.2, -7], [4.2, -7]].map(([dx, dz], k) => ({ x: b.x + dx, z: b.z + dz, s: .9 + hs(b.id + k) * .5 }))), []);
+  const pts = TREE_PTS;
   useLayoutEffect(() => {
     const o = new THREE.Object3D();
     pts.forEach((p, i) => {
@@ -275,7 +278,8 @@ function StreetLamps() {
 export const TPOS: { x: number; z: number; r: number }[] = [];
 export const PEDPOS: { x: number; z: number; d?: boolean }[] = []; // live position of every pedestrian (1e5 when hidden), read by the crime buttons // live position of every AI car
 const OBS = [{ x: 0, z: 0, on: false, sp: 4.5 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }]; // things AI cars must stop for: [0] player on foot, [1] player's car, [2] the taxi/bike carrying the player
-const VEH = { x: 0, z: 0, r: 0, v: 0, placed: false, drv: false, brake: false }; // the player's own car
+const OWN = { had: false, x: 0, z: 0, r: 0 };   // where your own car was parked while you drive a stolen one
+const VEH = { x: 0, z: 0, r: 0, v: 0, placed: false, drv: false, brake: false, homed: false }; // the player's own car
 const NIGHT = { n: 0 }; // 0 = full day, 1 = full night
 let PKIT: Kit | null = null;
 const pkit = (): Kit => { if (!PKIT) PKIT = carKit(); return PKIT; };
@@ -500,6 +504,7 @@ function stepJack(p: { x: number; z: number; r: number; y: number; vy: number },
     if (cfg.door && door) door.rotation.y = -1.15 * (1 - ease(JACK.t / JT.close));
     if (JACK.t >= JT.finish) {
       if (door) door.rotation.y = 0; if (glassy) glassy.visible = true; if (o.driver) o.driver.visible = true;
+      if (!JACK.on) { OWN.had = VEH.placed; OWN.x = VEH.x; OWN.z = VEH.z; OWN.r = VEH.r; }   // remember where your own car is parked
       VEH.x = tp.x; VEH.z = tp.z; VEH.r = tp.r; VEH.v = 0; VEH.placed = true; VEH.drv = true; engineStart(); ctl.recenter = true;
       p.x = tp.x; p.z = tp.z;
       JACK.on = true; JACK.sRole = JACK.role;
@@ -653,8 +658,10 @@ function Traffic() {
       let passing = false;   // a hailed vehicle is standing at the kerb ahead: go round it instead of queueing behind it for up to 2 minutes
       for (const o of l.cars) if (o !== c && !o.busy) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) { if (c.hail === 0 && o.hail === 2 && o.off >= .5 && d > 2) { if (d < 16) passing = true; continue; } gap = d; } }
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
-      if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += ((passing ? (l.axis === 'x' ? -l.dir : l.dir) * Math.min(1.1, halfW(l.road) * .5) : 0) - c.laneShift) * Math.min(1, dt * 3);
-      for (const o of OB) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
+      let passAmt = 1.1; const parkedMine = VEH.placed && !VEH.drv && Math.abs(VEH.v) < .5;   // the player's parked car is an obstacle to drive AROUND, not to queue behind for ever
+      if (parkedMine && c.hail === 0) { const a1 = ((l.axis === 'x' ? VEH.x : VEH.z) - c.s) * l.dir, p1 = l.axis === 'x' ? Math.abs(VEH.z - l.fixed) : Math.abs(VEH.x - l.fixed); if (a1 > 0 && a1 < 18 && p1 < 2.3) { passing = true; passAmt = Math.min(1.7, halfW(l.road) * .5 + .5); } }
+      if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += ((passing ? (l.axis === 'x' ? -l.dir : l.dir) * Math.min(passAmt, passAmt === 1.1 ? halfW(l.road) * .5 : passAmt) : 0) - c.laneShift) * Math.min(1, dt * 3);
+      for (const o of OB) { if (!o.on || (o === OBS[1] && parkedMine)) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
       const ls = lightState(t, l.axis); if (Math.abs(ci) <= 5 && signalised(ci, l.road) && (ls === 'r' || (ls === 'y' && d - (halfW(ci) + 5.2) > 9)) && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
       c.s += adv * l.dir; if (c.s > 118) c.s = -118; else if (c.s < -118) c.s = 118;
@@ -1530,26 +1537,35 @@ function PlayerCar({ carRef, tagRef, spotRef, model, look }: { carRef: React.Mut
     <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
   </group>;
 }
-// put the car in the nearest lane (right-hand traffic), a few metres ahead of the player, clear of other cars
-function placeCar(px: number, pz: number, pr: number) {
-  JACK.release(); // calling your own car replaces a stolen one
+// Your car is a real, physical car: it is parked at the kerb beside the road nearest to you ONCE (when you get it / when the city loads) and then stays
+// exactly where you leave it. You walk to it; there is no calling it. Mid-block, clear of junctions and of other cars.
+function parkNear(px: number, pz: number) {
+  JACK.release();
   const ix = Math.round(px / GRID), iz = Math.round(pz / GRID), alongZ = Math.abs(px - ix * GRID) <= Math.abs(pz - iz * GRID);
-  const idx = alongZ ? ix : iz, off = halfW(idx) * .5, face = alongZ ? Math.cos(pr) : Math.sin(pr), sgn: 1 | -1 = face >= 0 ? 1 : -1;
-  let a = (alongZ ? pz : px) + sgn * 3;
-  const lane = idx * GRID + (alongZ ? (sgn === 1 ? -off : off) : (sgn === 1 ? off : -off));
-  for (let tries = 0; tries < 8; tries++) {
-    const cx = alongZ ? lane : a, cz = alongZ ? a : lane;
-    if (!TPOS.some(c => Math.hypot(c.x - cx, c.z - cz) < 3.6)) break;
-    a += sgn * 6;
+  const road = Math.max(-5, Math.min(5, alongZ ? ix : iz)), dev = alongZ ? px - ix * GRID : pz - iz * GRID, side: 1 | -1 = dev >= 0 ? 1 : -1;
+  const base = alongZ ? pz : px, axisKey = alongZ ? 'z' : 'x';
+  const touches = (q: { x: number; z: number; r: number }, c: { x: number; z: number; r: number }) => [-1.35, 0, 1.35].some(o => Math.hypot(c.x + Math.cos(c.r) * o - q.x, c.z - Math.sin(c.r) * o - q.z) < CAR_R + q.r + .15);
+  let sp = curbSpot(axisKey, road, base, side);
+  for (let n = 0; n < 60; n++) {   // search outwards along the kerb for the first spot that is clear of junctions, cars, posts and trees
+    const cand = curbSpot(axisKey, road, THREE.MathUtils.clamp(base + (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 2.5, -112, 112), side);
+    if (inJunction(cand.x, cand.z, 3.5)) continue;
+    if (TPOS.some(c => Math.hypot(c.x - cand.x, c.z - cand.z) < 5) || Math.hypot(cand.x - px, cand.z - pz) < 3) continue;
+    if (CAR_POSTS.some(q => Math.abs(q.x - cand.x) < 6 && Math.abs(q.z - cand.z) < 6 && touches(q, cand))) continue;
+    sp = cand; break;
   }
-  for (let k = 0; k < 6 && inJunction(alongZ ? lane : a, alongZ ? a : lane, 3.5); k++) a += sgn * 4;   // never leave it standing in the middle of a junction
-  a = THREE.MathUtils.clamp(a, -120, 120);
-  VEH.x = alongZ ? lane : a; VEH.z = alongZ ? a : lane;
-  VEH.r = alongZ ? -sgn * Math.PI / 2 : (sgn === 1 ? 0 : Math.PI);
-  VEH.v = 0; VEH.placed = true; VEH.drv = false;
+  VEH.x = sp.x; VEH.z = sp.z; VEH.r = sp.r; VEH.v = 0; VEH.placed = true; VEH.drv = false; VEH.homed = true;
 }
 
 /* ───────────── collision ───────────── */
+/* Thin things on the street that were only decoration for vehicles: lamp posts, signal poles, utility poles, billboard posts and trees.
+   Circles (x, z, radius); the player's car is pushed out of them exactly like it is pushed out of a building. */
+const CAR_POSTS: { x: number; z: number; r: number }[] = [
+  ...LAMP_PTS.map(q => ({ x: q.x, z: q.z, r: .2 })),
+  ...INTER.filter(it => signalised(Math.round(it.x / GRID), Math.round(it.z / GRID))).flatMap(it => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => ({ x: it.x + sx * (it.hv + 1.1), z: it.z + sz * (it.hh + 1.1), r: .25 }))),
+  ...POWER_POLES.map(q => ({ x: q.x, z: q.z, r: .25 })),
+  ...BILLBOARDS.flatMap(b => [-1.7, 1.7].map(o => ({ x: b.x + b.ax * o, z: b.z + b.az * o, r: .3 }))),
+  ...TREE_PTS.map(t => ({ x: t.x, z: t.z, r: .35 })),
+];
 const BODY = .45;
 const SOLIDS = [
   ...LOOK_SOLIDS,
@@ -1882,7 +1898,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       }
     }
 
-    /* ── E: get in / get out / call car, H: horn ── */
+    if (GAME.hasCar && !VEH.homed && !VEH.placed && !VEH.drv && !GAME.jailed && !GAME.ride) parkNear(p.x, p.z);   // delivered to the kerb beside you once, then it stays put
+    /* ── E: get in / get out, H: horn ── */
     if (c.interact) {
       c.interact = false;
       const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
@@ -1894,7 +1911,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       } else if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) < 9) {
         VEH.drv = true; VEH.v = 0; engineStart(); snapCam = true;
         nearId.current = null; setN(null); setNear(null);
-      } else if (GAME.hasCar) placeCar(p.x, p.z, p.r);
+      } else if (GAME.hasCar) { const dd = Math.round(Math.hypot(p.x - VEH.x, p.z - VEH.z)); GAME.notice = VEH.placed ? `🚗 Your car is parked ${dd} m away: walk to it (see the map).` : '🚗 Your car is not in the city right now.'; }
       else GAME.notice = '🚗 You do not own a car yet. Buy one at a Car Dealer.';
     }
     if (c.horn) { c.horn = false; if (VEH.drv) honk(); }
@@ -1917,6 +1934,10 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       for (const o of CAR_OFFS) { // buildings
         const cp = { x: V.x + fxw * o, z: V.z + fzw * o }, ox = cp.x, oz = cp.z; pushOut(cp, CAR_R);
         const dx = cp.x - ox, dz = cp.z - oz; if (dx || dz) { V.x += dx; V.z += dz; hit = Math.max(hit, Math.hypot(dx, dz)); }
+      }
+      for (const q of CAR_POSTS) { // lamp posts, poles, billboard posts, trees
+        if (Math.abs(q.x - V.x) > 6 || Math.abs(q.z - V.z) > 6) continue;
+        for (const o of CAR_OFFS) { const cx = V.x + fxw * o, cz = V.z + fzw * o, dx = cx - q.x, dz = cz - q.z, d = Math.hypot(dx, dz), m = CAR_R + q.r; if (d < m && d > 1e-4) { const push = m - d; V.x += dx / d * push; V.z += dz / d * push; hit = Math.max(hit, push); } }
       }
       const RC = remoteCars();
       for (const tc of TPOS.concat(POLICE_CARS, RC)) { // other cars (traffic, police, other players')
@@ -1967,8 +1988,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       if (wantJump && p.y <= .001) p.vy = 6.2;
       c.jump = false;
       p.vy -= 18 * dt; p.y += p.vy * dt; if (p.y < 0) { p.y = 0; p.vy = 0; }
-      if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) VEH.placed = false; // car you walked away from goes back to the garage
-      if (!VEH.placed && JACK.on) JACK.release(); // an abandoned stolen car goes back to traffic
+      if (JACK.on && !VEH.drv && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) { JACK.release(); if (OWN.had) { VEH.x = OWN.x; VEH.z = OWN.z; VEH.r = OWN.r; VEH.v = 0; VEH.placed = true; } else { VEH.placed = false; VEH.homed = false; } } // an abandoned stolen car goes back to traffic; your own car is still where you parked it
     }
     c.jump = false;
     GAME.player.x = p.x; GAME.player.z = p.z; GAME.player.r = p.r;
@@ -2008,7 +2028,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
     (window as any).__arlPos = { x: p.x, z: p.z };
-    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : VEH.placed && dCar < 9 ? 'E — Get in your car' : GAME.hasCar ? 'E — Call your car' : '' };
+    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : VEH.placed && dCar < 9 ? 'E — Get in your car' : '' };
     if (!VEH.drv) {
       let best: CityBuilding | null = null, bd = 2.6;
       for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }
@@ -2225,10 +2245,10 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const net = useCityNet(look, onSocial);
   const [sel, setSel] = useState<string | null>(null);
   const ctl = useRef<Ctl>({ shoot: false, joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
-  const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
+  const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: '' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
-  useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { if (VEH.drv) JACK.victimEject(); VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
+  useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { if (VEH.drv) JACK.victimEject(); VEH.placed = false; VEH.drv = false; VEH.homed = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
     const startMission = (e: Event) => {
       const m = (e as CustomEvent).detail as { id?: string; goto?: { name?: string; type?: string; district?: string }; final?: { name?: string; type?: string; district?: string }; fresh?: boolean; label?: string; title?: string };

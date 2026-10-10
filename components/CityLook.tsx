@@ -288,6 +288,7 @@ for (let i = -5; i <= 5; i++) {
   for (let j = -5; j <= 4; j++) { const a = (j + .25) * GRID; px.push([a, i * GRID + off]); pz.push([i * GRID + off, a]); POLES.push({ x: a, z: i * GRID + off, axis: 'x' }, { x: i * GRID + off, z: a, axis: 'z' }); }
   POLE_ROADS.push({ axis: 'x', i, pts: px }, { axis: 'z', i, pts: pz });
 }
+export const POWER_POLES = POLES;   // utility poles: solid for vehicles
 function PowerLines() {
   const poles = useMemo<Part[]>(() => POLES.map(p => ({ x: p.x, y: POLE_H / 2, z: p.z, sx: .22, sy: POLE_H, sz: .22, c: '#5a4632' })), []);
   const arms = useMemo<Part[]>(() => POLES.map(p => ({ x: p.x, y: POLE_H - .15, z: p.z, sx: p.axis === 'x' ? .1 : 1.6, sy: .1, sz: p.axis === 'x' ? 1.6 : .1, c: '#3a2e22' })), []);

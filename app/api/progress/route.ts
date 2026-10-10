@@ -16,7 +16,7 @@ class Stop extends Error {}
 
 type Row = { type: string; amount: number; description: string };
 const isEarn = (r: Row) => r.type === 'EARN';
-const NOT_INCOME = ['goal:', 'starting', 'paystack', 'received', 'gift', 'helped-by:', 'ride-refund:', 'compensation:'];
+const NOT_INCOME = ['goal:', 'casino:', 'starting', 'paystack', 'received', 'gift', 'helped-by:', 'ride-refund:', 'compensation:'];
 const isIncome = (r: Row) => isEarn(r) && !NOT_INCOME.some(p => r.description.startsWith(p));
 const isQuest = (r: Row) => isEarn(r) && r.description.startsWith('quest:');
 const isShift = (r: Row) => isEarn(r) && (r.description.startsWith('shift:') || ['work', 'hustle', 'bizplan'].includes(r.description));

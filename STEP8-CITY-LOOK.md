@@ -13,11 +13,20 @@
 - **Utility poles and sagging wires** along every road.
 - **Wet roads**: roads darken and puddles appear when it rains or storms, then dry out slowly (about 30 s).
 
+## Car parks, fences and alleys (layout change)
+Every 16 m block has a 2.8 m public pavement ring (pedestrian lines, kerbside taxi stops), leaving a 10.4 x 10.4 m buildable square. Buildings used to fill it. `lib/destinations.ts` (`BUILDS_WORLD`, single source for rendering, collision, map and ride destinations) now picks a layout per building by hash (same every session):
+- **lot (~37 buildings)**: building 6 m deep, pushed to the back. A 4.4 m forecourt in front with paving, up to 2 parked cars (`parkedCar`), and a fence on the street edge and both sides with a 1.9 m gate in line with the door. Fence style by type: chain-link for Mechanic / Petrol / Logistics / Car Dealer, iron railing for Bank / Hotel / School / Office / Tech / Cinema / Estate Agency, brick wall for the rest.
+- **alley (~29 buildings)**: building 6.8 m wide, pushed to one side. A 3.6 m alley beside it with a dark floor, a brick wall on the street side (open at the front end), a back wall with a 1.1 m squeeze gap, crates, a pallet, two bins and a lamp.
+- **unchanged (~34)**: Government, Hospital, Airport, Rail Station, Police Station, Jail, Gun Shop and the rest of the hash.
+- Fences, parked cars and alley walls/crates are in `LOOK_SOLIDS`, so you and your car cannot pass through them. Pavements, taxi kerb spots and pedestrian lines are untouched.
+- Ride destinations still point at the public pavement in front of the gate (`CityBuilding.front`); `buildingExitPoint` puts you inside the gate, in front of the door.
+- Doors need you within 2.6 m, so for a lot building you now walk in through the gate.
+
 ## Tuning
-All in `CityLook.tsx`: `NEON` (light colours), `BLADE` (which types get blade signs), `STRIPED`, `GRAF_TEXT`, chance values like `R('dm') > .35` (dumpsters), `r > .42` (graffiti), `PUDDLES` count, `SUB`/sag in `PowerLines`.
+All in `CityLook.tsx`: `NEON` (light colours), `BLADE` (which types get blade signs), `STRIPED`, `GRAF_TEXT`, chance values like `R('dm') > .35` (dumpsters), `r > .42` (graffiti), `PUDDLES` count, `SUB`/sag in `PowerLines`. Layout shares: `r < .45` (lot) and `r < .8` (alley) in `lib/destinations.ts`; `GATE`, `CAR_COL`, fence kinds in `CityLook.tsx`.
 
 ## Limits (honest)
-- **No alleys, fences or parked cars.** Each building sits in a 16 m block and the whole gap around it is the pavement that pedestrians walk and kerbside taxis use, so props hug the walls instead. Real alleys or a car park need a layout change (smaller buildings or mid-block gaps); that is a separate decision.
+- Alleys, fences and parked cars now exist (see below). They are static scenery plus solid obstacles. The map route finder (`findPath`) does not know about them, and AI traffic does not park or drive in them.
 - Wet roads have no real reflections (no environment map): they darken and get dark puddles, not mirror shine.
 - Props are not in the pedestrian/NPC pathing, so an ambient NPC can clip a dumpster edge.
 - Could not run `next build` here (no dependencies / network). Both files were syntax-checked with `tsc`. Please run `npm run build` once and send me any errors.

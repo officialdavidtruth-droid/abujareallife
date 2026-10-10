@@ -150,14 +150,14 @@ export function BuildingDress({ b, type, signColor, top, floors, rw, rd }: { b: 
 }
 
 /* ───────────── instanced clutter (bins, dumpsters, crates, benches, bollards, hydrants, cones, hawker stands) ───────────── */
-type Part = { x: number; y: number; z: number; sx: number; sy: number; sz: number; ry?: number; c?: string };
+type Part = { x: number; y: number; z: number; sx: number; sy: number; sz: number; ry?: number; rx?: number; c?: string };
 type Solid = { x0: number; x1: number; z0: number; z1: number };
 function Parts({ items, geo, rough = .85, metal = 0, cast = false }: { items: Part[]; geo: THREE.BufferGeometry; rough?: number; metal?: number; cast?: boolean }) {
   const ref = useRef<THREE.InstancedMesh>(null!);
   useLayoutEffect(() => {
     if (!ref.current) return;
     const o = new THREE.Object3D(), col = new THREE.Color();
-    items.forEach((p, i) => { o.position.set(p.x, p.y, p.z); o.rotation.set(0, p.ry || 0, 0); o.scale.set(p.sx, p.sy, p.sz); o.updateMatrix(); ref.current.setMatrixAt(i, o.matrix); ref.current.setColorAt(i, col.set(p.c || '#ffffff')); });
+    items.forEach((p, i) => { o.position.set(p.x, p.y, p.z); o.rotation.set(p.rx || 0, p.ry || 0, 0); o.scale.set(p.sx, p.sy, p.sz); o.updateMatrix(); ref.current.setMatrixAt(i, o.matrix); ref.current.setColorAt(i, col.set(p.c || '#ffffff')); });
     ref.current.instanceMatrix.needsUpdate = true; if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
   }, [items]);
   if (!items.length) return null;
@@ -182,18 +182,79 @@ export const LOOK_SOLIDS: Solid[] = []; // dumpsters and crate stacks: the playe
       const x = b.x + b.w * .28;
       BOX.push({ x, y: .45, z: fz + .45, sx: 1.5, sy: .08, sz: .45, c: '#6b4a2b' }, { x, y: .8, z: fz + .22, sx: 1.5, sy: .45, sz: .07, c: '#6b4a2b' }, { x: x - .6, y: .22, z: fz + .45, sx: .08, sy: .44, sz: .4, c: '#2a2d31' }, { x: x + .6, y: .22, z: fz + .45, sx: .08, sy: .44, sz: .4, c: '#2a2d31' });
     }
-    if (FORMAL.has(type)) for (let k = 0; k < 5; k++) if (k !== 2) CYL.push({ x: b.x + (k - 2) * 1.4, y: .4, z: fz + 2.3, sx: .2, sy: .8, sz: .2, c: '#c9a227' });
+    const lot = b.lay === 'lot';   // car-park buildings: bollards and cones go on the walkway in front of the door, the cars take the rest of the forecourt
+    if (FORMAL.has(type)) for (let k = 0; k < 5; k++) if (k !== 2) CYL.push({ x: b.x + (k - 2) * 1.4, y: .4, z: fz + (lot ? .85 : 2.3), sx: .2, sy: .8, sz: .2, c: '#c9a227' });
     if (type === 'Market' || type === 'Supermarket') { // crate stack
       const x = rx - 1.1, z = fz + .55;
       BOX.push({ x, y: .35, z, sx: .8, sy: .7, sz: .8, c: CRATE[Math.floor(R('c1') * 3)] }, { x: x + .85, y: .35, z, sx: .8, sy: .7, sz: .8, c: CRATE[Math.floor(R('c2') * 3)] }, { x: x + .4, y: 1.05, z, sx: .8, sy: .7, sz: .8, c: CRATE[Math.floor(R('c3') * 3)] });
       LOOK_SOLIDS.push({ x0: x - .4, x1: x + 1.25, z0: z - .4, z1: z + .4 });
     }
-    if (YARD.has(type)) { for (let k = 0; k < 3; k++) CONE.push({ x: b.x + 2 + k * .9, y: .3, z: fz + 2.2, sx: .35, sy: .6, sz: .35, c: '#ff6a00' }); CYL.push({ x: lx + .7, y: .45, z: fz + .6, sx: .55, sy: .9, sz: .55, c: '#2c4f8f' }); }
+    if (YARD.has(type)) { for (let k = 0; k < 3; k++) CONE.push({ x: b.x + 2 + k * .9, y: .3, z: fz + (lot ? .85 : 2.2), sx: .35, sy: .6, sz: .35, c: '#ff6a00' }); CYL.push({ x: lx + .7, y: .45, z: fz + .6, sx: .55, sy: .9, sz: .55, c: '#2c4f8f' }); }
     if (STALL.has(type) && R('um') > .55) { // hawker stand: table + umbrella leaning on the front wall
       const x = b.x - b.w * .3, z = fz + .6;
       BOX.push({ x, y: .4, z, sx: 1.1, sy: .8, sz: .6, c: '#7a5a3a' });
       CYL.push({ x, y: 1.15, z, sx: .06, sy: 2.3, sz: .06, c: '#d8d8d8' });
       CONE.push({ x, y: 2.35, z, sx: 2, sy: .55, sz: 2, c: R('uc') > .5 ? '#e53935' : '#fbc02d' });
+    }
+  }
+})();
+/* ───────────── car parks, fences and alleys (the layout from lib/destinations.ts leaves room for them) ─────────────
+   lot:   fenced forecourt in front of the building, parked cars (all lined up along x), a gate in line with the door. Solid for the player and for cars.
+   alley: a 3.6 m lane beside the building, walled on the street side, closed at the back except for a gap you can squeeze through. Everything stays inside the
+          10.4 m buildable square, so pavements, kerbside taxi stops and pedestrian lines are untouched. */
+const CAR_COL = ['#c0392b', '#e8e8ea', '#1f2933', '#2c5aa0', '#8e949a', '#b7791f', '#0f766e', '#d9d9dc'];
+const GATE = 1.9;   // gate / door gap
+function parkedCar(x: number, z: number, hf: 1 | -1, col: string) {   // heading along x only (so wheels need no yaw)
+  const ln = 4.2, wd = 1.8;
+  BOX.push(
+    { x, y: .55, z, sx: ln, sy: .62, sz: wd, c: col },
+    { x: x - hf * .15, y: 1.13, z, sx: 2.05, sy: .5, sz: wd - .12, c: '#1b2733' },     // glass
+    { x: x - hf * .15, y: 1.42, z, sx: 1.85, sy: .09, sz: wd - .2, c: col },           // roof
+    { x: x + hf * (ln / 2 - .03), y: .6, z, sx: .08, sy: .2, sz: wd - .3, c: '#fff1b8' },   // headlights
+    { x: x - hf * (ln / 2 - .03), y: .6, z, sx: .08, sy: .2, sz: wd - .3, c: '#7a1d1d' },   // tail lights
+    { x, y: .3, z, sx: ln - .1, sy: .12, sz: wd - .1, c: '#15171a' },                  // bumpers / sills
+  );
+  for (const dx of [-1.3, 1.3]) for (const dz of [-.88, .88]) CYL.push({ x: x + dx, y: .34, z: z + dz, sx: .68, sy: .24, sz: .68, rx: Math.PI / 2, c: '#101113' });
+  LOOK_SOLIDS.push({ x0: x - ln / 2, x1: x + ln / 2, z0: z - wd / 2, z1: z + wd / 2 });
+}
+/** a fence run along x (z fixed) or along z (x fixed) from a to b; kind 'wall' is solid brick, 'iron' a railing, 'chain' a tall chain-link fence */
+function fenceRun(axis: 'x' | 'z', fixed: number, a: number, b2: number, kind: 'wall' | 'iron' | 'chain') {
+  const lo = Math.min(a, b2), hi = Math.max(a, b2), len = hi - lo; if (len < .2) return;
+  const mk = (u: number, ulen: number, y: number, h: number, th: number, c: string) => BOX.push(axis === 'x' ? { x: u, y, z: fixed, sx: ulen, sy: h, sz: th, c } : { x: fixed, y, z: u, sx: th, sy: h, sz: ulen, c });
+  const mid = (lo + hi) / 2;
+  if (kind === 'wall') { mk(mid, len, .85, 1.7, .24, '#a8794f'); mk(mid, len, 1.76, .1, .32, '#8c8c86'); }
+  else {
+    const H = kind === 'chain' ? 2 : 1.05, n = Math.max(1, Math.round(len / 1.4));
+    for (let k = 0; k <= n; k++) mk(lo + len * k / n, .08, H / 2, H, .08, kind === 'chain' ? '#6b7076' : '#1d2024');
+    for (const y of kind === 'chain' ? [.15, 1, 1.95] : [.35, .98]) mk(mid, len, y, .05, .05, kind === 'chain' ? '#8a9096' : '#1d2024');
+  }
+  LOOK_SOLIDS.push(axis === 'x' ? { x0: lo, x1: hi, z0: fixed - .12, z1: fixed + .12 } : { x0: fixed - .12, x1: fixed + .12, z0: lo, z1: hi });
+}
+(() => {
+  const FORMAL = new Set(['Bank', 'Hotel', 'School', 'Estate Agency', 'Office', 'Tech Company', 'Cinema']), YARD = new Set(['Mechanic', 'Petrol Station', 'Logistics', 'Car Dealer']);
+  for (const b of BUILDS) {
+    if (!b.lay) continue;
+    const type = b.business?.type ?? 'Office', R = (k: string) => hs(b.id + k);
+    if (b.lay === 'lot') {
+      const fz = b.z + b.d / 2, front = b.front ?? fz + 4.4, hw = 5.2, cz = fz + 1.9, cx = b.x;   // cx = block centre: lot buildings are never shifted sideways
+      BOX.push({ x: cx, y: .015, z: (fz + front) / 2, sx: hw * 2, sy: .03, sz: front - fz, c: YARD.has(type) ? '#4a4d52' : '#5b5e63' });   // paving
+      const slots: (-1 | 1)[] = [-1, 1], pCar = type === 'Car Dealer' ? 1 : .8;
+      slots.forEach((sd, k) => { if (R('pc' + k) < pCar) parkedCar(cx + sd * (GATE / 2 + 2.1), cz, R('ph' + k) > .5 ? 1 : -1, CAR_COL[Math.floor(R('pk' + k) * CAR_COL.length)]); });
+      const kind = YARD.has(type) ? 'chain' : FORMAL.has(type) ? 'iron' : 'wall';
+      fenceRun('x', front, cx - hw, cx - GATE / 2, kind); fenceRun('x', front, cx + GATE / 2, cx + hw, kind);   // street edge, gate in line with the door
+      fenceRun('z', cx - hw, fz, front, kind); fenceRun('z', cx + hw, fz, front, kind);                              // sides
+      for (const sd of [-1, 1]) BOX.push({ x: cx + sd * GATE / 2, y: .65, z: front, sx: .22, sy: 1.3, sz: .22, c: '#2a2d31' });   // gate posts
+    } else {
+      const sd = b.side ?? 1, ax = b.x + sd * (b.w / 2 + 1.8), aw = 3.6, bz = b.z - b.d / 2, fz = b.z + b.d / 2, ox = b.x + sd * (b.w / 2 + aw);   // alley centre line, street-side wall x
+      BOX.push({ x: ax, y: .015, z: b.z, sx: aw, sy: .03, sz: b.d, c: '#3a3d41' });
+      fenceRun('z', ox, bz, fz - 2.6, 'wall');                                   // street-side wall, open at the front end (the alley mouth)
+      fenceRun('x', bz + .12, b.x + sd * b.w / 2, ox - 1.1 * sd, 'wall');       // back wall of the alley, with a 1.1 m gap at the street side
+      const cx2 = ax - sd * .35;   // props along the building wall
+      BOX.push({ x: cx2, y: .35, z: b.z + 1.2, sx: .8, sy: .7, sz: .8, c: '#b7863b' }, { x: cx2, y: 1.05, z: b.z + 1.2, sx: .7, sy: .7, sz: .7, c: '#9c6b2a' }, { x: cx2, y: .08, z: b.z - 1.4, sx: 1.1, sy: .16, sz: 1.1, c: '#8b6b3e' });
+      LOOK_SOLIDS.push({ x0: cx2 - .4, x1: cx2 + .4, z0: b.z + .8, z1: b.z + 1.6 });
+      CYL.push({ x: ax + sd * .2, y: .45, z: bz + 1.2, sx: .55, sy: .9, sz: .55, c: '#2a3a2f' }, { x: ax + sd * .2, y: .45, z: bz + 1.9, sx: .55, sy: .9, sz: .55, c: '#2c4f8f' });
+      CYL.push({ x: ax - sd * 1.2, y: 1.5, z: bz + .6, sx: .06, sy: 3, sz: .06, c: '#5a4632' });   // lamp post / pole
+      SPH.push({ x: ax - sd * 1.2, y: 3.05, z: bz + .6, sx: .3, sy: .3, sz: .3, c: '#ffe9a8' });
     }
   }
 })();

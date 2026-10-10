@@ -3,7 +3,7 @@ import { GAME_LABEL_CSS } from '../lib/gameLabels';
 import { openSettings, useSettings } from '../lib/settings';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Html, OrbitControls, RoundedBox, Stars, Text } from '@react-three/drei';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Human from './Human';
@@ -24,6 +24,7 @@ import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 import RuntimeStyle from './RuntimeStyle';
 import { worldMinute, worldCalendar, weatherAt, lightningAt } from '../lib/worldClock';
 import { createPortal } from 'react-dom';
+import { createRoot, type Root } from 'react-dom/client';
 import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
@@ -87,6 +88,20 @@ const TEX = new Map<string, THREE.CanvasTexture>();
 const EMT = new Map<string, THREE.CanvasTexture>(); // night-time window glow maps
 const MATS = new Map<string, THREE.MeshStandardMaterial>();
 const BAY = 2.2, NX = 4, NY = 2;
+/** Renders plain DOM into document.body from inside <Canvas>. react-dom's createPortal can't be used there: R3F's reconciler would try to build <button>/<small> as THREE objects. */
+function BodyDom({ children }: { children: ReactNode }) {
+  const rootRef = useRef<Root | null>(null);
+  const elRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    elRef.current = el; rootRef.current = createRoot(el);
+    return () => { const r = rootRef.current; rootRef.current = null; setTimeout(() => { r?.unmount(); el.remove(); }, 0); };
+  }, []);
+  useEffect(() => { rootRef.current?.render(<>{children}</>); });
+  return null;
+}
+
 function facadeTex(kind: Kind, wall: string, balc: boolean) {
   const key = kind + wall + balc;
   const hit = TEX.get(key); if (hit) return hit;
@@ -1070,7 +1085,7 @@ function TransportVehicles({ look }: { look: Look }) {
     {(() => { const dk = GAME.ride?.kind ?? lastKind.current, sp = seat.current; return <group ref={activeRef} visible={false}>{dk === 'bike' ? <BikeBody scale={1} rider /> : dk === 'bus' ? <BusBody /> : <TaxiBody kit={kit} driver />}
       <group ref={paxRef} visible={false} scale={dk === 'taxi' ? [.9, 1, .98] : [1, 1, 1]}><Passenger look={look} pos={dk === 'bus' ? [.9, 1.85, sp.side * .55] : dk === 'bike' ? [-.55, .75, 0] : sp.front ? [-.3, .92, .4] : [-.95, .92, sp.side * .4]} /></group>
     </group>; })()}
-    {canExit && typeof document !== 'undefined' && createPortal(<button className="rideExit" onClick={requestExit} aria-label="Get off">🚪 Get off<small>E</small></button>, document.body)}
+    {canExit && <BodyDom><button className="rideExit" onClick={requestExit} aria-label="Get off">🚪 Get off<small>E</small></button></BodyDom>}
     {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={openKind} manifest={MANIFEST.get(open)} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
     <RuntimeStyle css={`${DEST_PICKER_CSS}.hailTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:5px 12px 4px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;pointer-events:auto;cursor:pointer}.hailTag.go{background:var(--gold,#ffb81c)}\n.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
 .rideExit{all:unset;box-sizing:border-box;position:fixed;z-index:61;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));min-height:48px;display:flex;align-items:center;gap:8px;padding:10px 22px;cursor:pointer;background:var(--gold,#ffb81c);color:#fff;border:4px solid var(--ink,#1a1410);border-radius:999px;box-shadow:0 4px 0 var(--ink,#1a1410),0 10px 22px #0008;font:400 18px/1 var(--gf,system-ui);letter-spacing:.04em;-webkit-text-stroke:4px var(--ink,#1a1410);paint-order:stroke fill;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.rideExit small{font-size:12px;padding:3px 7px;border:2px solid var(--ink,#1a1410);border-radius:7px;background:#fff3d6;color:#1a1410;-webkit-text-stroke:0}.rideExit:active{transform:translateX(-50%) translateY(4px);box-shadow:none}@media (hover:none){.rideExit small{display:none}}\n.trSheet{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(320px,40vw);display:flex;flex-direction:column;overflow:hidden;background:var(--plum,#261a36);color:var(--cream,#fff3d6);border:4px solid var(--ink,#1a1410);border-radius:22px;box-shadow:0 6px 0 var(--ink,#1a1410),0 18px 34px #000a;font-family:var(--gf,system-ui);animation:trIn .24s cubic-bezier(.3,1.4,.5,1)}

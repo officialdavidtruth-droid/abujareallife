@@ -25,7 +25,7 @@ import { GAME, buildingExitPoint } from './CityWorld';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
-import { findPath, blocked, inside, HARD, type Blk, type Box, type P, setEastLimit, setSouthLimit } from '../lib/collision';
+import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit } from '../lib/collision';
 import { USES } from '../lib/pantry';
 import { itemById } from '../lib/catalog';
 
@@ -222,6 +222,9 @@ const tail = (): P => { let p: P = [S.pos[0], S.pos[1]]; if (S.cur?.t === 'walk'
 const enq = (o: Obj, a: Act) => { if (S.q.length > 12) return; S.q.push(...route(tail(), o.spot, o), { t: 'act', a, o }); };
 // Emotes play right where you stand, no furniture needed.
 const emote = (a: Act) => { S.q = []; S.prog = 0; S.cur = { t: 'act', a, o: { id: 'self', name: 'You', p: [0, 0], rot: 0, spot: [S.pos[0], S.pos[1]], face: S.rot, acts: [] } }; };
+/* Third-person (GTA-style) house: WASD / stick walk the character directly, the camera follows behind, E uses the furniture you are next to. */
+const TP = { on: false, keys: new Set<string>(), joy: [0, 0] as [number, number], yaw: 0, pitch: .3, dist: 3.8, last: 0, dir: null as null | [number, number], run: false };
+const actOff = (a: Act, u: { power: boolean; cash: number; meals: number; fam: { away: boolean }[] }) => (!!a.pow && !u.power) || (a.cost || 0) > u.cash || (USES[a.k]?.meals || 0) > u.meals || (a.all === 'dinner' && u.fam.every(f => f.away));
 const turn = (r: number, t: number, f: number) => r + ((((t - r + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * f;
 
 // ---- Family: a spouse and two kids who live in the house and follow their own daily routine (see plan()). ----
@@ -384,6 +387,15 @@ function tick(dt: number) {
   (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * calm * (k === 'energy' && has('split_ac') ? .7 : 1) * (k === 'hygiene' && has('borehole') ? .75 : 1) * (k === 'hunger' && has('fridge') ? .88 : 1) * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
   famTick(dt);
   if (S.power && !has('solar') && Math.random() < gm / (has('inverter') ? 9000 : 2200)) say('⚡ NEPA took light! Fuel the generator.'), S.power = false;
+  if (TP.on && TP.dir) { // walking with the keys / stick: cancels whatever you were doing, steps out of seats and beds first
+    const so = within(S.pos as P); if (so?.appr) S.pos = [so.appr[0], so.appr[1]];
+    S.cur = null; S.q = []; S.prog = 0; S.pose = 'stand'; S.stuck = 0; TP.last = Date.now();
+    const mag = Math.min(1, Math.hypot(TP.dir[0], TP.dir[1])), sp = (TP.run ? 4.6 : 2.9) * mag * dt * S.speed, ang = Math.atan2(TP.dir[0], TP.dir[1]);
+    let nx = S.pos[0] + Math.sin(ang) * sp, nz = S.pos[1] + Math.cos(ang) * sp;
+    if (blocked(BL(), [nx, nz], undefined, HARD)) { if (!blocked(BL(), [nx, S.pos[1]], undefined, HARD)) nz = S.pos[1]; else if (!blocked(BL(), [S.pos[0], nz], undefined, HARD)) nx = S.pos[0]; else { nx = S.pos[0]; nz = S.pos[1]; } }
+    S.pos[0] = nx; S.pos[1] = nz; S.rot = turn(S.rot, ang, Math.min(1, dt * 14));
+    return;
+  }
   if (!S.cur) {
     const t = S.q.shift();
     if (t?.t === 'act') {
@@ -396,7 +408,7 @@ function tick(dt: number) {
         if (u) { S.meals -= u.meals || 0; if (u.supplies) { if (S.supplies >= u.supplies) S.supplies -= u.supplies; else { low = true; say('🧼 Out of toiletries! Restock at the Market, Supermarket or Pharmacy.'); } } pantryUse(t.a.k); }
         S.cash -= t.a.cost || 0; S.cur = { ...t, a: tune(t.a), ...(low ? { low } : {}) }; S.prog = 0; if (t.a.cost || t.a.pay) econ('start', t.a); famStart(t.o, t.a);
       }
-    } else if (t) S.cur = t; else if (S.free) auto();
+    } else if (t) S.cur = t; else if (S.free && !(TP.on && Date.now() - TP.last < 8000)) auto();
   }
   const c = S.cur;
   if (!c) { S.pose = 'stand'; return; }
@@ -534,7 +546,7 @@ function Avatar({ bubble, look }: { bubble: string; look: Look }) {
     const mat = plumb.current.material as THREE.MeshStandardMaterial; mat.color.set(col); mat.emissive.set(col);
   });
   return <group ref={g}>
-    <group ref={inner}><Human look={look} getState={() => S.pose !== 'stand' ? S.pose : S.cur?.t === 'walk' && S.speed > 0 ? 'walk' : 'idle'} getAnim={() => (S.speed && S.cur?.t === 'act' ? S.cur.a.anim : undefined)} getSpeed={() => S.speed} /></group>
+    <group ref={inner}><Human look={look} getState={() => S.pose !== 'stand' ? S.pose : (S.cur?.t === 'walk' || (TP.on && TP.dir)) && S.speed > 0 ? 'walk' : 'idle'} getAnim={() => (S.speed && S.cur?.t === 'act' ? S.cur.a.anim : undefined)} getSpeed={() => S.speed * (TP.on && TP.dir && TP.run ? 1.55 : 1)} /></group>
     <group ref={pg}><mesh ref={plumb}><octahedronGeometry args={[.14]} /><meshStandardMaterial emissiveIntensity={.8} /></mesh></group>
     <Html position={[0, 2.9 * look.height + .2, 0]} center zIndexRange={[5, 0]}><div className="bubble">{bubble}</div></Html>
   </group>;
@@ -843,6 +855,13 @@ function Member({ m, look, ui, onPick }: { m: Mem; look: Look; ui: UI; onPick: (
     {hov && !f?.away && <Html position={[0, 1.75 * m.h + .95, 0]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{m.name}</div></Html>}
   </group>;
 }
+function TPStick() { // on-screen thumb stick for phones and tablets
+  const base = useRef<HTMLDivElement>(null), knob = useRef<HTMLDivElement>(null), pid = useRef(-1);
+  const set = (e: React.PointerEvent) => { const r = base.current!.getBoundingClientRect(), rad = r.width / 2; let x = (e.clientX - r.left - rad) / rad, y = (e.clientY - r.top - rad) / rad; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; } TP.joy = [x, y]; knob.current!.style.transform = `translate(${x * rad * .6}px,${y * rad * .6}px)`; };
+  const end = () => { pid.current = -1; TP.joy = [0, 0]; if (knob.current) knob.current.style.transform = 'none'; };
+  useEffect(() => () => { TP.joy = [0, 0]; }, []);
+  return <div className="tpStick" ref={base} onPointerDown={e => { pid.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); set(e); }} onPointerMove={e => { if (pid.current === e.pointerId) set(e); }} onPointerUp={end} onPointerCancel={end}><div className="tpKnob" ref={knob} /></div>;
+}
 function Family({ looks, ui, onPick }: { looks: Look[]; ui: UI; onPick: (id: string) => void }) {
   return <>{F.mem.map((m, i) => <Member key={m.id} m={m} look={looks[i]} ui={ui} onPick={onPick} />)}</>;
 }
@@ -870,7 +889,20 @@ function OwnedFurniture({ item, editing, onSelect }: { item: typeof HOME_OWNED[n
   </group>;
 }
 
-function World({ ui, sel, setSel, look, editingHome, setHomeSel, homeSel, onLayout }: { ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void; look: Look; editingHome: boolean; setHomeSel: (id: string | null) => void; homeSel: string | null; onLayout: () => void }) {
+// Third-person mode closes the house in: the half-height cutaway walls are raised to full height and the missing front walls are added.
+const FW = ({ p, s, c = '#ddd2bf' }: { p: V3; s: V3; c?: string }) => <mesh position={p} receiveShadow><boxGeometry args={s} /><meshStandardMaterial color={c} roughness={.95} /></mesh>;
+function TPWalls({ ui }: { ui: UI }) {
+  const south = !!ui.south, wing = !!ui.wing, zf = south ? 9.35 : 4.65;
+  return <>
+    {!wing && <FW p={[6.2, 1.96, 0]} s={[.2, 1.28, 9.4]} />}
+    {wing && <><FW p={[6.2, 1.96, -1.8]} s={[.2, 1.28, 5.6]} /><FW p={[6.2, 1.96, 3.6]} s={[.2, 1.28, 2]} /><FW p={[6.2, 2.35, 1.8]} s={[.2, .5, 1.6]} />
+      <FW p={[11.4, 1.8, 0]} s={[.2, 1.6, 9.4]} c="#d3dde8" /><FW p={[8.95, 1.3, 4.65]} s={[5.3, 2.6, .2]} c="#dce6f0" /></>}
+    {south && <><FW p={[-6.2, 1.96, 6.95]} s={[.2, 1.28, 4.8]} /><FW p={[6.2, 1.96, 6.95]} s={[.2, 1.28, 4.8]} /></>}
+    <FW p={[0, 1.3, zf]} s={[12.6, 2.6, .2]} />
+  </>;
+}
+
+function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, homeSel, onLayout }: { tpOn: boolean; kbd: boolean; ui: UI; sel: Obj | null; setSel: (o: Obj | null) => void; look: Look; editingHome: boolean; setHomeSel: (id: string | null) => void; homeSel: string | null; onLayout: () => void }) {
   const { camera, gl } = useThree();
   const drag = useRef<{ id: string; sx: number; sz: number; tx: number; tz: number; r: number } | null>(null), ctl = useRef<any>(null), lay = useRef(onLayout), plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   lay.current = onLayout;
@@ -885,9 +917,74 @@ function World({ ui, sel, setSel, look, editingHome, setHomeSel, homeSel, onLayo
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
   }, [camera, gl, plane]);
   const [hov, setHov] = useState<string | null>(null), floorTex = useMemo(() => woodTex(8.8, 4.6), []), flooks = useMemo(() => famLooks(look), [look.gender, look.skin]); // eslint-disable-line react-hooks/exhaustive-deps
-  useFrame((_, dt) => tick(Math.min(dt, .1)));
+  const [near, setNear] = useState<Obj | null>(null), R = useRef({ near: null as Obj | null, sel: null as Obj | null, ui, kbd, setSel }), cam = useRef({ p: new THREE.Vector3(), t: new THREE.Vector3(), init: false }), nearAt = useRef(0);
+  R.current = { near, sel, ui, kbd, setSel };
+  TP.on = tpOn;
+  useEffect(() => { // camera lens + leaving third-person puts the overview camera back
+    camera.near = tpOn ? .08 : .1; (camera as THREE.PerspectiveCamera).fov = tpOn ? 58 : 42; camera.updateProjectionMatrix(); cam.current.init = false;
+    if (!tpOn) { camera.position.set(3, 13, 16); camera.lookAt(0, 0, 0); TP.keys.clear(); TP.dir = null; setNear(null); }
+  }, [tpOn, camera]);
+  useEffect(() => { // keyboard: WASD / arrows walk and turn the camera, Shift runs, E uses what is next to you, 1-9 picks an action
+    if (!tpOn) return;
+    const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement | null; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); };
+    const down = (e: KeyboardEvent) => {
+      if (!R.current.kbd || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const c = e.code;
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(c)) { TP.keys.add(c); if (c.startsWith('Arrow')) e.preventDefault(); return; }
+      if (e.repeat) return;
+      if (c === 'KeyE') { const { near: n, sel: sl, ui: u, setSel: ss } = R.current; if (sl) ss(null); else if (n) ss(u.famOn ? n : { ...n, acts: n.acts.filter(a => !a.all) }); }
+      else if (c === 'Escape') R.current.setSel(null);
+      else if (/^Digit[1-9]$/.test(c)) { const { sel: sl, ui: u, setSel: ss } = R.current, a = sl?.acts[Number(c.slice(5)) - 1]; if (sl && a && !actOff(a, u)) { enq(sl, a); ss(null); } }
+    };
+    const up = (e: KeyboardEvent) => { TP.keys.delete(e.code); };
+    const blur = () => { TP.keys.clear(); };
+    window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); TP.keys.clear(); TP.dir = null; };
+  }, [tpOn]);
+  useEffect(() => { // drag to look around, wheel to zoom
+    if (!tpOn) return;
+    const el = gl.domElement; let id = -1, lx = 0, ly = 0; el.style.touchAction = 'none';
+    const dn = (e: PointerEvent) => { if (id !== -1) return; id = e.pointerId; lx = e.clientX; ly = e.clientY; };
+    const mv = (e: PointerEvent) => { if (e.pointerId !== id) return; TP.yaw -= (e.clientX - lx) * .006; TP.pitch = Math.max(.04, Math.min(.85, TP.pitch + (e.clientY - ly) * .004)); lx = e.clientX; ly = e.clientY; };
+    const upp = (e: PointerEvent) => { if (e.pointerId === id) id = -1; };
+    const wh = (e: WheelEvent) => { e.preventDefault(); TP.dist = Math.max(2.2, Math.min(6, TP.dist + e.deltaY * .003)); };
+    el.addEventListener('pointerdown', dn); window.addEventListener('pointermove', mv); window.addEventListener('pointerup', upp); window.addEventListener('pointercancel', upp); el.addEventListener('wheel', wh, { passive: false });
+    return () => { el.removeEventListener('pointerdown', dn); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', upp); window.removeEventListener('pointercancel', upp); el.removeEventListener('wheel', wh); };
+  }, [tpOn, gl]);
+  useFrame((st, dt) => {
+    const d = Math.min(dt, .1);
+    if (tpOn) { // read the keys / stick into a walking direction relative to the camera
+      const k = TP.keys; let fw = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0), rt = k.has('KeyD') ? 1 : 0; rt -= k.has('KeyA') ? 1 : 0;
+      const j = TP.joy, jm = Math.hypot(j[0], j[1]); if (jm > .2) { rt += j[0]; fw -= j[1]; }
+      TP.run = k.has('ShiftLeft') || k.has('ShiftRight') || jm > .92;
+      if (k.has('ArrowLeft')) TP.yaw += d * 1.9; if (k.has('ArrowRight')) TP.yaw -= d * 1.9;
+      const m = Math.hypot(fw, rt);
+      if (m > .05 && R.current.kbd) { const fx = -Math.sin(TP.yaw), fz = -Math.cos(TP.yaw), n = Math.max(1, m); TP.dir = [(fx * fw + -fz * rt) / n, (fz * fw + fx * rt) / n]; if (R.current.sel) R.current.setSel(null); } else TP.dir = null;
+    } else TP.dir = null;
+    tick(d);
+    if (!tpOn) return;
+    const sleep = S.pose === 'sleep', px = sleep ? -4.95 : S.pos[0], pz = sleep ? -2.45 : S.pos[1], ty = 1.35 * (look.height || 1);
+    const okAt = (x: number, z: number) => z > 4.5 ? (x > -6.05 && x < 6.05 && z < (southOn() ? 9.2 : 4.5)) : (x > -6.05 && x < (wingOn() ? 11.2 : 6.05) && z > -4.5);
+    const hFull = TP.dist * Math.cos(TP.pitch), dx = Math.sin(TP.yaw), dz = Math.cos(TP.yaw); let h = hFull;
+    while (h > .5 && !okAt(px + dx * h, pz + dz * h)) h -= .12;
+    const want = new THREE.Vector3(px + dx * h, Math.min(2.5, ty + TP.dist * Math.sin(TP.pitch) + (hFull - h) * .7), pz + dz * h), c = cam.current, a = c.init ? 1 - Math.exp(-d * 11) : 1;
+    c.p.lerp(want, a); c.t.lerp(new THREE.Vector3(px, ty, pz), a); c.init = true;
+    st.camera.position.copy(c.p); st.camera.lookAt(c.t);
+    if (st.clock.elapsedTime - nearAt.current > .12) { // the piece of furniture you are next to (for the "E" prompt)
+      nearAt.current = st.clock.elapsedTime; let best: Obj | null = null, bd = 1.05;
+      if (!S.cur || S.cur.t === 'walk') for (const raw of OBJ) {
+        if (ui.homeSold.includes(raw.id) || (GATE[raw.id] && !ui.home.includes(GATE[raw.id])) || !(ui.famOn || raw.acts.some(x => !x.all))) continue;
+        const o = movedObj(raw); let dd = Math.min(dist(S.pos as P, o.spot), o.appr ? dist(S.pos as P, o.appr) : 9);
+        for (const b of o.boxes || []) dd = Math.min(dd, Math.hypot(Math.max(b[0] - S.pos[0], 0, S.pos[0] - b[1]), Math.max(b[2] - S.pos[1], 0, S.pos[1] - b[3])));
+        if (dd < bd) { bd = dd; best = o; }
+      }
+      setNear(n => (n?.id === best?.id ? n : best));
+    }
+  });
   return <>
     <Lights />
+    {tpOn && <TPWalls ui={ui} />}
+    {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: 'none' }}><div className="tpPrompt"><b>E</b> {near.name}</div></Html>}
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
     <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
       <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
@@ -905,13 +1002,16 @@ function World({ ui, sel, setSel, look, editingHome, setHomeSel, homeSel, onLayo
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]}><div className="pie"><b>{sel.name}</b>
-      {sel.acts.map(a => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : `${a.dur} min`}</small></button>)}</div></Html>}
-    <OrbitControls ref={ctl} enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />
+      {sel.acts.map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : `${a.dur} min`}</small></button>)}</div></Html>}
+    {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}
   </>;
 }
 
 
 export default function Sim() {
+  const [tp, setTp] = useState(true);
+  useEffect(() => { try { if (localStorage.getItem('arl-tp') === '0') setTp(false); } catch { /* private mode */ } }, []);
+  useEffect(() => { try { localStorage.setItem('arl-tp', tp ? '1' : '0'); } catch { /* private mode */ } }, [tp]);
   const [famModal, setFamModal] = useState(false), [homeEdit, setHomeEdit] = useState(false), [homeSel, setHomeSel] = useState<string | null>(null), [homeSaving, setHomeSaving] = useState(false), [homeMin, setHomeMin] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null), [homeItems, setHomeItems] = useState<typeof HOME_OWNED[number][]>([]), [homePlaceable, setHomePlaceable] = useState<{itemKey:string;name:string;e:string;cat:string;cost:number;quantity:number;fp?:[number,number]}[]>([]);
   useEffect(() => { if (!homeEdit) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { setHomeEdit(false); setHomeSel(null); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [homeEdit]);
   lookRef.current = look;
@@ -1000,7 +1100,7 @@ export default function Sim() {
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const ex = buildingExitPoint(inside); if (ex) GAME.tp = ex; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && <Wallet />}
-    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}
+    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World tpOn={tp && !homeEdit} kbd={!(editing || wardrobe || homeUp || famModal || homeEdit)} ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
@@ -1013,6 +1113,7 @@ export default function Sim() {
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
         {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !outside && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
+        <button className="pill" onClick={() => { setTp(v => !v); setSel(null); setMenu(false); }}>🎥 {tp ? 'Overview camera' : 'Third-person camera'}</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; AUTO.free = S.free; fetch('/api/autowork', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ freeWill: S.free }) }).catch(() => {}); }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
       </div></div>
@@ -1022,7 +1123,8 @@ export default function Sim() {
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
-    {!outside && <div className="hint">Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom</div>}
+    {!outside && <div className="hint">{tp && !homeEdit ? 'WASD walk · Shift run · Drag or ←/→ turn camera · Scroll zoom · E use · 1-9 pick · or tap the floor' : 'Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom'}</div>}
+    {user && look && !outside && tp && !homeEdit && <TPStick />}
     {homeEdit && !outside && user && look && <div className="homeEditor">
       <div className="homeHead"><b>🏠 Home design</b><div className="homeHeadBtns"><button onClick={() => setHomeMin(v => !v)} aria-label="Minimise">{homeMin ? '▴' : '▾'}</button><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT }) }); setHomeSaving(false); say(r.ok ? '🏠 Home layout saved.' : 'Could not save home layout.'); }}>{homeSaving ? 'Saving…' : 'Save layout'}</button><button className="homeDone" onClick={() => { setHomeEdit(false); setHomeSel(null); setHomeMin(false); }}>✓ Done</button></div></div>
       {!homeMin && <>{homeSel ? <><strong>{homeName(homeSel)}</strong><div className="homeBtns"><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z - .25 }; blKey = '\0'; setUi(snap()); }}>↑</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x - .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>←</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x + .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>→</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z + .25 }; blKey = '\0'; setUi(snap()); }}>↓</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r - Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↺</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r + Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↻</button></div><div className="homeSelectedMeta">{(() => { const owned=HOME_OWNED.find(i=>i.id===homeSel); const name=homeName(homeSel); const price=owned?Math.round(owned.cost*.62*Math.max(.2,owned.condition/100)):({bed:260000,wardrobe:190000,fridge:780000,dining:220000,shower:90000,toilet:80000,tv:650000,desk:90000,mat:25000,radio:38000,shelf:85000,plant:5500,gen:190000,toybox:35000,kbedA:120000,kbedB:120000,nstand:38000,kwar:190000,gbench:140000,gbag:90000,cinema:950000,odesk:480000,oshelf:380000} as Record<string,number>)[homeSel]||0; return <span>Estimated resale: <b>{naira(price)}</b></span>; })()}{!homeSel.includes('.') && <button className="sellHome" onClick={async()=>{ if(!homeSel)return; const owned=HOME_OWNED.some(i=>i.id===homeSel); if(!confirm('Sell this item from your house?'))return; const r=await fetch('/api/home/furniture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'sell',kind:owned?'owned':'static',id:homeSel})}); const d=await r.json().catch(()=>({})); if(r.ok){ HOME_OWNED.splice(0,HOME_OWNED.length,...HOME_OWNED.filter(i=>i.id!==homeSel)); blKey='\0'; HOME_SOLD.add(homeSel); delete HOME_LAYOUT[homeSel]; setHomeItems([...HOME_OWNED]); setHomeSel(null); setUi(snap()); say(`Sold for ${naira(d.gained||0)}.`); } else say(d.error||'Could not sell item.'); }}>💰 Sell item</button>}</div></> : <span>Drag an item to move it, or tap it to nudge/rotate.</span>}
@@ -1045,6 +1147,7 @@ const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:cent
 .toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:#f0b94a;color:#1a1208;font-weight:700;font-size:13px;padding:9px 16px;border-radius:12px}
 .emotes{position:absolute;right:12px;top:64px;display:flex;flex-direction:column;gap:7px}.emotes button{width:42px;height:42px;border-radius:50%;border:1px solid #ffffff33;background:#10201ae6;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:transform .15s,background .2s}.emotes button:hover{transform:scale(1.12);background:#1d7654}.emotes button:active{transform:scale(.94)}
 .tag{background:#10201af0;border:1px solid #ffffff33;border-radius:8px;padding:4px 9px;font-size:11px;color:#fff;white-space:nowrap;animation:popIn .15s both}
+.tpPrompt{background:#10201aee;border:1px solid #ffffff44;border-radius:8px;padding:5px 10px;font-size:13px;color:#fff;white-space:nowrap}.tpPrompt b{display:inline-block;min-width:20px;text-align:center;margin-right:6px;padding:1px 5px;border-radius:5px;background:#f0b94a;color:#1a1410}.pie .tpK{font-style:normal;font-weight:700;min-width:18px;text-align:center;margin-right:6px;padding:0 4px;border-radius:4px;background:#f0b94a;color:#1a1410}.tpStick{display:none;position:absolute;right:22px;bottom:96px;width:116px;height:116px;border-radius:50%;background:#10201a88;border:2px solid #ffffff44;touch-action:none;z-index:30}.tpKnob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:#f0b94acc;border:2px solid #1a1410}@media(pointer:coarse){.tpStick{display:block}}
 .hint{position:absolute;right:12px;bottom:12px;font-size:10px;color:#ffffffaa;text-shadow:0 1px 3px #000;max-width:200px;text-align:right}
 .bubble{background:#fff;color:#000;border-radius:14px;padding:3px 9px;font-size:20px;box-shadow:0 2px 8px #0005}
 .pie{background:#10201af5;border:1px solid #ffffff33;border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:5px;min-width:170px}.pie b{font-size:11px;color:#f0b94a;text-transform:uppercase;letter-spacing:.1em;padding:0 4px}

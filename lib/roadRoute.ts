@@ -4,10 +4,12 @@
    World: roads run on a 22 m grid. Road `k` along the x axis is the line z = k*GRID, along the z axis it is x = k*GRID.
    Even roads are 7 m boulevards, odd roads 5 m streets. Traffic drives on the RIGHT, in lanes half a road-half-width off the centre line.
    Vehicle models face +x at rotation 0, so a vehicle heading (dx, dz) has rotation.y = atan2(-dz, dx)  (same as the AI traffic). */
-export const GRID = 22;
+/** World scale. 1 = the original 22 m grid with 7 m / 5 m roads. Everything that depends on the size of the city is derived from this. */
+export const WS = 1.5;
+export const GRID = 22 * WS;
 /** Only the big boulevard × boulevard junctions have signals; everything else is free-flowing, so traffic doesn't stop at every turn. */
 export const signalised = (a: number, b: number) => ((a % 2) + 2) % 2 === 0 && ((b % 2) + 2) % 2 === 0;
-export const halfW = (i: number) => (((i % 2) + 2) % 2 === 0 ? 3.5 : 2.5);
+export const halfW = (i: number) => (((i % 2) + 2) % 2 === 0 ? 3.5 : 2.5) * WS;
 export type XZ = [number, number];
 export type Axis = 'x' | 'z';
 
@@ -167,7 +169,7 @@ export function sidewalkSpawn(rand: () => number = Math.random, taken?: (x: numb
   let out = { x: 0, z: 0, r: 0 };
   for (let tries = 0; tries < 10; tries++) {
     const ri = Math.floor(rand() * 5) - 2, side = rand() < .5 ? 1 : -1, axis: Axis = rand() < .5 ? 'x' : 'z', dir = rand() < .5 ? 1 : -1;
-    const along = (Math.floor(rand() * 6) - 3) * GRID + GRID / 2 + (rand() * 2 - 1) * 5; // middle of a block, +/- 5 m
+    const along = (Math.floor(rand() * 6) - 3) * GRID + GRID / 2 + (rand() * 2 - 1) * 5 * WS; // middle of a block, +/- 5 m
     const lat = ri * GRID + side * (halfW(ri) + 2);                                       // 2 m past the kerb: the same line the pedestrians walk
     out = axis === 'x' ? { x: along, z: lat, r: dir * Math.PI / 2 } : { x: lat, z: along, r: dir > 0 ? 0 : Math.PI };
     if (!taken || !taken(out.x, out.z)) break;

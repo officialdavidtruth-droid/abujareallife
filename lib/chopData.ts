@@ -1,12 +1,13 @@
 /* Chop shop: data shared by the client (HUD, yard scenery, catalog) and the server. No Node-only imports here. */
+import { WS } from './roadRoute';
 export type YardSite = { id: string; name: string; x: number; z: number };
 /* World coordinates (the 22 m street grid, see lib/roadRoute.ts). All four sit on open ground just outside the street grid, between two roads,
    so they are not marked on the map and no building is in the way. They are only revealed (and given a waypoint) to a player who has a hot car. */
 export const YARDS: YardSite[] = [
-  { id: 'lugbe',    name: 'Lugbe back lot',        x: 124,   z: -32.5 },
-  { id: 'kubwa',    name: 'Kubwa scrapyard',       x: -124,  z: 32.5 },
-  { id: 'asokoro',  name: 'Asokoro lock-up',       x: 32.5,  z: 124 },
-  { id: 'gwarinpa', name: "Gwarinpa breaker's yard", x: -32.5, z: -124 },
+  { id: 'lugbe',    name: 'Lugbe back lot',        x: 124 * WS,   z: -32.5 * WS },
+  { id: 'kubwa',    name: 'Kubwa scrapyard',       x: -124 * WS,  z: 32.5 * WS },
+  { id: 'asokoro',  name: 'Asokoro lock-up',       x: 32.5 * WS,  z: 124 * WS },
+  { id: 'gwarinpa', name: "Gwarinpa breaker's yard", x: -32.5 * WS, z: -124 * WS },
 ];
 export const yardById = (id: string) => YARDS.find(y => y.id === id);
 

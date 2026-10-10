@@ -173,7 +173,8 @@ export const rankFor = (profession: ProfessionId, totalXp: number) => (professio
 
 // Where the police station and jail sit in the city grid (see cityData.ts). Jail cell = inside the station compound.
 export const POLICE_STATION_POS = { x: 16.5, z: -5.5 };
-export const JAIL_CELL_POS = { x: 80, z: 80 }; // fenced cell on open ground; CityWorld locks jailed players inside it
+import { WS } from './roadRoute';
+export const JAIL_CELL_POS = { x: 80 * WS, z: 80 * WS }; // fenced cell on open ground; CityWorld locks jailed players inside it
 
 /* ───────── Wealth progression: each tier unlocks something to chase ───────── */
 export const WEALTH_TIERS = [

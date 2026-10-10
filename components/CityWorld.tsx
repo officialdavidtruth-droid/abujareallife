@@ -30,7 +30,7 @@ import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
 import { BuildingDress, Graffiti, LOOK_SOLIDS, POWER_POLES, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
 import { BOLT_LINES, DRVVIEW, DRV_PRI, DRV_SHOUT, OWNER, OWNER_LINES, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, drainDriverCrimes, driverDecide, driverLine, duration, lineFor, ownerSay, perceive, perceiveDriver, personaOf, pushCrime, reportCrime, shout, wnow, type DriverReaction, type Reaction } from '../lib/witness';
-import { GRID, CURB, CURB_BUS, CURB_CAR, inJunction, exitSpot, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
+import { GRID, WS, CURB, CURB_BUS, CURB_CAR, inJunction, exitSpot, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
@@ -43,7 +43,8 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /* ───────────── city layout: wide boulevards (22 m grid) ───────────── */
 const FH = 3; // metres per floor
-const LIM = 135; // walkable limit
+const WSCALE = WS; // (some functions below have a local called WS)
+const LIM = 135 * WSCALE; // walkable limit
 const ev = (n: number) => ((n % 2) + 2) % 2 === 0;
 const BUILDS: CityBuilding[] = BUILDS_WORLD; // shared with the ride destinations (lib/destinations.ts)
 /** Where a player appears when they walk out of a building: on the frontage sidewalk, straight in front of the door (doors face +z).
@@ -231,7 +232,7 @@ function Inst({ items, color, h, y, receive = false, basic = false }: { items: B
   }, [items, h, y]);
   return <instancedMesh ref={ref} args={[undefined, undefined, items.length]} frustumCulled={false} receiveShadow={receive}><boxGeometry args={[1, 1, 1]} />{basic ? <meshBasicMaterial color={color} /> : <meshStandardMaterial color={color} roughness={1} />}</instancedMesh>;
 }
-const SLABS: Box2[] = BUILDS.map(b => ({ x: b.x, z: b.z, sx: 16, sz: 16 }));
+const SLABS: Box2[] = BUILDS.map(b => ({ x: b.x, z: b.z, sx: 16 * WS, sz: 16 * WS }));
 const MARKS = (() => {
   const yellow: Box2[] = [], white: Box2[] = [], zebra: Box2[] = [];
   for (let i = -5; i <= 5; i++) for (let j = -5; j <= 4; j++) {
@@ -251,13 +252,13 @@ const MARKS = (() => {
 function Roads() {
   const idx = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
   return <>{idx.map(i => <group key={i}>
-    <mesh position={[i * GRID, .01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[halfW(i) * 2, 250]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
-    <mesh position={[0, .011, i * GRID]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[250, halfW(i) * 2]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
+    <mesh position={[i * GRID, .01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[halfW(i) * 2, 250 * WS]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
+    <mesh position={[0, .011, i * GRID]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[250 * WS, halfW(i) * 2]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
   </group>)}</>;
 }
 /* Trees stand beside each building. On car-park / alley lots the building is pushed to the back of its plot, so some of these spots fell ON the road: those trees are dropped. */
 const onCarriageway = (x: number, z: number, m = .4) => { for (let i = -5; i <= 5; i++) { const hw = halfW(i) + m; if (Math.abs(x - i * GRID) < hw && Math.abs(z) <= 5 * GRID + 8) return true; if (Math.abs(z - i * GRID) < hw && Math.abs(x) <= 5 * GRID + 8) return true; } return false; };
-const TREE_PTS = BUILDS.flatMap(b => [[-4.2, 7], [4.2, 7], [-4.2, -7], [4.2, -7]].map(([dx, dz], k) => ({ x: b.x + dx, z: b.z + dz, s: .9 + hs(b.id + k) * .5 }))).filter(t => !onCarriageway(t.x, t.z));
+const TREE_PTS = BUILDS.flatMap(b => [[-4.2 * WS, 7 * WS], [4.2 * WS, 7 * WS], [-4.2 * WS, -7 * WS], [4.2 * WS, -7 * WS]].map(([dx, dz], k) => ({ x: b.x + dx, z: b.z + dz, s: .9 + hs(b.id + k) * .5 }))).filter(t => !onCarriageway(t.x, t.z));
 function Trees() {
   const trunks = useRef<THREE.InstancedMesh>(null!), crowns = useRef<THREE.InstancedMesh>(null!);
   const pts = TREE_PTS;
@@ -578,7 +579,7 @@ function makeLanes(): Lane[] {
     for (const axis of ['x', 'z'] as const) for (const dir of [1, -1] as const) {
       const fixed = axis === 'x' ? i * GRID + (dir === 1 ? off : -off) : i * GRID + (dir === 1 ? -off : off); // drive on the right
       const rot = axis === 'x' ? (dir === 1 ? 0 : Math.PI) : (dir === 1 ? -Math.PI / 2 : Math.PI / 2);
-      const cars = Array.from({ length: major ? 2 : 1 }, (_, k): SimCar => { const role = roleOf(n); return { s: -100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id, role, mul: ROLE_MUL[role], off: 0, laneShift: 0, hail: 0 }; });
+      const cars = Array.from({ length: major ? 2 : 1 }, (_, k): SimCar => { const role = roleOf(n); return { s: (-100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40) * WS, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id, role, mul: ROLE_MUL[role], off: 0, laneShift: 0, hail: 0 }; });
       lanes.push({ axis, dir, fixed, speed: major ? 9 : 6.5, rot, road: i, cars });
     }
   }
@@ -675,11 +676,11 @@ function Traffic() {
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
       let passAmt = 1.1; const parkedMine = VEH.placed && !VEH.drv && Math.abs(VEH.v) < .5;   // the player's parked car is an obstacle to drive AROUND, not to queue behind for ever
       if (parkedMine && c.hail === 0) { const a1 = ((l.axis === 'x' ? VEH.x : VEH.z) - c.s) * l.dir, p1 = l.axis === 'x' ? Math.abs(VEH.z - l.fixed) : Math.abs(VEH.x - l.fixed); if (a1 > 0 && a1 < 18 && p1 < 2.3) { passing = true; passAmt = Math.min(1.7, halfW(l.road) * .5 + .5); } }
-      if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += ((passing ? (l.axis === 'x' ? -l.dir : l.dir) * Math.min(passAmt, passAmt === 1.1 ? halfW(l.road) * .5 : passAmt) : 0) - c.laneShift) * Math.min(1, dt * 3);
+      if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100*WS){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += ((passing ? (l.axis === 'x' ? -l.dir : l.dir) * Math.min(passAmt, passAmt === 1.1 ? halfW(l.road) * .5 : passAmt) : 0) - c.laneShift) * Math.min(1, dt * 3);
       for (const o of OB) { if (!o.on || (o === OBS[1] && parkedMine)) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
       const ls = lightState(t, l.axis); if (Math.abs(ci) <= 5 && signalised(ci, l.road) && (ls === 'r' || (ls === 'y' && d - (halfW(ci) + 5.2) > 9)) && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
-      c.s += adv * l.dir; if (c.s > 118) c.s = -118; else if (c.s < -118) c.s = 118;
+      c.s += adv * l.dir; if (c.s > 118 * WS) c.s = -118 * WS; else if (c.s < -118 * WS) c.s = 118 * WS;
       const px = l.axis === 'x' ? c.s : l.fixed - l.dir * c.off + c.laneShift, pz = l.axis === 'x' ? l.fixed + l.dir * c.off + c.laneShift : c.s;
       tp.x = px; tp.z = pz; tp.r = l.rot;
       if (g) { g.position.set(px, 0, pz); g.rotation.y = l.rot; }
@@ -715,7 +716,7 @@ function releaseRoamer(c: SimCar) { c.hail = 0; c.stopping = false; c.readyAt = 
 function respawnRoamer(idx: number) {
   const e = ROAM.cars[idx]; if (!e) return; const { l, c } = e;
   let best = c.s, bd = -1;
-  for (let k = 0; k < 14; k++) { const s = -110 + Math.random() * 220, near = Math.min(...l.cars.filter(o => o !== c).map(o => Math.abs(o.s - s)), 999), far = Math.hypot((l.axis === 'x' ? s : l.fixed) - GAME.player.x, (l.axis === 'x' ? l.fixed : s) - GAME.player.z); const score = Math.min(near, 30) + Math.min(far, 60); if (score > bd) { bd = score; best = s; } }
+  for (let k = 0; k < 14; k++) { const s = (-110 + Math.random() * 220) * WS, near = Math.min(...l.cars.filter(o => o !== c).map(o => Math.abs(o.s - s)), 999), far = Math.hypot((l.axis === 'x' ? s : l.fixed) - GAME.player.x, (l.axis === 'x' ? l.fixed : s) - GAME.player.z); const score = Math.min(near, 30) + Math.min(far, 60); if (score > bd) { bd = score; best = s; } }
   c.s = best; c.off = 0; c.hail = 0; c.stopping = false; c.v = undefined; c.busy = false; c.readyAt = undefined;
 }
 
@@ -761,7 +762,7 @@ export function dispatchRide(r: { id: string; name: string; x: number; z: number
     if (best) {
       const L: Lane = best, pa = L.axis === 'x' ? P.x : P.z;
       e.l.cars = e.l.cars.filter(o => o !== e.c); L.cars.push(e.c); e.l = L;
-      e.c.s = Math.max(-110, Math.min(110, pa - L.dir * 30)); e.c.off = 0; e.c.laneShift = 0;
+      e.c.s = Math.max(-110 * WS, Math.min(110 * WS, pa - L.dir * 30)); e.c.off = 0; e.c.laneShift = 0;
     }
   }
   const { l, c } = e;
@@ -1111,13 +1112,13 @@ function Billboards() {
 }
 
 /* ───────────── railway + airport on the city edge ───────────── */
-const RAIL_Z = 126;
+const RAIL_Z = 126 * WS;
 function TrainLine() {
   const g = useRef<THREE.Group>(null!);
-  useFrame((st) => { const x = ((st.clock.elapsedTime * 14 + 150) % 300) - 150; g.current.position.x = x; });
+  useFrame((st) => { const x = ((st.clock.elapsedTime * 14 + 150 * WS) % (300 * WS)) - 150 * WS; g.current.position.x = x; });
   return <>
-    <mesh position={[0, .05, RAIL_Z]}><boxGeometry args={[300, .1, 3]} /><meshStandardMaterial color="#6b6a66" roughness={1} /></mesh>
-    {[-.7, .7].map(o => <mesh key={o} position={[0, .16, RAIL_Z + o]}><boxGeometry args={[300, .1, .12]} /><meshStandardMaterial color="#9aa0a6" metalness={.7} roughness={.3} /></mesh>)}
+    <mesh position={[0, .05, RAIL_Z]}><boxGeometry args={[300 * WS, .1, 3]} /><meshStandardMaterial color="#6b6a66" roughness={1} /></mesh>
+    {[-.7, .7].map(o => <mesh key={o} position={[0, .16, RAIL_Z + o]}><boxGeometry args={[300 * WS, .1, .12]} /><meshStandardMaterial color="#9aa0a6" metalness={.7} roughness={.3} /></mesh>)}
     <group ref={g} position={[0, 1.5, RAIL_Z]}>
       {[0, -9.6].map(x => <group key={x} position={[x, 0, 0]}>
         <RoundedBox args={[9, 2.4, 2.6]} radius={.2} smoothness={2} castShadow><meshStandardMaterial color="#d99a42" metalness={.3} roughness={.5} /></RoundedBox>
@@ -1126,7 +1127,7 @@ function TrainLine() {
     </group>
   </>;
 }
-const AIR = { x: 122, z: -12, s: 1.8 };
+const AIR = { x: 122 * WS, z: -12 * WS, s: 1.8 };
 function Airport() {
   return <group position={[AIR.x, 0, AIR.z]} scale={AIR.s}>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .02, 0]}><planeGeometry args={[22, 7]} /><meshStandardMaterial color="#33383e" /></mesh>
@@ -1189,7 +1190,7 @@ function PolicePatrol() {
   const spawnCar = (tx: number, tz: number, now: number) => {
     const P = GAME.player; if (cars.current.length >= CAR_MAX) return false;
     for (let k = 0; k < 12; k++) {
-      const axis = Math.random() < .5 ? 'x' : 'z', road = Math.floor(Math.random() * 9) - 4, side: 1 | -1 = Math.random() < .5 ? 1 : -1, along = (Math.random() * 2 - 1) * 110;
+      const axis = Math.random() < .5 ? 'x' : 'z', road = Math.floor(Math.random() * 9) - 4, side: 1 | -1 = Math.random() < .5 ? 1 : -1, along = (Math.random() * 2 - 1) * 110 * WS;
       const sp = curbSpot(axis, road, along, side);
       if (Math.hypot(sp.x - tx, sp.z - tz) < 60 || Math.hypot(sp.x - P.x, sp.z - P.z) < 50) continue;
       const rt = planRide(sp, [tx, tz]); if (!rt) continue;
@@ -1199,9 +1200,9 @@ function PolicePatrol() {
     return false;
   };
   const roadblock = (now: number) => { // two cars across the road about 60 m ahead of your car
-    const P = GAME.player, fx = Math.cos(VEH.r), fz = -Math.sin(VEH.r), ax = THREE.MathUtils.clamp(P.x + fx * 60, -118, 118), az = THREE.MathUtils.clamp(P.z + fz * 60, -118, 118);
+    const P = GAME.player, fx = Math.cos(VEH.r), fz = -Math.sin(VEH.r), ax = THREE.MathUtils.clamp(P.x + fx * 60, -118 * WS, 118 * WS), az = THREE.MathUtils.clamp(P.z + fz * 60, -118 * WS, 118 * WS);
     const ix = Math.round(ax / GRID), iz = Math.round(az / GRID), alongZ = Math.abs(ax - ix * GRID) <= Math.abs(az - iz * GRID);
-    const mid = (v: number) => THREE.MathUtils.clamp(Math.floor(v / GRID) * GRID + GRID / 2, -118, 118); // mid-block, clear of the junctions
+    const mid = (v: number) => THREE.MathUtils.clamp(Math.floor(v / GRID) * GRID + GRID / 2, -118 * WS, 118 * WS); // mid-block, clear of the junctions
     const hw = halfW(alongZ ? ix : iz), spots = [-1, 1].map(s => alongZ ? { x: ix * GRID + s * hw * .55, z: mid(az) + s * 1.2, r: 0 } : { x: mid(ax) + s * 1.2, z: iz * GRID + s * hw * .55, r: Math.PI / 2 });
     if (spots.some(s => Math.hypot(s.x - P.x, s.z - P.z) < 25)) return false;
     spots.forEach(s => cars.current.push({ id: st.current.nid++, mode: 'block', rt: null, rs: null, x: s.x, z: s.z, r: s.r, at: now, until: now + PATROL.roadblockLifeMs, replan: 0, tx: s.x, tz: s.z, leave: false, hasCops: false, announced: true }));
@@ -1238,10 +1239,10 @@ function PolicePatrol() {
           const rt = planRide(c.rt.end, [P.x, P.z]); c.replan = now + 6000; if (rt) { c.rt = rt; c.rs = newRide(rt, c.r); c.mode = 'drive'; c.tx = P.x; c.tz = P.z; continue; }
         }
         if (!mine && now > c.until && c.rt) { // nobody left to pick up: drive off to the edge of the map
-          const rt = planRide(c.rt.end, [Math.random() < .5 ? -128 : 128, (Math.random() * 2 - 1) * 100]); if (rt) { c.rt = rt; c.rs = newRide(rt, c.r); c.mode = 'drive'; c.leave = true; } else K.splice(i, 1);
+          const rt = planRide(c.rt.end, [(Math.random() < .5 ? -128 : 128) * WS, (Math.random() * 2 - 1) * 100 * WS]); if (rt) { c.rt = rt; c.rs = newRide(rt, c.r); c.mode = 'drive'; c.leave = true; } else K.splice(i, 1);
         }
       } else if (c.mode === 'block') {
-        if (now > c.until || Math.hypot(c.x - P.x, c.z - P.z) > 130) { K.splice(i, 1); continue; }
+        if (now > c.until || Math.hypot(c.x - P.x, c.z - P.z) > 130 * WS) { K.splice(i, 1); continue; }
       }
     }
     const pinned = driving && wanted && Math.abs(VEH.v) < 2 && K.some(c => c.mode === 'park' && Math.hypot(c.x - VEH.x, c.z - VEH.z) < 8); // a patrol car has boxed in your stopped car
@@ -1331,7 +1332,7 @@ const pick = <T,>(a: T[], k: string) => a[Math.floor(hs(k) * a.length) % a.lengt
 function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {
     const ri = Math.floor(hs('pi' + n) * 11) - 5, side = hs('ps' + n) < .5 ? 1 : -1, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
-    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0, lat:0, latT:0 };
+    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118 * WS, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0, lat:0, latT:0 };
   });
 }
 const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 0 : 32 - c) : (c >= 16 && c < 30 ? 0 : c < 16 ? 16 - c : 48 - c); };
@@ -1486,7 +1487,7 @@ function Pedestrians() {
         }
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
         if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x') && rk !== 'flee') go = false; } // wait at the kerb for a red light (not when running for your life)
-        if (go) { const activityFactor = rk === 'flee' ? 1 : night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
+        if (go) { const activityFactor = rk === 'flee' ? 1 : night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124 * WSCALE) p.dir = -1; else if (p.u < -124 * WSCALE) p.dir = 1; }
       }
       if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }
       p.lat += (p.latT - p.lat) * Math.min(1, dt * 3.5); if (p.axis === 'x') p.z += p.lat; else p.x += p.lat;   // the sidestep
@@ -1562,7 +1563,7 @@ function parkNear(px: number, pz: number) {
   const touches = (q: { x: number; z: number; r: number }, c: { x: number; z: number; r: number }) => [-1.35, 0, 1.35].some(o => Math.hypot(c.x + Math.cos(c.r) * o - q.x, c.z - Math.sin(c.r) * o - q.z) < CAR_R + q.r + .15);
   let sp = curbSpot(axisKey, road, base, side);
   for (let n = 0; n < 60; n++) {   // search outwards along the kerb for the first spot that is clear of junctions, cars, posts and trees
-    const cand = curbSpot(axisKey, road, THREE.MathUtils.clamp(base + (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 2.5, -112, 112), side);
+    const cand = curbSpot(axisKey, road, THREE.MathUtils.clamp(base + (n % 2 ? 1 : -1) * Math.ceil(n / 2) * 2.5, -112 * WS, 112 * WS), side);
     if (inJunction(cand.x, cand.z, 3.5)) continue;
     if (TPOS.some(c => Math.hypot(c.x - cand.x, c.z - cand.z) < 5) || Math.hypot(cand.x - px, cand.z - pz) < 3) continue;
     if (CAR_POSTS.some(q => Math.abs(q.x - cand.x) < 6 && Math.abs(q.z - cand.z) < 6 && touches(q, cand))) continue;
@@ -1613,8 +1614,8 @@ const BL: CityBlk[] = BUILDS.map(b => ({
   z1: b.z + b.d / 2 + .65,
 }));
 const NAV_STEP = 2;
-const NAV_MIN = -132;
-const NAV_MAX = 132;
+const NAV_MIN = -132 * WS;
+const NAV_MAX = 132 * WS;
 const navBlocked = (blks: CityBlk[], x: number, z: number) =>
   x < NAV_MIN || x > NAV_MAX || z < NAV_MIN || z > NAV_MAX ||
   blks.some(b => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1);
@@ -1657,7 +1658,7 @@ function findPath(blks: CityBlk[], from: [number, number], to: [number, number])
   const open: [number, number][] = [s], came = new Map<string, string>(), score = new Map<string, number>([[key(s), 0]]), closed = new Set<string>();
   const heuristic = (a: [number, number]) => Math.abs(a[0] - g[0]) + Math.abs(a[1] - g[1]);
   let best = s;
-  while (open.length && closed.size < 18000) {
+  while (open.length && closed.size < 18000 * WS * WS) {
     let bi = 0, bf = Infinity;
     for (let i = 0; i < open.length; i++) {
       const f = (score.get(key(open[i])) ?? Infinity) + heuristic(open[i]);
@@ -2176,7 +2177,7 @@ function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onOpen?: (
       const h = hud.current, sc = S / 100;
       g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#35553f'; g.fillRect(0, 0, S, S);
       g.translate(S / 2, S / 2); g.rotate(-Math.atan2(h.fx, -h.fz)); g.scale(sc, sc); g.translate(-h.x, -h.z);
-      g.fillStyle = '#6a6f77'; for (let i = -5; i <= 5; i++) { g.fillRect(i * GRID - halfW(i), -125, halfW(i) * 2, 250); g.fillRect(-125, i * GRID - halfW(i), 250, halfW(i) * 2); }
+      g.fillStyle = '#6a6f77'; for (let i = -5; i <= 5; i++) { g.fillRect(i * GRID - halfW(i), -125 * WS, halfW(i) * 2, 250 * WS); g.fillRect(-125 * WS, i * GRID - halfW(i), 250 * WS, halfW(i) * 2); }
       for (const b of BUILDS) { g.fillStyle = b.color; g.fillRect(b.x - b.w / 2, b.z - b.d / 2, b.w, b.d); }
       const rt = GAME.route, nv = GAME.nav;
       if (rt && nv) {

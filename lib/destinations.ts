@@ -1,7 +1,7 @@
 /* Every place a ride can take you. Pure data (no React / three), shared by the street taxis, the bus and the "order a ride for a player" panel.
    World coordinates only: the raw CITY coordinates are on a smaller grid and must never be used as positions. */
 import { CITY } from './cityData';
-import { GRID } from './roadRoute';
+import { GRID, WS } from './roadRoute';
 import type { CityBuilding } from './cityTypes';
 
 const ev = (n: number) => ((n % 2) + 2) % 2 === 0;
@@ -12,16 +12,16 @@ const ev = (n: number) => ((n % 2) + 2) % 2 === 0;
      lot    ~45%  building pushed to the back (6 m deep), a 4.4 m fenced forecourt in front with parked cars and a gate in line with the door
      alley  ~35%  building 6.8 m wide pushed to one side, leaving a 3.6 m walled alley beside it (dead end, a gap at the back)
    Landmarks and big public buildings keep the full footprint. */
-const BUILDABLE = 5.2;   // half of the 10.4 m buildable square
+export const BUILDABLE = 5.2 * WS;   // half of the 10.4 m buildable square
 const hsl = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
 const FULL = new Set(['Government', 'Hospital', 'Airport', 'Rail Station', 'Police Station', 'Jail', 'Gun Shop']);
 export const BUILDS_WORLD: CityBuilding[] = CITY.buildings.map((b: CityBuilding) => {
   const bx = Math.round((b.x - 5.5) / 11), bz = Math.round((b.z - 5.5) / 11);
-  const cx = bx * GRID + 11 + (ev(bx) ? .5 : -.5), cz = bz * GRID + 11 + (ev(bz) ? .5 : -.5), w = b.w * 1.15, d = b.d * 1.4;
+  const cx = bx * GRID + GRID / 2 + (ev(bx) ? .5 : -.5) * WS, cz = bz * GRID + GRID / 2 + (ev(bz) ? .5 : -.5) * WS, w = Math.min(b.w * 1.15 * WS, 2 * BUILDABLE), d = Math.min(b.d * 1.4 * WS, 2 * BUILDABLE);
   const r = hsl(b.id + 'lay');
   if (b.business && !FULL.has(b.business.type)) {
-    if (r < .45) return { ...b, x: cx, z: cz - BUILDABLE + 3, w, d: 6, lay: 'lot' as const, front: cz + BUILDABLE };
-    if (r < .8) { const side: 1 | -1 = hsl(b.id + 'sd') < .5 ? 1 : -1; return { ...b, x: cx - side * (BUILDABLE - 3.4), z: cz, w: 6.8, d, lay: 'alley' as const, side }; }
+    if (r < .45) return { ...b, x: cx, z: cz - BUILDABLE + 3 * WS, w, d: 6 * WS, lay: 'lot' as const, front: cz + BUILDABLE };
+    if (r < .8) { const side: 1 | -1 = hsl(b.id + 'sd') < .5 ? 1 : -1; return { ...b, x: cx - side * (BUILDABLE - 3.4 * WS), z: cz, w: 6.8 * WS, d, lay: 'alley' as const, side }; }
   }
   return { ...b, x: cx, z: cz, w, d };
 });

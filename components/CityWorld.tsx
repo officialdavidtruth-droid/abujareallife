@@ -29,7 +29,7 @@ import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
 import { BuildingDress, Graffiti, LOOK_SOLIDS, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
 import { BOLT_LINES, DRVVIEW, DRV_PRI, DRV_SHOUT, OWNER, OWNER_LINES, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, drainDriverCrimes, driverDecide, driverLine, duration, lineFor, ownerSay, perceive, perceiveDriver, personaOf, pushCrime, reportCrime, shout, wnow, type DriverReaction, type Reaction } from '../lib/witness';
-import { GRID, CURB, CURB_BUS, inJunction, exitSpot, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
+import { GRID, CURB, CURB_BUS, CURB_CAR, inJunction, exitSpot, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
 type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
@@ -626,7 +626,7 @@ function Traffic() {
           if (R.kind === 'film' && !R.calledIn && R.callAt && nowS >= R.callAt) { R.calledIn = true; if (reportCrime(R.fx, R.fz)) GAME.notice = '📞 A driver is calling the police on you!'; }
         }
       }
-      const base = l.speed * c.mul * rainFactor * rush, EX = halfW(l.road) * .5 + (c.role === 'bus' ? CURB_BUS : CURB); // (a bus is wide: it stops mostly in the road, not on the pavement) EX: how far the vehicle slides sideways to reach the kerb
+      const base = l.speed * c.mul * rainFactor * rush, EX = halfW(l.road) * .5 + (c.role === 'bus' ? CURB_BUS : c.role === 'bike' ? CURB : CURB_CAR); // (a bus is wide: it stops mostly in the road, not on the pavement) EX: how far the vehicle slides sideways to reach the kerb
       let v = c.v ?? base;
       if (c.hold) { v = Math.max(0, v - 14 * dt); c.v = v; } // being carjacked: brake to a stop
       else if (rk) {   // witnessed a crime: stop and stare / film / honk, or floor it away from it (but never straight towards it)
@@ -650,9 +650,10 @@ function Traffic() {
         if (c.v !== undefined) { v = Math.min(base, c.v + 5 * dt); c.v = v >= base && c.off === 0 ? undefined : v; }
       }
       let adv = v * dt, gap = Infinity;
-      for (const o of l.cars) if (o !== c && !o.busy) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) gap = d; }
+      let passing = false;   // a hailed vehicle is standing at the kerb ahead: go round it instead of queueing behind it for up to 2 minutes
+      for (const o of l.cars) if (o !== c && !o.busy) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) { if (c.hail === 0 && o.hail === 2 && o.off >= .5 && d > 2) { if (d < 16) passing = true; continue; } gap = d; } }
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
-      if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += (0-c.laneShift)*Math.min(1,dt*3);
+      if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += ((passing ? (l.axis === 'x' ? -l.dir : l.dir) * Math.min(1.1, halfW(l.road) * .5) : 0) - c.laneShift) * Math.min(1, dt * 3);
       for (const o of OB) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
       const ls = lightState(t, l.axis); if (Math.abs(ci) <= 5 && signalised(ci, l.road) && (ls === 'r' || (ls === 'y' && d - (halfW(ci) + 5.2) > 9)) && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
@@ -1013,7 +1014,7 @@ function TransportVehicles({ look }: { look: Look }) {
     const e = ROAM.cars[idx], tp = TPOS[idx]; if (!e || !tp || e.c.hail !== 2 || e.c.busy) { setOpen(null); if (pre) refundRide(pre); return; }
     const { l, c } = e, kind: 'taxi' | 'bike' | 'bus' = c.role === 'bus' ? 'bus' : c.role === 'bike' ? 'bike' : 'taxi';
     const start = { x: tp.x, z: tp.z, axis: l.axis, road: l.road, along: c.s, h: l.dir };
-    const curbFor = kind === 'bus' ? CURB_BUS : CURB, direct = planRide(start, [d.x, d.z], curbFor);
+    const curbFor = kind === 'bus' ? CURB_BUS : kind === 'bike' ? CURB : CURB_CAR, direct = planRide(start, [d.x, d.z], curbFor);
     if (!direct) { GAME.notice = 'It cannot set off from here: hail one nearer the middle of the map.'; releaseRoamer(c); DISPATCH.idx = -1; if (pre) refundRide(pre); setOpen(null); return; }
     let rt = direct, stops: BusStop[] | null = null, firstK = 0, riders = 1;
     if (kind === 'bus') { // the bus visits every passenger's stop (nearest first) and ends at yours
@@ -1541,6 +1542,7 @@ function placeCar(px: number, pz: number, pr: number) {
     if (!TPOS.some(c => Math.hypot(c.x - cx, c.z - cz) < 3.6)) break;
     a += sgn * 6;
   }
+  for (let k = 0; k < 6 && inJunction(alongZ ? lane : a, alongZ ? a : lane, 3.5); k++) a += sgn * 4;   // never leave it standing in the middle of a junction
   a = THREE.MathUtils.clamp(a, -120, 120);
   VEH.x = alongZ ? lane : a; VEH.z = alongZ ? a : lane;
   VEH.r = alongZ ? -sgn * Math.PI / 2 : (sgn === 1 ? 0 : Math.PI);

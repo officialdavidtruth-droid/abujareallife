@@ -15,6 +15,8 @@ const MAXI = 5;             // roads exist for indices -5..5
 export const CURB = 1.45;   // distance from the road edge to the middle of a parked vehicle (the sidewalk strip is >= 2.8 m wide)
 /** Buses are 2.2 m wide and 6 m long, so they stop with their body mostly IN the road (like a real bus stop) instead of on the pavement, where they clipped trees, lamps and billboards. */
 export const CURB_BUS = -.3;
+/** Cars (taxis, police) are ~1.9 m wide: with the old 1.45 m offset they sat on the pavement through the lamp posts (1.1 m past the road edge). Now they stop at the road edge, body just inside it. */
+export const CURB_CAR = -.15;
 const PULL_OUT = 5;         // metres the vehicle drives before it has merged into its lane
 const CORNER_R = 4.2;       // turning radius at junctions
 const clampI = (i: number) => Math.max(-MAXI, Math.min(MAXI, i));
@@ -26,7 +28,7 @@ const wrapA = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 /** A parking spot on the sidewalk strip beside a road, facing the way traffic on that side of the road flows. */
 export type Curb = { x: number; z: number; r: number; axis: Axis; road: number; along: number; side: 1 | -1; h: 1 | -1 };
 export function curbSpot(axis: Axis, road: number, along: number, side: 1 | -1): Curb {
-  const lat = side * (halfW(road) + CURB);
+  const lat = side * (halfW(road) + CURB_CAR);
   if (axis === 'x') return { x: along, z: road * GRID + lat, r: side === 1 ? 0 : Math.PI, axis, road, along, side, h: side };            // curb on the right of the heading
   return { x: road * GRID + lat, z: along, r: side === -1 ? -Math.PI / 2 : Math.PI / 2, axis, road, along, side, h: (-side) as 1 | -1 };
 }
@@ -48,7 +50,7 @@ function snapRoad(p: XZ): { axis: Axis; road: number; t: number } {
 
 /** Plan a ride from a parked spot to (roughly) `dest`: pull out, follow the right-hand lane along the roads, turn at junctions with a radius,
     pull in to the kerb well clear of the crossing. Returns null if the spot is too close to the edge of the road network. */
-export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 'h'>, dest: XZ, curb: number = CURB): Route | null {
+export function planRide(st: Pick<Curb, 'x' | 'z' | 'axis' | 'road' | 'along' | 'h'>, dest: XZ, curb: number = CURB_CAR): Route | null {
   const t0 = st.along + PULL_OUT * st.h;
   const nodeAhead = st.h === 1 ? Math.floor(t0 / GRID + 1e-9) + 1 : Math.ceil(t0 / GRID - 1e-9) - 1;
   if (Math.abs(nodeAhead) > MAXI) return null;

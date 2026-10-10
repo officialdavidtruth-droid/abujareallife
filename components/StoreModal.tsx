@@ -10,27 +10,35 @@ const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kit
 export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: { bizName: string; bizType: string; onClose: () => void; onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void }) {
   const cats = useMemo(() => CATS.filter(c => storeCats(bizType).includes(c.id)), [bizType]), all = useMemo(() => storeItems(bizType), [bizType]);
   const [tab, setTab] = useState<CatId | 'all' | 'owned'>('all'), [q, setQ] = useState(''), [sort, setSort] = useState<'cheap' | 'pricey' | 'az'>('cheap'), [qty, setQty] = useState(1);
+  const [shop, setShop] = useState<{ owner: string | null; prices?: Record<string, number> } | null>(null), [cmp, setCmp] = useState<{ name: string; list: number | null; shops: { businessId: string; name: string; district: string; owner: string; price: number }[] } | null>(null);
   const [pantry, setPantry] = useState<{ meals: number; supplies: number } | null>(null), [cash, setCash] = useState<number | null>(null), [owned, setOwned] = useState<Record<string, number>>({}), [note, setNote] = useState<{ t: string; bad?: boolean } | null>(null), [busy, setBusy] = useState('');
   useEffect(() => { sfx('open'); return () => sfx('close'); }, []);
   useEffect(() => {
     (async () => {
-      const [s, i, pn] = await Promise.all([fetch('/api/status').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/inventory').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/pantry').then(r => r.ok ? r.json() : null).catch(() => null)]);
+      const [s, i, pn, sh] = await Promise.all([fetch('/api/status').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/inventory').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/pantry').then(r => r.ok ? r.json() : null).catch(() => null), fetch('/api/shop').then(r => r.ok ? r.json() : null).catch(() => null)]);
+      if (sh) setShop(sh);
       if (pn) setPantry(pn); if (s) setCash(s.cash); if (i) setOwned(Object.fromEntries(i.items.map((x: { id: string; qty: number }) => [x.id, x.qty])));
     })();
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
   }, [onClose]);
   const say = (t: string, bad = false) => { setNote({ t, bad }); setTimeout(() => setNote(n => (n && n.t === t ? null : n)), 3200); };
 
+  const priceOf = (it: Item) => shop?.prices?.[it.id] ?? it.cost; // player-run shops set their own prices; the server charges the same number
+  async function compare(it: Item) {
+    const d = await fetch('/api/shop?compare=' + encodeURIComponent(it.id)).then(r => r.ok ? r.json() : null).catch(() => null);
+    setCmp(d ? { name: it.name, list: it.cost, shops: d.shops } : null); if (!d) say('Could not load prices.', true);
+  }
+
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let l: Item[] = tab === 'owned' ? Object.keys(owned).map(id => itemById(id)).filter((x): x is Item => !!x) : tab === 'all' ? all : all.filter(i => i.cat === tab);
     if (needle) l = l.filter(i => i.name.toLowerCase().includes(needle) || (CATS.find(c => c.id === i.cat)?.label || '').toLowerCase().includes(needle));
-    return [...l].sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? a.cost - b.cost : b.cost - a.cost);
-  }, [tab, q, sort, all, owned]);
+    return [...l].sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? priceOf(a) - priceOf(b) : priceOf(b) - priceOf(a));
+  }, [tab, q, sort, all, owned, shop]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function buy(it: Item) {
     if (busy) return; const n = it.use ? qty : Math.min(qty, 20);
-    if (cash != null && cash < it.cost * n) { sfx('error'); return say(`Not enough cash for ${n > 1 ? n + '× ' : ''}${it.name}`, true); }
+    if (cash != null && cash < priceOf(it) * n) { sfx('error'); return say(`Not enough cash for ${n > 1 ? n + '× ' : ''}${it.name}`, true); }
     setBusy(it.id);
     try {
       const r = await fetch('/api/shop', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ item: it.id, qty: n }) }), d = await r.json().catch(() => ({}));
@@ -56,17 +64,19 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
         <div className="stoSeg">{([['cheap', '₦↑'], ['pricey', '₦↓'], ['az', 'A–Z']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}</div>
         {tab !== 'owned' && <div className="stoSeg qty" title="How many to buy">{[1, 5, 10].map(n => <button key={n} className={qty === n ? 'on' : ''} onClick={() => setQty(n)}>×{n}</button>)}</div>}
       </div>
+      {shop?.owner && <div className="stoOwner">🏪 Run by <b>{shop.owner}</b> · prices are set by the owner</div>}
+      {cmp && <div className="stoCmpBox"><b>{cmp.name}</b> · list {naira(cmp.list || 0)} <button onClick={() => setCmp(null)} aria-label="Close comparison">✕</button>{cmp.shops.length ? cmp.shops.slice(0, 5).map(s => <div key={s.businessId}><span>{s.name} <small>{s.district} · {s.owner}</small></span><em>{naira(s.price)}</em></div>) : <div><span>No player-run shop sells this yet.</span></div>}</div>}
       {note && <div className={'stoNote' + (note.bad ? ' bad' : '')} key={note.t}>{note.t}</div>}
       <div className="stoGrid">
         {shown.length === 0 && <p className="stoEmpty">{tab === 'owned' ? 'Your bag is empty. Go shopping! 🛒' : 'Nothing matches that search.'}</p>}
-        {shown.map(it => { const have = owned[it.id] || 0, n = it.use ? qty : qty, poor = cash != null && cash < it.cost * n;
+        {shown.map(it => { const have = owned[it.id] || 0, n = it.use ? qty : qty, poor = cash != null && cash < priceOf(it) * n;
           return <div key={it.id} className={'stoCard' + (poor && tab !== 'owned' ? ' poor' : '')} style={{ ['--t' as string]: TINT[it.cat] }}>
             <div className="stoTile"><span>{it.e}</span>{have > 0 && <i className="stoOwn">×{have}</i>}</div>
             <b className="stoName">{it.name}</b>
             {it.pantry && <small className="stoUnits">+{it.units} {it.pantry === 'meals' ? 'meals' : 'uses'}</small>}
             {tab === 'owned' ? <div className="stoPrice">worth {naira(it.cost)}</div>
-              : <><div className="stoPrice">{naira(it.cost)}{n > 1 ? <small> ×{n}</small> : null}</div>
-                <button className="stoBuy" disabled={busy === it.id} onClick={() => buy(it)}>{busy === it.id ? '…' : it.use ? 'Eat / Drink' : 'Buy'}</button></>}
+              : <><div className="stoPrice">{naira(priceOf(it))}{n > 1 ? <small> ×{n}</small> : null}</div>
+                <button className="stoBuy" disabled={busy === it.id} onClick={() => buy(it)}>{busy === it.id ? '…' : it.use ? 'Eat / Drink' : 'Buy'}</button><button className="stoCmp" title="Compare prices at other player-run shops" onClick={() => compare(it)}>🔎 Compare</button></>}
           </div>; })}
       </div>
     </div>
@@ -75,6 +85,7 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
 }
 
 const CSS = `
+.stoOwner{margin:0 12px 6px;font-size:13px;color:var(--cream);opacity:.9}.stoCmp{all:unset;cursor:pointer;font-size:12px;opacity:.8;text-decoration:underline}.stoCmpBox{margin:0 12px 6px;padding:8px 12px;background:var(--plum2);border:3px solid var(--ink);border-radius:12px;font-size:14px}.stoCmpBox>button{all:unset;cursor:pointer;float:right}.stoCmpBox>div{display:flex;justify-content:space-between;gap:8px;margin-top:4px}.stoCmpBox small{opacity:.7}.stoCmpBox em{font-style:normal;color:var(--gold)}
 .stoPan{font-size:13px;padding:4px 10px}.stoUnits{display:block;text-align:center;font-size:11px;color:var(--cream);opacity:.85;margin-top:-2px}
 .stoBack{position:absolute;inset:0;z-index:60;background:#0a0612cc;display:grid;place-items:center;padding:10px;backdrop-filter:blur(3px);font-family:var(--gf)}
 .stoBox{width:min(900px,100%);height:min(640px,calc(100% - 4px));display:flex;flex-direction:column;background:var(--plum);color:var(--cream);border:4px solid var(--ink);border-radius:22px;box-shadow:0 7px 0 var(--ink),0 24px 50px #000a;overflow:hidden;animation:glPop .22s cubic-bezier(.3,1.5,.5,1)}

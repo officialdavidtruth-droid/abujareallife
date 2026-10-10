@@ -157,6 +157,8 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   const [gameOpen, setGameOpen] = useState(false), [score, setScore] = useState<Score>({ pts: 0, rounds: 0, bonus: 0 }), [gameKind, setGameKind] = useState<GameKind | null>(null); // optional job mini-game during a shift
   const toast = (m: string, bad = false) => { setMsg(m); setTimeout(() => setMsg(''), 4500); sfx(bad ? 'error' : /^(Done|💰|🎉|🚔 .* arrested)/.test(m) ? 'success' : 'pop'); };
   useEffect(() => { sfx('door'); }, []);
+  const [shopInfo, setShopInfo] = useState<{ owner: string | null; prices?: Record<string, number> } | null>(null); // who runs this building and what they charge
+  useEffect(() => { fetch('/api/shop').then(r => r.ok ? r.json() : null).then(d => d && setShopInfo(d)).catch(() => {}); }, []);
   /* Shop hold-up: the server hides when the police arrive. Staying fills the bag; running early takes a partial share; waiting too long = arrested. */
   type Hold = { ticket: string; start: number; bagSecs: number; minSecs: number; busy: boolean };
   const [hold, setHold] = useState<Hold | null>(null), holdRef = useRef<Hold | null>(null);
@@ -304,7 +306,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
       {menu.opts.map((o, i) => o.t === 'info' ? <p key={i}>{o.text}</p> : o.t === 'mgmt' ? mgmtMenu(i) : <button key={i} onClick={() => run(o)}>
         {o.t === 'shift' && <><span className="tx"><b>{o.label}</b><small>+{naira(o.pay)} · 8–12 min · task assigned{o.senior ? ' · needs rank 2' : ''}</small></span><em className="pill">Apply</em></>}
         {o.t === 'store' && <><span className="tx"><b>🛍️ Browse the store</b><small>{o.count} items · household, kitchen, furniture, tech, style &amp; more</small></span><em className="pill">Open</em></>}
-        {o.t === 'shop' && <><span className="tx"><b>{o.label}</b><small>{naira(o.cost)}</small></span><em className="pill">Buy</em></>}
+        {o.t === 'shop' && <><span className="tx"><b>{o.label}</b><small>{naira(shopInfo?.prices?.[o.id] ?? o.cost)}{shopInfo?.owner ? ` · run by ${shopInfo.owner}` : ''}</small></span><em className="pill">Buy</em></>}
         {o.t === 'quest' && <><span className="tx"><b>{qName(o.id).title}</b><small>{qName(o.id).blurb} · +{naira(qName(o.id).reward)} · {qName(o.id).secs}s{qName(o.id).legal ? '' : ' · 🔥 illegal'}</small></span><em className="pill">Start</em></>}
         {o.t === 'holdup' && <><span className="tx"><b>🔫 Hold up the clerk</b><small>{naira(CRIMES.rob_shop.loot[0])}–{naira(CRIMES.rob_shop.loot[1])} · +{HOLDUP.heat} heat · stay ~{HOLDUP.bagSecs}s to bag it all · the police may arrive first</small></span><em className="pill">Go</em></>}
         {o.t === 'crime' && <><span className="tx"><b>{CRIMES[o.id].label}</b><small>{naira(CRIMES[o.id].loot[0])}–{naira(CRIMES[o.id].loot[1])} · +{CRIMES[o.id].heat} heat · officers inside make it riskier</small></span><em className="pill">Try</em></>}</button>)}</div></div>}

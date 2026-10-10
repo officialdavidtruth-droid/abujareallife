@@ -342,11 +342,35 @@ model PlayerBusiness {
   balance     Int      @default(0)
   staff       Int      @default(0)
   menu        Json?
+  markup      Float    @default(1)   // price level: 1 = list price (0.5 to 3)
+  prices      Json?                  // per-item price overrides { itemId: naira }
+  settledAt   DateTime @default(now()) // idle sales are settled up to here (updatedAt moves on every sale, so it cannot be the marker)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
   @@index([district, type])
+}
+
+// A player working for another player's business (BIZJOBS.md). OFFERED until the player accepts, then ACTIVE.
+model BusinessEmployee {
+  id          String    @id @default(cuid())
+  businessId  String
+  userId      String
+  username    String
+  role        String
+  wage        Int       // naira per hour on shift
+  status      String    @default("OFFERED") // OFFERED | ACTIVE
+  clockedInAt DateTime?
+  clockWage   Int       @default(0) // wage locked in when the shift started
+  owed        Int       @default(0) // wages the business could not pay yet
+  earned      Int       @default(0)
+  createdAt   DateTime  @default(now())
+  hiredAt     DateTime?
+
+  @@unique([businessId, userId])
+  @@index([userId, status])
+  @@index([businessId, status])
 }
 
 model CareerProgress {

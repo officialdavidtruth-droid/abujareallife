@@ -25,6 +25,7 @@ import { createPortal } from 'react-dom';
 import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
+import { BuildingDress, Graffiti, LOOK_SOLIDS, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
 import { PEDVIEW, PRI, SHOUTS, assaultQuiet, decide, drainCrimes, duration, lineFor, perceive, personaOf, pushCrime, reportCrime, shout, wnow, type Reaction } from '../lib/witness';
 import { GRID, CURB, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
@@ -152,7 +153,8 @@ function Building({ b }: { b: CityBuilding }) {
   const type = b.business?.type ?? 'Office';
   const P = PROFILE[type] ?? DEF;
   const t = Math.min(1, Math.max(0, (b.h - 3) / 5.6));
-  const floors = Math.max(2, Math.round(P.f[0] + (P.f[1] - P.f[0]) * t));
+  const fixedH = type === 'Government' || type === 'Hospital' || type === 'Airport' || type === 'Rail Station' || type === 'Police Station' || type === 'Jail', jr = hs(b.id + 'j'); // step 8: +/- 1 storey so neighbours differ
+  const floors = Math.max(2, Math.round(P.f[0] + (P.f[1] - P.f[0]) * t) + (fixedH ? 0 : jr < .3 ? -1 : jr > .78 ? 1 : 0));
   const tower = floors >= 8, lowF = tower ? Math.round(floors * .5) : floors, upF = floors - lowF;
   const H1 = lowF * FH, bodyTop = tower ? H1 + .24 + upF * FH : H1, top = bodyTop + .24;
   const uw = b.w * .72, ud = b.d * .72, rw = tower ? uw : b.w, rd = tower ? ud : b.d;
@@ -175,7 +177,7 @@ function Building({ b }: { b: CityBuilding }) {
       <mesh position={[0, 1.05, fz + .15]}><planeGeometry args={[gov ? 1.4 : .8, gov ? 1.9 : 1.45]} /><meshStandardMaterial color="#9fd0e8" emissive="#7fb6d6" emissiveIntensity={.35} /></mesh>
       {!gov && <>
         <mesh position={[0, 1.5, fz + .07]}><planeGeometry args={[b.w * .78, 1.45]} /><meshStandardMaterial color="#1a2a35" metalness={.6} roughness={.15} emissive="#ffcf80" emissiveIntensity={.22} /></mesh>
-        <mesh position={[0, 2.45, fz + .5]} rotation={[.4, 0, 0]}><boxGeometry args={[b.w * .7, .07, .95]} /><meshStandardMaterial color={P.sign} roughness={.9} /></mesh>
+        <mesh position={[0, 2.45, fz + .5]} rotation={[.4, 0, 0]} material={awningMat(P.sign, type)}><boxGeometry args={[b.w * .7, .07, .95]} /></mesh>
       </>}
       <mesh position={[0, 2.95, fz + .07]}><boxGeometry args={[b.w * .8, .55, .1]} /><meshStandardMaterial color={P.sign} roughness={.6} /></mesh>
       
@@ -197,6 +199,7 @@ function Building({ b }: { b: CityBuilding }) {
         <mesh position={[0, H1 - 1.5, fz + .05]}><boxGeometry args={[.45, 1.6, .06]} /><meshStandardMaterial color="#d11a2a" /></mesh>
       </>}
       {(type === 'Nightclub' || type === 'Cinema') && <mesh position={[0, 3.35, fz + .08]}><boxGeometry args={[b.w * .9, .1, .05]} /><meshStandardMaterial color={type === 'Nightclub' ? '#c026d3' : '#ffb300'} emissive={type === 'Nightclub' ? '#c026d3' : '#ffb300'} emissiveIntensity={2.2} /></mesh>}
+      <BuildingDress b={b} type={type} signColor={P.sign} top={top} floors={floors} rw={rw} rd={rd} />
     </group>
   );
 }
@@ -231,8 +234,8 @@ const MARKS = (() => {
 function Roads() {
   const idx = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
   return <>{idx.map(i => <group key={i}>
-    <mesh position={[i * GRID, .01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[halfW(i) * 2, 250]} /><meshStandardMaterial color="#2b2f35" roughness={.95} /></mesh>
-    <mesh position={[0, .011, i * GRID]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[250, halfW(i) * 2]} /><meshStandardMaterial color="#2b2f35" roughness={.95} /></mesh>
+    <mesh position={[i * GRID, .01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[halfW(i) * 2, 250]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
+    <mesh position={[0, .011, i * GRID]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[250, halfW(i) * 2]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
   </group>)}</>;
 }
 function Trees() {
@@ -1269,6 +1272,7 @@ function placeCar(px: number, pz: number, pr: number) {
 /* ───────────── collision ───────────── */
 const BODY = .45;
 const SOLIDS = [
+  ...LOOK_SOLIDS,
   ...BUILDS.map(b => ({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 })),
   { x0: AIR.x - 4.5 * AIR.s, x1: AIR.x + 4.5 * AIR.s, z0: AIR.z - 7 * AIR.s - 2.5 * AIR.s, z1: AIR.z - 7 * AIR.s + 2.5 * AIR.s },
 ];
@@ -1741,6 +1745,12 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Trees />
       <StreetLamps />
       <LampGlow />
+      <LookDriver night={NIGHT} />
+      <ShopGlow night={NIGHT} />
+      <StreetClutter />
+      <Graffiti />
+      <PowerLines />
+      <Puddles />
       <Signals />
       {BUILDS.map(b => <Building key={b.id} b={b} />)}
       <Traffic />

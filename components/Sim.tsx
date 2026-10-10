@@ -223,7 +223,7 @@ const enq = (o: Obj, a: Act) => { if (S.q.length > 12) return; S.q.push(...route
 // Emotes play right where you stand, no furniture needed.
 const emote = (a: Act) => { S.q = []; S.prog = 0; S.cur = { t: 'act', a, o: { id: 'self', name: 'You', p: [0, 0], rot: 0, spot: [S.pos[0], S.pos[1]], face: S.rot, acts: [] } }; };
 /* Third-person (GTA-style) house: WASD / stick walk the character directly, the camera follows behind, E uses the furniture you are next to. */
-const TP = { on: false, keys: new Set<string>(), joy: [0, 0] as [number, number], yaw: 0, pitch: .3, dist: 3.8, last: 0, dir: null as null | [number, number], run: false };
+const TP = { on: false, keys: new Set<string>(), joy: [0, 0] as [number, number], yaw: 0, pitch: .3, dist: 3.8, last: 0, dir: null as null | [number, number], run: false, runLock: false, nearName: '', interact: null as null | (() => void) };
 const actOff = (a: Act, u: { power: boolean; cash: number; meals: number; fam: { away: boolean }[] }) => (!!a.pow && !u.power) || (a.cost || 0) > u.cash || (USES[a.k]?.meals || 0) > u.meals || (a.all === 'dinner' && u.fam.every(f => f.away));
 const turn = (r: number, t: number, f: number) => r + ((((t - r + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * f;
 
@@ -855,6 +855,15 @@ function Member({ m, look, ui, onPick }: { m: Mem; look: Look; ui: UI; onPick: (
     {hov && !f?.away && <Html position={[0, 1.75 * m.h + .95, 0]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{m.name}</div></Html>}
   </group>;
 }
+function TPButtons() { // on-screen action buttons for touch screens
+  const [nm, setNm] = useState(''), [run, setRun] = useState(false);
+  useEffect(() => { const i = setInterval(() => setNm(TP.nearName), 150); return () => { clearInterval(i); TP.runLock = false; }; }, []);
+  return <div className="tpBtns">
+    <button className={'tpB' + (run ? ' on' : '')} aria-label="Run" onClick={() => { TP.runLock = !TP.runLock; setRun(TP.runLock); }}><span>🏃</span><small>RUN</small></button>
+    <button className="tpB" aria-label="Camera behind me" onClick={() => { TP.yaw = S.rot + Math.PI; TP.pitch = .3; }}><span>🎥</span><small>CAMERA</small></button>
+    <button className={'tpB use' + (nm ? ' ready' : '')} aria-label="Use" onClick={() => TP.interact?.()}><span>✋</span><small>{nm || 'USE'}</small></button>
+  </div>;
+}
 function TPStick() { // on-screen thumb stick for phones and tablets
   const base = useRef<HTMLDivElement>(null), knob = useRef<HTMLDivElement>(null), pid = useRef(-1);
   const set = (e: React.PointerEvent) => { const r = base.current!.getBoundingClientRect(), rad = r.width / 2; let x = (e.clientX - r.left - rad) / rad, y = (e.clientY - r.top - rad) / rad; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; } TP.joy = [x, y]; knob.current!.style.transform = `translate(${x * rad * .6}px,${y * rad * .6}px)`; };
@@ -919,11 +928,17 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
   const [hov, setHov] = useState<string | null>(null), floorTex = useMemo(() => woodTex(8.8, 4.6), []), flooks = useMemo(() => famLooks(look), [look.gender, look.skin]); // eslint-disable-line react-hooks/exhaustive-deps
   const [near, setNear] = useState<Obj | null>(null), R = useRef({ near: null as Obj | null, sel: null as Obj | null, ui, kbd, setSel }), cam = useRef({ p: new THREE.Vector3(), t: new THREE.Vector3(), init: false }), nearAt = useRef(0);
   R.current = { near, sel, ui, kbd, setSel };
-  TP.on = tpOn;
+  TP.on = tpOn; TP.nearName = near && !sel && !S.cur ? near.name : '';
+  const coarse = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches, []);
   useEffect(() => { // camera lens + leaving third-person puts the overview camera back
     camera.near = tpOn ? .08 : .1; (camera as THREE.PerspectiveCamera).fov = tpOn ? 58 : 42; camera.updateProjectionMatrix(); cam.current.init = false;
     if (!tpOn) { camera.position.set(3, 13, 16); camera.lookAt(0, 0, 0); TP.keys.clear(); TP.dir = null; setNear(null); }
   }, [tpOn, camera]);
+  useEffect(() => { // "use what is next to you": the E key and the on-screen USE button both call this
+    if (!tpOn) return;
+    TP.interact = () => { const { near: n, sel: sl, ui: u, setSel: ss } = R.current; if (sl) ss(null); else if (n) ss(u.famOn ? n : { ...n, acts: n.acts.filter(a => !a.all) }); };
+    return () => { TP.interact = null; TP.nearName = ''; };
+  }, [tpOn]);
   useEffect(() => { // keyboard: WASD / arrows walk and turn the camera, Shift runs, E uses what is next to you, 1-9 picks an action
     if (!tpOn) return;
     const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement | null; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable); };
@@ -932,7 +947,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
       const c = e.code;
       if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(c)) { TP.keys.add(c); if (c.startsWith('Arrow')) e.preventDefault(); return; }
       if (e.repeat) return;
-      if (c === 'KeyE') { const { near: n, sel: sl, ui: u, setSel: ss } = R.current; if (sl) ss(null); else if (n) ss(u.famOn ? n : { ...n, acts: n.acts.filter(a => !a.all) }); }
+      if (c === 'KeyE') TP.interact?.();
       else if (c === 'Escape') R.current.setSel(null);
       else if (/^Digit[1-9]$/.test(c)) { const { sel: sl, ui: u, setSel: ss } = R.current, a = sl?.acts[Number(c.slice(5)) - 1]; if (sl && a && !actOff(a, u)) { enq(sl, a); ss(null); } }
     };
@@ -956,7 +971,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     if (tpOn) { // read the keys / stick into a walking direction relative to the camera
       const k = TP.keys; let fw = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0), rt = k.has('KeyD') ? 1 : 0; rt -= k.has('KeyA') ? 1 : 0;
       const j = TP.joy, jm = Math.hypot(j[0], j[1]); if (jm > .2) { rt += j[0]; fw -= j[1]; }
-      TP.run = k.has('ShiftLeft') || k.has('ShiftRight') || jm > .92;
+      TP.run = k.has('ShiftLeft') || k.has('ShiftRight') || jm > .92 || TP.runLock;
       if (k.has('ArrowLeft')) TP.yaw += d * 1.9; if (k.has('ArrowRight')) TP.yaw -= d * 1.9;
       const m = Math.hypot(fw, rt);
       if (m > .05 && R.current.kbd) { const fx = -Math.sin(TP.yaw), fz = -Math.cos(TP.yaw), n = Math.max(1, m); TP.dir = [(fx * fw + -fz * rt) / n, (fz * fw + fx * rt) / n]; if (R.current.sel) R.current.setSel(null); } else TP.dir = null;
@@ -984,7 +999,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
   return <>
     <Lights />
     {tpOn && <TPWalls ui={ui} />}
-    {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: 'none' }}><div className="tpPrompt"><b>E</b> {near.name}</div></Html>}
+    {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: coarse ? 'auto' : 'none' }}><div className="tpPrompt" onClick={() => TP.interact?.()}>{coarse ? <b>👆</b> : <b>E</b>} {near.name}</div></Html>}
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
     <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
       <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
@@ -1092,7 +1107,7 @@ export default function Sim() {
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d === 'object') for (const k of Object.keys(d)) if (k in S.needs && Number.isFinite(d[k])) S.needs[k as N] = cl(S.needs[k as N] + d[k]); }; window.addEventListener('arl-need-fx', f); return () => window.removeEventListener('arl-need-fx', f); }, []); // parties and other panels change needs through this event
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.meals === 'number') { S.meals = d.meals; S.supplies = d.supplies; } }; window.addEventListener('arl-pantry', f); return () => window.removeEventListener('arl-pantry', f); }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
-  return <div className={'sim' + (outside ? ' outside' : '')}>
+  return <div className={'sim' + (outside ? ' outside' : '') + (tp && !homeEdit && !outside ? ' tp' : '')}>
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
     {user && look && outside && !inside && <City tab={cityTab} onTab={setCityTab} look={look} getMinute={worldMinute} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
@@ -1124,7 +1139,7 @@ export default function Sim() {
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
     {!outside && <div className="hint">{tp && !homeEdit ? 'WASD walk · Shift run · Drag or ←/→ turn camera · Scroll zoom · E use · 1-9 pick · or tap the floor' : 'Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom'}</div>}
-    {user && look && !outside && tp && !homeEdit && <TPStick />}
+    {user && look && !outside && tp && !homeEdit && <><TPStick /><TPButtons /></>}
     {homeEdit && !outside && user && look && <div className="homeEditor">
       <div className="homeHead"><b>🏠 Home design</b><div className="homeHeadBtns"><button onClick={() => setHomeMin(v => !v)} aria-label="Minimise">{homeMin ? '▴' : '▾'}</button><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT }) }); setHomeSaving(false); say(r.ok ? '🏠 Home layout saved.' : 'Could not save home layout.'); }}>{homeSaving ? 'Saving…' : 'Save layout'}</button><button className="homeDone" onClick={() => { setHomeEdit(false); setHomeSel(null); setHomeMin(false); }}>✓ Done</button></div></div>
       {!homeMin && <>{homeSel ? <><strong>{homeName(homeSel)}</strong><div className="homeBtns"><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z - .25 }; blKey = '\0'; setUi(snap()); }}>↑</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x - .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>←</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x + .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>→</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z + .25 }; blKey = '\0'; setUi(snap()); }}>↓</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r - Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↺</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r + Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↻</button></div><div className="homeSelectedMeta">{(() => { const owned=HOME_OWNED.find(i=>i.id===homeSel); const name=homeName(homeSel); const price=owned?Math.round(owned.cost*.62*Math.max(.2,owned.condition/100)):({bed:260000,wardrobe:190000,fridge:780000,dining:220000,shower:90000,toilet:80000,tv:650000,desk:90000,mat:25000,radio:38000,shelf:85000,plant:5500,gen:190000,toybox:35000,kbedA:120000,kbedB:120000,nstand:38000,kwar:190000,gbench:140000,gbag:90000,cinema:950000,odesk:480000,oshelf:380000} as Record<string,number>)[homeSel]||0; return <span>Estimated resale: <b>{naira(price)}</b></span>; })()}{!homeSel.includes('.') && <button className="sellHome" onClick={async()=>{ if(!homeSel)return; const owned=HOME_OWNED.some(i=>i.id===homeSel); if(!confirm('Sell this item from your house?'))return; const r=await fetch('/api/home/furniture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'sell',kind:owned?'owned':'static',id:homeSel})}); const d=await r.json().catch(()=>({})); if(r.ok){ HOME_OWNED.splice(0,HOME_OWNED.length,...HOME_OWNED.filter(i=>i.id!==homeSel)); blKey='\0'; HOME_SOLD.add(homeSel); delete HOME_LAYOUT[homeSel]; setHomeItems([...HOME_OWNED]); setHomeSel(null); setUi(snap()); say(`Sold for ${naira(d.gained||0)}.`); } else say(d.error||'Could not sell item.'); }}>💰 Sell item</button>}</div></> : <span>Drag an item to move it, or tap it to nudge/rotate.</span>}
@@ -1147,7 +1162,8 @@ const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:cent
 .toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:#f0b94a;color:#1a1208;font-weight:700;font-size:13px;padding:9px 16px;border-radius:12px}
 .emotes{position:absolute;right:12px;top:64px;display:flex;flex-direction:column;gap:7px}.emotes button{width:42px;height:42px;border-radius:50%;border:1px solid #ffffff33;background:#10201ae6;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:transform .15s,background .2s}.emotes button:hover{transform:scale(1.12);background:#1d7654}.emotes button:active{transform:scale(.94)}
 .tag{background:#10201af0;border:1px solid #ffffff33;border-radius:8px;padding:4px 9px;font-size:11px;color:#fff;white-space:nowrap;animation:popIn .15s both}
-.tpPrompt{background:#10201aee;border:1px solid #ffffff44;border-radius:8px;padding:5px 10px;font-size:13px;color:#fff;white-space:nowrap}.tpPrompt b{display:inline-block;min-width:20px;text-align:center;margin-right:6px;padding:1px 5px;border-radius:5px;background:#f0b94a;color:#1a1410}.pie .tpK{font-style:normal;font-weight:700;min-width:18px;text-align:center;margin-right:6px;padding:0 4px;border-radius:4px;background:#f0b94a;color:#1a1410}.tpStick{display:none;position:absolute;right:22px;bottom:96px;width:116px;height:116px;border-radius:50%;background:#10201a88;border:2px solid #ffffff44;touch-action:none;z-index:30}.tpKnob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:#f0b94acc;border:2px solid #1a1410}@media(pointer:coarse){.tpStick{display:block}}
+.tpPrompt{background:#10201aee;border:1px solid #ffffff44;border-radius:8px;padding:5px 10px;font-size:13px;color:#fff;white-space:nowrap}.tpPrompt b{display:inline-block;min-width:20px;text-align:center;margin-right:6px;padding:1px 5px;border-radius:5px;background:#f0b94a;color:#1a1410}.pie .tpK{font-style:normal;font-weight:700;min-width:18px;text-align:center;margin-right:6px;padding:0 4px;border-radius:4px;background:#f0b94a;color:#1a1410}.tpStick{display:none;position:absolute;left:20px;bottom:20px;width:112px;height:112px;border-radius:50%;background:#10201a88;border:2px solid #ffffff44;touch-action:none;z-index:30}.tpKnob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:#f0b94acc;border:2px solid #1a1410}@media(pointer:coarse){.tpStick{display:block}.tpBtns{display:flex}.hint{display:none}.pie .tpK{display:none}.sim.tp .needs{top:62px;bottom:auto;left:10px;width:150px;padding:6px 8px;font-size:11px}.sim.tp .needs .mood{font-size:12px}.sim.tp .queue{bottom:auto;top:12px;left:auto;right:12px;transform:none}}
+.tpBtns{display:none;position:absolute;right:72px;bottom:20px;gap:12px;align-items:flex-end;z-index:30}.tpB{width:58px;height:58px;border-radius:50%;border:2px solid #ffffff44;background:#10201aee;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0;touch-action:manipulation}.tpB span{font-size:21px;line-height:1}.tpB small{font-size:8px;font-weight:700;letter-spacing:.04em;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tpB.on{background:#1d7654}.tpB.use{width:74px;height:74px;border-color:#f0b94a88}.tpB.use.ready{background:#f0b94a;color:#1a1410;border-color:#fff}.tpB:active{transform:scale(.94)}
 .hint{position:absolute;right:12px;bottom:12px;font-size:10px;color:#ffffffaa;text-shadow:0 1px 3px #000;max-width:200px;text-align:right}
 .bubble{background:#fff;color:#000;border-radius:14px;padding:3px 9px;font-size:20px;box-shadow:0 2px 8px #0005}
 .pie{background:#10201af5;border:1px solid #ffffff33;border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:5px;min-width:170px}.pie b{font-size:11px;color:#f0b94a;text-transform:uppercase;letter-spacing:.1em;padding:0 4px}

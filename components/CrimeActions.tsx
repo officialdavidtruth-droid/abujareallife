@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { GAME, PEDPOS, TPOS } from './CityWorld';
+import { GAME, JACK, PEDPOS, TPOS } from './CityWorld';
 import RuntimeStyle from './RuntimeStyle';
 import { NET } from '../lib/cityNet';
 import { CARJACK_RANGE, ROB_ANY_COOLDOWN_MS, ROB_KIND_COOLDOWN_MS, ROB_RANGE } from '../lib/profile';
@@ -76,6 +76,7 @@ export default function CrimeActions({ username, say, refresh }: { username: str
       const r = await post('/api/crime', { kind, policeNearby: copsNear() });
       if (!r.ok) { if (r.d.retryIn) startCooldown(a.k, r.d.retryIn); return say(r.d.error || 'It did not work.'); }
       startCooldown(a.k);
+      if (a.k === 'npcjack' && !r.d.jailSecs) { const ci = JACK.nearest(NET.me.x, NET.me.z, 8); if (ci >= 0) JACK.start(ci); }   // GTA-style: open the door, throw the driver out, take the wheel
       if (a.idx !== undefined) done.current.set(a.idx, Date.now() + PED_RETRY_MS);
       say(r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : a.k === 'mug' ? '😱 They screamed and fought back. You are WANTED.' : '😬 It went wrong. You are WANTED.') : `💰 You got away with ${naira(r.d.loot)}${r.d.wanted ? ' · you are WANTED' : ''}`);
     }

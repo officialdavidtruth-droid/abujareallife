@@ -1499,7 +1499,9 @@ function Pedestrians() {
       Pz.up += ((rk === 'handsup' ? 1 : rk === 'cower' ? .75 : 0) - Pz.up) * kk; Pz.crouch += ((rk === 'cower' ? 1 : 0) - Pz.crouch) * kk; Pz.film += ((rk === 'film' ? 1 : 0) - Pz.film) * kk; Pz.angry += ((rk === 'confront' ? 1 : 0) - Pz.angry) * kk; Pz.give += ((rk === 'give' ? 1 : 0) - Pz.give) * kk;
       const lean = (rk === 'flee' && p.moving ? .22 : 0) + Pz.crouch * .45;
       T.qa.setFromAxisAngle(T.Y, p.yaw); T.qb.setFromAxisAngle(T.Z, -(fall * Math.PI / 2 + lean)); T.q.copy(T.qa).multiply(T.qb);
-      T.pos.set(p.x, .12 * fall - .36 * Pz.crouch + (p.moving ? Math.abs(sw) * .03 : 0), p.z); T.base.compose(T.pos, T.q, T.sc);
+      // the hip drops as the legs swing apart / bend so the lowest foot always rests on the ground (before, both feet lifted off it mid-stride)
+      const legA = sw * .7 + Pz.crouch, legB = -sw * .7 + Pz.crouch, hipDrop = .76 * (Math.max(Math.cos(legA), Math.cos(legB)) - 1) * (1 - Math.min(1, fall));
+      T.pos.set(p.x, .12 * fall + hipDrop, p.z); T.base.compose(T.pos, T.q, T.sc);
       part(torso.current, i, 0, 1.05, 0); part(head.current, i, 0, 1.52, 0);
       part(legs.current, i * 2, 0, .78, .1, sw * .7 + Pz.crouch, -.38); part(legs.current, i * 2 + 1, 0, .78, -.1, -sw * .7 + Pz.crouch, -.38);
       const trem = Math.sin(t * 22 + i) * .07 * Pz.up, aL = -sw * .6 * (1 - Pz.up) + (2.8 + trem) * Pz.up, aR0 = sw * .6 * (1 - Pz.up) + (2.8 - trem) * Pz.up;
@@ -2264,6 +2266,9 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: '' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
+  useEffect(() => { // killed: climb out of any vehicle, drop the waypoint and the arrival spot; Sim.tsx puts you back in your house
+    const f = () => { VEH.drv = false; VEH.v = 0; GAME.nav = null; GAME.tp = null; }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f);
+  }, []);
   useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { if (VEH.drv) JACK.victimEject(); VEH.placed = false; VEH.drv = false; VEH.homed = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
     const startMission = (e: Event) => {

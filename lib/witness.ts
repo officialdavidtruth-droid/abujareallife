@@ -12,7 +12,7 @@
 
 export type Persona = 'coward' | 'bystander' | 'brave';
 export type CrimeKind = 'gunshot' | 'armed' | 'assault' | 'mug' | 'pickpocket' | 'carjack' | 'runover';
-export type ReactKind = 'freeze' | 'handsup' | 'cower' | 'flee' | 'film' | 'confront';
+export type ReactKind = 'freeze' | 'handsup' | 'cower' | 'flee' | 'film' | 'confront' | 'give';   // 'give' (step 7): holding out the cash you demanded
 export type Crime = { kind: CrimeKind; x: number; z: number; victim?: number };
 export type Reaction = { kind: ReactKind; until: number; fx: number; fz: number; sense: 'saw' | 'heard'; callAt: number; shoutAt: number; calledIn: boolean };
 export type Shout = { id: number; i: number; text: string; until: number };
@@ -42,7 +42,7 @@ export function perceive(kind: CrimeKind, d: number, facing: number): 'saw' | 'h
 }
 
 /* How strongly a reaction overrides another one already running (a fleeing ped is not downgraded to filming). */
-export const PRI: Record<ReactKind, number> = { freeze: 1, confront: 2, film: 2, handsup: 3, cower: 3, flee: 3 };
+export const PRI: Record<ReactKind, number> = { freeze: 1, confront: 2, film: 2, handsup: 3, cower: 3, flee: 3, give: 4 };
 
 export function decide(persona: Persona, kind: CrimeKind, sense: 'saw' | 'heard', d: number, isVictim: boolean, aimed: boolean, rnd: number): ReactKind | null {
   if (isVictim) {
@@ -68,7 +68,7 @@ export function decide(persona: Persona, kind: CrimeKind, sense: 'saw' | 'heard'
   }
 }
 
-export const duration = (k: ReactKind, rnd: number) => ({ freeze: 1.6 + rnd * 1.2, handsup: 6 + rnd * 2, cower: 7 + rnd * 3, flee: 8 + rnd * 3, film: 9 + rnd * 4, confront: 6 + rnd * 3 }[k]);
+export const duration = (k: ReactKind, rnd: number) => ({ freeze: 1.6 + rnd * 1.2, handsup: 6 + rnd * 2, cower: 7 + rnd * 3, flee: 8 + rnd * 3, film: 9 + rnd * 4, confront: 6 + rnd * 3, give: 1.7 }[k]);
 
 export const LINES: Record<ReactKind, string[]> = {
   flee: ['Run! Run!', 'Gun! Gun!', 'Abeg!', 'Wahala!', 'Somebody call the police!'],
@@ -77,6 +77,7 @@ export const LINES: Record<ReactKind, string[]> = {
   film: ['I dey call police!', 'I dey record you!', 'Police! Police!'],
   confront: ['Oga, what are you doing?!', 'Thief! Thief!', 'Leave am!', 'Are you mad?!'],
   freeze: ['Wetin be that?', 'Eh? What happened?', 'Hmm?'],
+  give: ['Take am, take am!', 'Na all I get!', 'Here! Just go!'],
 };
 export const lineFor = (k: ReactKind) => LINES[k][Math.floor(Math.random() * LINES[k].length)];
 
@@ -118,4 +119,35 @@ export function reportCrime(x: number, z: number): boolean {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('arl-witness-report', { detail: { x, z } }));
   if (now - lastReport < 15) return false;
   lastReport = now; return true;
+}
+
+/* ───────────── Step 7: street crime in the world ───────────── */
+
+/** Live reaction of every pedestrian (null = going about their day), written by CityWorld each frame.
+    CrimeActions reads it so the "demand cash" button only shows once the ped has really put their hands up. */
+export const PEDSTATE: (ReactKind | null)[] = [];
+
+/** Is a gun held at (mx, mz) facing `mr` pointing at (px, pz)? Same cone CityWorld uses for "hands up when aimed at". */
+export function aimedAt(mx: number, mz: number, mr: number, px: number, pz: number, range = 12): boolean {
+  const dx = mx - px, dz = mz - pz, d = Math.hypot(dx, dz) || .01;
+  return d < range && (Math.sin(mr) * -dx + Math.cos(mr) * -dz) / d > .82;
+}
+
+/** What a held-up pedestrian does. The SERVER decides whether the robbery works (loot, catch chance); this maps that verdict
+    onto the ped's personality: robbed = 'give', failed + brave = 'resist' (squares up), failed + anyone else = 'bolt' (runs, no cash). */
+export type DemandResult = 'give' | 'bolt' | 'resist';
+export const demandResult = (persona: Persona, failed: boolean): DemandResult => (!failed ? 'give' : persona === 'brave' ? 'resist' : 'bolt');
+export const BOLT_LINES = ['Abeg, I no get money!', 'Help! Armed robber!', 'Police! Police!'];
+export const RESIST_LINES = ['You think say I be small boy?!', 'Put am down, oga!', 'Na me you wan rob?!'];
+
+/** A carjacked owner's speech bubble (the thrown-out driver is not a pedestrian, so it cannot use SHOUTS). */
+export const OWNER = { text: '', until: 0 };
+export function ownerSay(text: string, secs = 2.8) { OWNER.text = text; OWNER.until = wnow() + secs; }
+export const OWNER_LINES = ['My car! Thief!', 'Come back here!', 'Police! He stole my car!', 'Somebody stop him!'];
+
+/** The owner of a stolen car phones the police after `delaySecs` (used by the chop-shop theft, where no owner is on screen).
+    Returns a cancel function. Step 6 turns the 'arl-witness-report' event into a patrol car. */
+export function ownerAlarm(x: number, z: number, delaySecs: number, onCall?: () => void): () => void {
+  const t = setTimeout(() => { if (reportCrime(x, z)) onCall?.(); }, delaySecs * 1000);
+  return () => clearTimeout(t);
 }

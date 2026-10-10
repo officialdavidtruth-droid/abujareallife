@@ -17,6 +17,10 @@ export async function POST(req: Request) {
   if (kind === 'rob_shop') return err('Shops are held up now: walk in and use the hold-up option.', 400);
   if (c.at && !c.at.includes(insideBiz(st.save)?.type || '')) return err('You have to be inside the right building for that.', 403);
   if (st.profile.profession === 'police') return err('Officers cannot commit crimes on duty.', 403);
+  if (kind === 'demand_npc') {   // step 7: point-and-demand needs a real gun in your inventory (bought at a Gun Shop)
+    const gun = await prisma.inventoryItem.findFirst({ where: { userId: u.id, itemKey: { startsWith: 'arm_' }, quantity: { gt: 0 } }, select: { id: true } });
+    if (!gun) return err('You need a gun to hold someone up. Buy one at a Gun Shop.', 403);
+  }
   if (ROB_KIND_COOLDOWN_MS[kind] !== undefined) {   // street robbery kinds (pickpocket, mug, NPC carjack) share the database-backed cooldown
     const wait = await robCooldownLeft(u.id, kind);
     if (wait > 0) return NextResponse.json({ error: `Lie low for ${secs(wait)}s before your next one.`, retryIn: wait }, { status: 429 });

@@ -126,9 +126,10 @@ export const QUESTS: Quest[] = [
 
 /* ───────── Crime & consequences (NO RULES, only consequences) ───────── */
 type CrimeDef = { label: string; loot: readonly [number, number]; heat: number; skill: SkillId; base: number; at?: readonly string[] };
-export const CRIMES: Record<'pickpocket' | 'mug_npc' | 'rob_shop' | 'carjack' | 'rob_bank', CrimeDef> = {
+export const CRIMES: Record<'pickpocket' | 'mug_npc' | 'demand_npc' | 'rob_shop' | 'carjack' | 'rob_bank', CrimeDef> = {
   pickpocket: { label: 'Pickpocket someone', loot: [8_000, 40_000], heat: 20, skill: 'stealth' as SkillId, base: 0.35 },
   mug_npc: { label: 'Mug a pedestrian', loot: [20_000, 90_000], heat: 35, skill: 'combat' as SkillId, base: 0.45 },
+  demand_npc: { label: 'Hold up a pedestrian at gunpoint', loot: [60_000, 180_000], heat: 50, skill: 'combat' as SkillId, base: 0.2 },   // step 7: needs a gun in your inventory; bigger take, but the heat is higher
   rob_shop: { at: ['Supermarket', 'Pharmacy', 'Market', 'Petrol Station', 'Restaurant', 'Salon', 'Barber', 'Car Dealer', 'Cinema', 'Gym'], label: 'Rob the till', loot: [40_000, 160_000], heat: 45, skill: 'stealth' as SkillId, base: 0.5 },
   carjack: { label: 'Carjack a vehicle', loot: [60_000, 200_000], heat: 55, skill: 'combat' as SkillId, base: 0.55 },
   rob_bank: { at: ['Bank'], label: 'Break into the vault', loot: [300_000, 900_000], heat: 90, skill: 'stealth' as SkillId, base: 0.8 },
@@ -218,10 +219,13 @@ export const NPC_COP_DELAY_MS = 8_000;                                  // after
 export const ROB_RANGE = 3.5, ROB_PCT = 0.3, ROB_MAX = 150_000, ROB_MIN = 1_000;   // mug a real player: take 30% of their cash, max ₦150k
 /* Shop hold-up (timed). You must stay `bagSecs` to bag everything; leaving after `minSecs` takes a partial share. The police arrival time is secret,
    rolled by the server (14-38 s, later with stealth skill, sooner for every police player online). If they get there first you are arrested. */
-export const HOLDUP = { bagSecs: 20, minSecs: 5, maxSecs: 90, etaMin: 14, etaMax: 38, etaPerStealth: 1.5, etaStealthMax: 8, etaFloor: 8, officerCut: 0.25, officerCutMax: 0.5, heat: 45, caughtHeat: 20, userCooldownMs: 300_000, shopCooldownMs: 600_000 };
+export const HOLDUP = { bagSecs: 20, minSecs: 5, maxSecs: 90, etaMin: 14, etaMax: 38, etaPerStealth: 1.5, etaStealthMax: 8, etaFloor: 8, officerCut: 0.25, officerCutMax: 0.5, heat: 45, caughtHeat: 20, userCooldownMs: 300_000, shopCooldownMs: 600_000,
+  clerkArmedChance: 0.25, clerkAtMin: 6, clerkAtMax: 14 };   // step 7: a quarter of clerks keep a gun under the counter and pull it 6-14 s in (run before then or get shot)
 export const ROB_ANY_COOLDOWN_MS = 20_000;                              // after ANY robbery attempt (player or NPC) wait this long before the next
-export const ROB_KIND_COOLDOWN_MS: Record<string, number> = { rob_player: 30_000, pickpocket: 20_000, mug_npc: 60_000, carjack: 120_000 };   // extra wait before repeating the same kind
+export const ROB_KIND_COOLDOWN_MS: Record<string, number> = { rob_player: 30_000, pickpocket: 20_000, mug_npc: 60_000, demand_npc: 75_000, carjack: 120_000 };   // extra wait before repeating the same kind
 export const ROB_VICTIM_SHIELD_MS = 120_000;                            // a player who was just robbed cannot be robbed again for this long
 export const ROB_HEAT = 45, ROB_COOLDOWN_MS = 90_000;                   // heat for mugging; one mugging per victim per 90 s
+export const DEMAND_RANGE = 5;                                          // step 7: point a gun at a pedestrian this close to demand their cash
+export const OWNER_CHASE_SECS = 7, OWNER_REPORT_SECS = 3;                // step 7: a carjacked owner chases you this long, then phones the police this many seconds later
 export const CARJACK_RANGE = 6, CARJACK_HEAT = 70;                      // steal a real player's car while they drive it
 export const KILL_HEAT = 70;                                            // heat for killing a player with a gun

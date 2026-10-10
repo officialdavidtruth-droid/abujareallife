@@ -18,7 +18,7 @@ import { sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import { buildInterior, staffLook, type Interior as Room, type Item, type Office, type Opt, type Post, type Spot } from '../lib/interiors';
 import { ROOM, useRoomNet } from '../lib/roomNet';
-import { NET } from '../lib/cityNet';
+import { NET, goDown } from '../lib/cityNet';
 import { CRIMES, HOLDUP, POLICE_ARREST_RANGE, QUESTS, type Profile } from '../lib/profile';
 import type { Look } from '../lib/characterModels';
 import { businessStatus } from '../lib/businessHours';
@@ -29,6 +29,8 @@ import JobGame, { type Score } from './JobGames';
 import { gameFor, type GameKind } from '../lib/jobGames';
 type Go = { path: [number, number][]; i: number; stuck: number; open?: { kind: 'spot'; id: string } | { kind: 'npc'; idx: number } };
 type Cam = { yaw: number; pitch: number; dist: number };
+/* Step 7: the scene of a hold-up in progress. The clerk (nearest staff member) puts their hands up; an armed clerk starts reaching under the counter 2.5 s before the gun comes out. */
+const HOLD = { on: false, idx: -1, armed: false, at: 0, start: 0 };
 const STAFF_POS: Record<number, { x: number; z: number }> = {}; // where each NPC is right now, so you can walk up to them
 type Ctl = { keys: Set<string>; joy: { x: number; y: number }; run: boolean; act: boolean };
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
@@ -86,7 +88,9 @@ function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: n
     const dd = Math.hypot(ROOM.me.x - q.x, ROOM.me.z - q.z), nr = dd < 1.9 || dd > 6.5; if (nr !== hid.current && tag.current) { hid.current = nr; tag.current.classList.toggle('near', nr); } // name plate steps out of the way when you are close
   });
   if (occ) return null;
-  const anim = () => { const near = Math.hypot(ROOM.me.x - s.current.x, ROOM.me.z - s.current.z) < 2.4; return post.anim === 'work' && near && (performance.now() / 1000) % 8 < 3 ? 'wave' : post.anim; };
+  const anim = () => {
+    if (HOLD.on) { const el = (Date.now() - HOLD.start) / 1000; return post.idx === HOLD.idx && HOLD.armed && el >= HOLD.at - 2.5 ? 'reach' : 'handsup'; }   // everyone behind the counter freezes with their hands up
+    const near = Math.hypot(ROOM.me.x - s.current.x, ROOM.me.z - s.current.z) < 2.4; return post.anim === 'work' && near && (performance.now() / 1000) % 8 < 3 ? 'wave' : post.anim; };
   return <group ref={g} position={[s.current.x, post.y ?? 0, s.current.z]} rotation-y={post.r} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); onTalk(post.idx); }}>
     <mesh position={[0, 1, 0]}><cylinderGeometry args={[.6, .6, 2, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
     <Human look={look} getState={() => (s.current.mv ? 'walk' : 'idle')} getAnim={post.patrol ? undefined : anim} />
@@ -156,24 +160,27 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   const [job, setJob] = useState<{ kind: 'shift' | 'quest' | 'mtask'; id: string | number; end: number; label: string } | null>(null), [, tick] = useState(0), [near, setNear] = useState<string | null>(null);
   const [gameOpen, setGameOpen] = useState(false), [score, setScore] = useState<Score>({ pts: 0, rounds: 0, bonus: 0 }), [gameKind, setGameKind] = useState<GameKind | null>(null); // optional job mini-game during a shift
   const toast = (m: string, bad = false) => { setMsg(m); setTimeout(() => setMsg(''), 4500); sfx(bad ? 'error' : /^(Done|💰|🎉|🚔 .* arrested)/.test(m) ? 'success' : 'pop'); };
-  useEffect(() => { sfx('door'); }, []);
+  useEffect(() => { sfx('door'); return () => { HOLD.on = false; }; }, []);
   const [shopInfo, setShopInfo] = useState<{ owner: string | null; prices?: Record<string, number> } | null>(null); // who runs this building and what they charge
   useEffect(() => { fetch('/api/shop').then(r => r.ok ? r.json() : null).then(d => d && setShopInfo(d)).catch(() => {}); }, []);
   /* Shop hold-up: the server hides when the police arrive. Staying fills the bag; running early takes a partial share; waiting too long = arrested. */
-  type Hold = { ticket: string; start: number; bagSecs: number; minSecs: number; busy: boolean };
+  type Hold = { ticket: string; start: number; bagSecs: number; minSecs: number; busy: boolean; clerk?: { armed: boolean; at: number }; warned?: boolean };
   const [hold, setHold] = useState<Hold | null>(null), holdRef = useRef<Hold | null>(null);
-  const finishHold = async (): Promise<'jail' | 'ok' | 'fail'> => {
+  const finishHold = async (): Promise<'jail' | 'shot' | 'ok' | 'fail'> => {
     const h = holdRef.current; if (!h || h.busy) return 'fail'; h.busy = true;
     const r = await post('/api/holdup', { action: 'finish', ticket: h.ticket });
-    holdRef.current = null; setHold(null);
+    holdRef.current = null; setHold(null); HOLD.on = false;
     if (!r.ok) { toast(r.d.error || 'The hold-up fell apart.', true); return 'fail'; }
     if (r.d.cash != null) onCash(r.d.cash);
+    if (r.d.shot) { goDown(r.d.koMs || 15000, 'ko'); toast(`🔫 The clerk pulled a gun and shot you! The haul is gone${r.d.bill ? ` · hospital bill ${naira(r.d.bill)}` : ''}`, true); setTimeout(() => onExit(), 1400); return 'shot'; }   // step 7: knocked out, thrown out of the shop
     if (r.d.caught) { toast(`🚔 The police burst in! You are arrested${r.d.fine ? ` · fined ${naira(r.d.fine)}` : ''}`, true); setTimeout(() => onExit(true), 1600); return 'jail'; }
     toast(r.d.loot ? `💰 You ${r.d.full ? 'bagged it all:' : 'grabbed'} ${naira(r.d.loot)}${r.d.wanted ? ' · WANTED: get out before the patrol arrives' : ''}` : '🏃 You ran with nothing.');
     return 'ok';
   };
   useEffect(() => { if (!hold) return; const i = setInterval(() => { const h = holdRef.current; if (h && Date.now() - h.start >= h.bagSecs * 1000) finishHold(); }, 300); return () => clearInterval(i); }, [hold]); // eslint-disable-line react-hooks/exhaustive-deps
-  const exitNow = async () => { if (holdRef.current && (await finishHold()) === 'jail') return; onExit(); };   // walking out mid hold-up = you run with what you have
+  /* step 7: an armed clerk reaches under the counter 2.5 s before the gun comes out. Run before then (button below) or the server shoots you when you finish. */
+  useEffect(() => { if (!hold?.clerk?.armed) return; const c = hold.clerk; const i = setInterval(() => { const h = holdRef.current; if (!h) return; const el = (Date.now() - h.start) / 1000; if (el >= c.at - 2.5 && !h.warned) { h.warned = true; sfx('error'); toast('⚠️ The clerk is reaching under the counter! RUN!', true); } if (el >= c.at) finishHold(); }, 150); return () => clearInterval(i); }, [hold]); // eslint-disable-line react-hooks/exhaustive-deps
+  const exitNow = async () => { if (holdRef.current) { const f = await finishHold(); if (f === 'jail' || f === 'shot') return; } onExit(); };   // walking out mid hold-up = you run with what you have
   const [mgr, setMgr] = useState<Mgr | null>(null), lock = useRef(false), restored = useRef(false), snappedMgr = useRef(false), blockedAt = useRef(0);
   const cam = useRef<Cam>({ yaw: 0, pitch: .85, dist: 10.5 }), go = useRef<Go | null>(null), nav = useMemo(() => makeNav(room), [room]), pts = useRef(new Map<number, { x: number; y: number }>()), pinch = useRef(0);
   const walk = (x: number, z: number, open?: Go['open']) => { const p = nav.path([ROOM.me.x, ROOM.me.z], [x, z]); if (!p || !p.length) return open ? undefined : toast("Can't walk there.", true); go.current = { path: p, i: 0, stuck: 0, open }; };
@@ -243,7 +250,9 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     if (job && (o.t === 'shift' || o.t === 'quest' || o.t === 'crime' || o.t === 'holdup')) return toast('Finish what you are doing first.', true);
     if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: `${o.label} · ${r.d.task}` }); const gk = gameFor(biz.type, o.label); setGameKind(gk); setScore({ pts: 0, rounds: 0, bonus: 0 }); setMenu(null); const po = room.posts.find(x => x.idx === o.idx); if (po) snap.current = stand(po); toast(`📍 ${o.label}: ${r.d.task} (${Math.round(r.d.secs / 60)} min). Stay in the building, walk around if you like - the shift keeps running.${gk ? ' Tap 🎮 to play the job for bonus pay.' : ''}`); }
     else if (o.t === 'quest') { const q = QUESTS.find(x => x.id === o.id)!, r = await post('/api/quest', { action: 'start', id: o.id }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'quest', id: o.id, end: Date.now() + r.d.secs * 1000, label: q.title }); setMenu(null); }
-    else if (o.t === 'holdup') { const r = await post('/api/holdup', { action: 'start' }); if (!r.ok) return toast(r.d.error, true); const h: Hold = { ticket: r.d.ticket, start: Date.now(), bagSecs: r.d.bagSecs, minSecs: r.d.minSecs, busy: false }; holdRef.current = h; setHold(h); setMenu(null); toast('🔫 Hands up! The clerk is emptying the till…'); }
+    else if (o.t === 'holdup') { const r = await post('/api/holdup', { action: 'start' }); if (!r.ok) return toast(r.d.error, true); const h: Hold = { ticket: r.d.ticket, start: Date.now(), bagSecs: r.d.bagSecs, minSecs: r.d.minSecs, busy: false, clerk: r.d.clerk }; holdRef.current = h; setHold(h);
+      let ci = -1, cd = 1e9; for (const [k, q] of Object.entries(STAFF_POS)) { const d = Math.hypot(ROOM.me.x - q.x, ROOM.me.z - q.z); if (d < cd) { cd = d; ci = Number(k); } }
+      Object.assign(HOLD, { on: true, idx: ci, armed: !!r.d.clerk?.armed, at: r.d.clerk?.at ?? 0, start: h.start }); setMenu(null); toast('🔫 Hands up! The clerk is emptying the till…'); }
     else if (o.t === 'store') { setStore(true); setMenu(null); }
     else if (o.t === 'shop') { const r = await post('/api/shop', { item: o.id }); if (!r.ok) return toast(r.d.error, true); onCash(r.d.cash); onFx(r.d.fx); sfx('buy'); toast(`Bought: ${o.label}`); }
     else if (o.t === 'crime') { const r = await post('/api/crime', { kind: o.id, policeNearby: cops() }); if (!r.ok) return toast(r.d.error, true); onCash(r.d.cash);
@@ -300,7 +309,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     <RuntimeStyle id="arl-jobopen" css={`.jgOpen{all:unset;cursor:pointer;margin-left:8px;padding:3px 9px;border-radius:99px;background:#d99a42;color:#1a1208;font-weight:900;font-size:11px;pointer-events:auto}`} />
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
     {hold && (() => { const el = (Date.now() - hold.start) / 1000, pct = Math.min(100, Math.round(el / hold.bagSecs * 100)), canRun = el >= hold.minSecs;
-      return <div className="hdBox"><b>🔫 HOLD-UP · 🚨 police on the way</b><i><u style={{ width: pct + '%' }} /></i><small>{pct >= 100 ? 'Bag is full!' : `Bagging the cash… ${pct}%`}</small><button disabled={!canRun} onClick={() => exitNow()}>{canRun ? '🏃 Take it & run' : 'Wait for the clerk…'}</button></div>; })()}
+      return <div className="hdBox"><b>🔫 HOLD-UP · 🚨 police on the way</b><i><u style={{ width: pct + '%' }} /></i><small>{hold.clerk?.armed && (Date.now() - hold.start) / 1000 >= hold.clerk.at - 2.5 ? '⚠️ The clerk is reaching for a gun! RUN!' : pct >= 100 ? 'Bag is full!' : `Bagging the cash… ${pct}%`}</small><button disabled={!canRun} onClick={() => exitNow()}>{canRun ? '🏃 Take it & run' : 'Wait for the clerk…'}</button></div>; })()}
     {hold && <RuntimeStyle id="arl-holdup" css={`.hdBox{position:absolute;left:50%;transform:translateX(-50%);top:calc(150px + env(safe-area-inset-top,0px));z-index:35;width:min(300px,calc(100vw - 24px));background:#450a0af2;color:#fff;border:1px solid #fca5a5aa;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;text-align:center;box-shadow:0 10px 30px #000a}.hdBox b{font-size:13px}.hdBox small{font-size:11px;color:#fecaca}.hdBox i{display:block;height:10px;border-radius:99px;background:#00000066;overflow:hidden}.hdBox u{display:block;height:100%;background:#f97316;transition:width .3s}.hdBox button{min-height:44px;border:0;border-radius:10px;background:#fff;color:#7f1d1d;font-weight:900;font-size:14px;touch-action:manipulation}.hdBox button:disabled{opacity:.55}`} />}
     {menu && <div className={'inMenu k-' + (menu.id.startsWith('npc') ? 'npc' : menu.id)} style={{ ['--e' as string]: `"${menu.e}"` }}><button className="x" aria-label="Close" onClick={() => setMenu(null)}>✕</button><h3><span>{menu.e} {menu.label}</span></h3><div className="inBody">
       {menu.opts.map((o, i) => o.t === 'info' ? <p key={i}>{o.text}</p> : o.t === 'mgmt' ? mgmtMenu(i) : <button key={i} onClick={() => run(o)}>

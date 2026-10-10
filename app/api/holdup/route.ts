@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
 import { addSkillXp, insideBiz, loadState, lvl } from '../../../lib/game';
-import { downState } from '../../../lib/downed';
+import { KO_DOWN_MS, downState } from '../../../lib/downed';
 import { holdupPlan, signHoldup, verifyHoldup } from '../../../lib/holdup';
 import { CRIMES, HOLDUP, JAIL_SECS_PER_HEAT } from '../../../lib/profile';
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
    finish : you stay `bagSecs` to bag everything, or take a partial share by running after `minSecs`. But the police arrive at a secret time:
             if that has already passed when you finish, you are arrested and the haul is gone.
    Cooldowns (database-backed): one hold-up per player per 5 min, and a shop's till stays empty for 10 min after anyone robs it. */
-const KINDS = ['holdup_win', 'holdup_caught', 'holdup_fled'];
+const KINDS = ['holdup_win', 'holdup_caught', 'holdup_fled', 'holdup_shot'];
 export async function POST(req: Request) {
   const u = await currentUser(); if (!u) return err('Not signed in.', 401);
   const b = await req.json().catch(() => ({}));
@@ -42,8 +42,10 @@ export async function POST(req: Request) {
       prisma.save.update({ where: { userId: u.id }, data: { heat, heatAt: new Date() } }),
       prisma.crime.create({ data: { userId: u.id, kind: 'holdup:' + biz.id, caught: false, loot: 0 } }),   // also the cooldown marker for you and the shop
     ]);
-    const { token } = await signHoldup({ userId: u.id, biz: biz.id, start: now, stealth: lvl(st.profile, CRIMES.rob_shop.skill), officers });
-    return NextResponse.json({ ok: true, ticket: token, bagSecs: HOLDUP.bagSecs, minSecs: HOLDUP.minSecs, heat, wanted: heat >= 40 });
+    const { token, jti } = await signHoldup({ userId: u.id, biz: biz.id, start: now, stealth: lvl(st.profile, CRIMES.rob_shop.skill), officers });
+    // step 7: the clerk is part of the scene, so the client is told who is behind the counter and WHEN a gun comes out (never the police time or the loot)
+    const clerk = holdupPlan({ jti, stealth: lvl(st.profile, CRIMES.rob_shop.skill), officers }).clerk;
+    return NextResponse.json({ ok: true, ticket: token, bagSecs: HOLDUP.bagSecs, minSecs: HOLDUP.minSecs, heat, wanted: heat >= 40, clerk });
   }
 
   if (b.action === 'finish') {
@@ -63,6 +65,16 @@ export async function POST(req: Request) {
       ]);
       const n = await loadState(u.id);
       return NextResponse.json({ ok: true, caught: true, jailSecs: secs, fine, heat, cash: n!.save.cash });
+    }
+    if (plan.clerk.armed && elapsed >= plan.clerk.at) {   // step 7: the clerk pulled a gun and you were still there: haul gone, knocked out, thrown out of the shop
+      const heat = Math.min(200, st.save.heat + Math.floor(HOLDUP.caughtHeat / 2)), bill = Math.floor(st.save.cash * 0.05);
+      await prisma.$transaction([
+        prisma.save.update({ where: { userId: u.id }, data: { heat, heatAt: new Date(), downUntil: new Date(now + KO_DOWN_MS), downKind: 'ko', inside: null, insideAt: null, ...(bill ? { cash: { decrement: bill } } : {}) } }),
+        prisma.crime.create({ data: { userId: u.id, kind: 'holdup_shot', caught: false, loot: 0 } }),
+        ...(bill ? [prisma.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -bill, description: 'medical:holdup' } })] : []),
+      ]);
+      const n = await loadState(u.id);
+      return NextResponse.json({ ok: true, caught: false, shot: true, koMs: KO_DOWN_MS, bill, heat, wanted: heat >= 40, cash: n!.save.cash });
     }
     const frac = Math.max(0, Math.min(1, (elapsed - HOLDUP.minSecs) / (HOLDUP.bagSecs - HOLDUP.minSecs)));
     const loot = Math.floor(plan.loot * frac);

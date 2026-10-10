@@ -3,17 +3,17 @@ import { useEffect, useRef, useState } from 'react';
 import { GAME, JACK, PEDPOS, TPOS } from './CityWorld';
 import RuntimeStyle from './RuntimeStyle';
 import { NET } from '../lib/cityNet';
-import { pushCrime } from '../lib/witness';
-import { CARJACK_RANGE, ROB_ANY_COOLDOWN_MS, ROB_KIND_COOLDOWN_MS, ROB_RANGE } from '../lib/profile';
+import { PEDSTATE, aimedAt, demandResult, personaOf, pushCrime } from '../lib/witness';
+import { CARJACK_RANGE, DEMAND_RANGE, ROB_ANY_COOLDOWN_MS, ROB_KIND_COOLDOWN_MS, ROB_RANGE } from '../lib/profile';
 
 /* Physical crime: walk up to someone and use the button that appears. Nothing here is a menu action any more.
    Real players: rob (on foot) / carjack (while they drive) -> /api/rob, /api/carjack (server checks reach + positions).
    NPCs: pickpocket or mug a pedestrian, carjack an AI driver -> /api/crime (loot, heat and catch chance are decided server-side).
    Street robbery has a cooldown. The SERVER enforces it (database-backed); the buttons only mirror it as a countdown. */
-type Kind = 'rob' | 'jack' | 'pick' | 'mug' | 'npcjack' | 'chop';
+type Kind = 'rob' | 'jack' | 'pick' | 'mug' | 'npcjack' | 'chop' | 'demand';
 type Act = { k: Kind; label: string; name?: string; idx?: number };
 const NPC_PED_RANGE = 2.2, NPC_CAR_RANGE = 5, PED_RETRY_MS = 180_000;
-const SERVER_KIND: Partial<Record<Kind, string>> = { rob: 'rob_player', pick: 'pickpocket', mug: 'mug_npc', npcjack: 'carjack' };   // jack (player carjack) has no cooldown here
+const SERVER_KIND: Partial<Record<Kind, string>> = { rob: 'rob_player', pick: 'pickpocket', mug: 'mug_npc', demand: 'demand_npc', npcjack: 'carjack' };   // jack (player carjack) has no cooldown here
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 const post = async (url: string, body: object) => { const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { ok: r.ok, d: await r.json().catch(() => ({})) as any }; }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -29,8 +29,15 @@ function scan(done: Map<number, number>): Act[] {
   if (rn) out.push({ k: 'rob', label: NET.peers[rn]?.ko ? `💰 Rob ${rn} (out cold)` : `💰 Rob ${rn}`, name: rn });
   if (jn) out.push({ k: 'jack', label: `🚗 Carjack ${jn}`, name: jn });
   if (out.length) return out;
+  const gun = !!(window as any).__arlWeapon;   // step 7: point a gun at someone until their hands go up, and the demand button appears (no menu: you ARE the threat)
+  let demanding = -1;
+  if (gun) for (let i = 0; i < PEDPOS.length; i++) {
+    const p = PEDPOS[i]; if (!p || (done.get(i) || 0) > now || PEDSTATE[i] !== 'handsup') continue;
+    if (Math.hypot(p.x - me.x, p.z - me.z) < DEMAND_RANGE && aimedAt(me.x, me.z, GAME.player.r, p.x, p.z, DEMAND_RANGE)) { demanding = i; out.push({ k: 'demand', label: '🔫 Demand their cash', idx: i }); break; }
+  }
   for (let i = 0; i < PEDPOS.length; i++) {   // a pedestrian you already hit is "tapped out" for a few minutes
     const p = PEDPOS[i]; if (!p || (done.get(i) || 0) > now || Math.hypot(p.x - me.x, p.z - me.z) >= NPC_PED_RANGE) continue;
+    if (i === demanding) break;   // already held at gunpoint: the demand button replaces pickpocket / mug
     out.push({ k: 'pick', label: '🖐️ Pickpocket', idx: i }, { k: 'mug', label: '🔪 Mug', idx: i }); break;
   }
   for (const t of TPOS) if (t && t.x < 9e4 && Math.hypot(t.x - me.x, t.z - me.z) < NPC_CAR_RANGE) { out.push({ k: 'npcjack', label: '🚘 Carjack the driver' }); if (!(window as any).__arlChop) out.push({ k: 'chop', label: '🔧 Steal it for the chop shop' }); break; }
@@ -59,8 +66,8 @@ export default function CrimeActions({ username, say, refresh }: { username: str
     if (busy.current || left(a.k) > 0) return; busy.current = true; setTimeout(() => { busy.current = false; }, 1500);
     if (a.k === 'chop') { const f = (window as any).__arlChopSteal as ((n: number) => void) | undefined; if (f) f(copsNear()); return; }   // the chop shop job (components/ChopShop.tsx) does the rest
     // street crime on an NPC happens in front of other NPCs: they react in the world, and the server adds heat per witness who saw it
-    const wit = a.k === 'pick' || a.k === 'mug' || a.k === 'npcjack' ? pushCrime({ kind: a.k === 'pick' ? 'pickpocket' : a.k === 'mug' ? 'mug' : 'carjack', x: NET.me.x, z: NET.me.z, victim: a.idx }) : 0;
-    NET.me.anim = 'punch'; NET.me.animUntil = Date.now() + 450;
+    const wit = a.k === 'pick' || a.k === 'mug' || a.k === 'demand' || a.k === 'npcjack' ? pushCrime({ kind: a.k === 'pick' ? 'pickpocket' : a.k === 'mug' || a.k === 'demand' ? 'mug' : 'carjack', x: NET.me.x, z: NET.me.z, victim: a.idx }) : 0;
+    if (a.k === 'demand') { NET.me.anim = 'aim'; NET.me.animUntil = Date.now() + 900; } else { NET.me.anim = 'punch'; NET.me.animUntil = Date.now() + 450; }
     if (a.k === 'rob' || a.k === 'jack') {
       const q = a.name ? NET.peers[a.name] : null; if (!q || !a.name) return say('They moved away.');
       const body = { target: a.name, sx: NET.me.x, sz: NET.me.z, tx: q.x, tz: q.z };
@@ -76,14 +83,15 @@ export default function CrimeActions({ username, say, refresh }: { username: str
         window.dispatchEvent(new CustomEvent('arl-net-fx', { detail: { to: a.name, t: `🚗 ${username} stole your ${r.d.car}!` } }));
       }
     } else {
-      const kind = a.k === 'pick' ? 'pickpocket' : a.k === 'mug' ? 'mug_npc' : 'carjack';
+      const kind = a.k === 'pick' ? 'pickpocket' : a.k === 'mug' ? 'mug_npc' : a.k === 'demand' ? 'demand_npc' : 'carjack';
       const ci = a.k === 'npcjack' ? JACK.nearest(NET.me.x, NET.me.z, 8) : -1, info = ci >= 0 ? JACK.info(ci) : null;   // which vehicle you are jacking (car, taxi, police, bus, bike)
       const r = await post('/api/crime', { kind, policeNearby: copsNear(), witnesses: wit, ...(info ? { role: info.role, model: info.model } : {}) });
       if (!r.ok) { if (r.d.retryIn) startCooldown(a.k, r.d.retryIn); return say(r.d.error || 'It did not work.'); }
       startCooldown(a.k);
+      if (a.k === 'demand' && a.idx !== undefined) window.dispatchEvent(new CustomEvent('arl-ped-demand', { detail: { idx: a.idx, result: demandResult(personaOf(a.idx), !!r.d.caught) } }));   // the pedestrian hands it over, bolts, or squares up: CityWorld plays it
       if (ci >= 0 && !r.d.caught) JACK.start(ci);   // GTA-style: open the door, throw the driver out, take the wheel
       if (a.idx !== undefined) done.current.set(a.idx, Date.now() + PED_RETRY_MS);
-      say((wit ? `👀 ${Math.min(3, wit)} saw you. ` : '') + (r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : a.k === 'mug' ? '😱 They screamed and fought back. You are WANTED.' : '😬 It went wrong. You are WANTED.') : `💰 You got away with ${naira(r.d.loot)}${r.d.car ? ` · 🚗 ${r.d.car} is now in your garage (stolen: unregistered, uninsured)` : ''}${r.d.wanted ? ' · you are WANTED' : ''}`));
+      say((wit ? `👀 ${Math.min(3, wit)} saw you. ` : '') + (r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : a.k === 'demand' ? '😤 They did not hand it over. You are WANTED.' : a.k === 'mug' ? '😱 They screamed and fought back. You are WANTED.' : '😬 It went wrong. You are WANTED.') : `${a.k === 'demand' ? '🔫 They handed it over: ' : '💰 You got away with '}${naira(r.d.loot)}${r.d.car ? ` · 🚗 ${r.d.car} is now in your garage (stolen: unregistered, uninsured)` : ''}${r.d.wanted ? ' · you are WANTED' : ''}`));
     }
     refresh();
   };

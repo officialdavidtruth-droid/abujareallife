@@ -24,10 +24,12 @@ export async function verifyHoldup(token: string): Promise<HoldupTicket | null> 
     return { userId: payload.sub, biz: payload.b, start: payload.t, stealth: payload.s, officers: payload.o, jti: payload.jti };
   } catch { return null; }
 }
-/** Seconds until the police arrive, and the full haul, for this ticket. */
+/** Seconds until the police arrive, the full haul, and the clerk (step 7): comply, or keep a gun under the counter and pull it `at` seconds in. */
 export function holdupPlan(t: Pick<HoldupTicket, 'jti' | 'stealth' | 'officers'>) {
   const H = HOLDUP, [lo, hi] = CRIMES.rob_shop.loot;
   const base = H.etaMin + rnd(t.jti, 'eta') * (H.etaMax - H.etaMin) + Math.min(H.etaStealthMax, t.stealth * H.etaPerStealth);
   const eta = Math.max(H.etaFloor, base * (1 - Math.min(H.officerCutMax, t.officers * H.officerCut)));
-  return { eta, loot: Math.floor(lo + rnd(t.jti, 'loot') * (hi - lo)) };
+  const armedChance = Math.max(0.08, H.clerkArmedChance - t.stealth * 0.02);   // a quieter robber gives the clerk less reason to reach
+  const clerk = { armed: rnd(t.jti, 'clerk') < armedChance, at: H.clerkAtMin + rnd(t.jti, 'clerkAt') * (H.clerkAtMax - H.clerkAtMin) };
+  return { eta, loot: Math.floor(lo + rnd(t.jti, 'loot') * (hi - lo)), clerk };
 }

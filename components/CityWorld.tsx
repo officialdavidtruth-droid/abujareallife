@@ -12,7 +12,7 @@ import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
 import { FIGHT, NET, useCityNet } from '../lib/cityNet';
 import { SAFE_AFTER_WAKE_MS } from '../lib/downed';
-import { JAIL_CELL_POS, WANTED_AT } from '../lib/profile';
+import { JAIL_CELL_POS, OWNER_CHASE_SECS, OWNER_REPORT_SECS, WANTED_AT } from '../lib/profile';
 import { PATROL, carsFor, copsFor, lineBlocked, type Rect } from '../lib/police';
 import CityPeople from './CityPeople';
 import MissionsCombat from './MissionsCombat';
@@ -27,7 +27,7 @@ import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
 import { BuildingDress, Graffiti, LOOK_SOLIDS, LookDriver, PowerLines, Puddles, ROAD_MAT, ShopGlow, StreetClutter, awningMat } from './CityLook';
-import { PEDVIEW, PRI, SHOUTS, assaultQuiet, decide, drainCrimes, duration, lineFor, perceive, personaOf, pushCrime, reportCrime, shout, wnow, type Reaction } from '../lib/witness';
+import { BOLT_LINES, OWNER, OWNER_LINES, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, duration, lineFor, ownerSay, perceive, personaOf, pushCrime, reportCrime, shout, wnow, type Reaction } from '../lib/witness';
 import { GRID, CURB, curbSpot, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
@@ -421,7 +421,7 @@ export const JACK = {
   ph: 0, t: 0, wp: 0, walk: false, fx: false,
   on: false, sRole: 'car' as JRole, stolenIdx: -1, model: '', color: '', victimUntil: 0,
   refresh: () => {}, ghostRefresh: () => {}, setNpcLook: (_l: Look) => {},
-  npc: { on: false, t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0] as [number, number], run: [0, 0] as [number, number], yaw: 0, walk: false },
+  npc: { on: false, t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0] as [number, number], run: [0, 0] as [number, number], yaw: 0, walk: false, chase: false, cx: 0, cz: 0, said: 0, called: false },
   /** nearest vehicle you could jack: ordinary car, taxi, police car, bus or bike (not one that is carrying / being hailed) */
   nearest(px: number, pz: number, range: number) {
     let bi = -1, bd = range;
@@ -484,7 +484,7 @@ function stepJack(p: { x: number; z: number; r: number; y: number; vy: number },
       }
       JACK.setNpcLook(look); if (o.driver) o.driver.visible = false;
       const from = w(cfg.seat), to = w(cfg.land), away = w(cfg.away);
-      Object.assign(JACK.npc, { on: true, t: 0, from: [from[0], cfg.seatY, from[1]], to, run: away, yaw: Math.atan2(to[0] - from[0], to[1] - from[1]) });
+      Object.assign(JACK.npc, { on: true, t: 0, from: [from[0], cfg.seatY, from[1]], to, run: away, yaw: Math.atan2(to[0] - from[0], to[1] - from[1]), chase: !JACK.ghost, cx: to[0], cz: to[1], said: 0, called: false });   // step 7: an AI driver chases you and phones the police; a real player's own character is not controlled here
       punch(); thud(.8); JACK.ph = 3; JACK.t = 0;
     }
   } else if (JACK.ph === 3) { // the throw
@@ -507,22 +507,34 @@ function stepJack(p: { x: number; z: number; r: number; y: number; vy: number },
 }
 /** the thrown-out driver: flies out of the seat, lands on the road, lies there, gets up and runs away */
 function JackNpc() {
-  const g = useRef<THREE.Group>(null!), [look, setLook] = useState<Look>(DEFAULT_LOOK);
+  const g = useRef<THREE.Group>(null!), bub = useRef<THREE.Group>(null!), [look, setLook] = useState<Look>(DEFAULT_LOOK), [say, setSay] = useState('');
+  useEffect(() => { const id = setInterval(() => { const v = OWNER.until > wnow() ? OWNER.text : ''; setSay(p => (p === v ? p : v)); }, 150); return () => clearInterval(id); }, []);
   useEffect(() => { JACK.setNpcLook = setLook; return () => { JACK.setNpcLook = () => {}; }; }, []);
   useFrame((_, dtRaw) => {
     const n = JACK.npc, gr = g.current; if (!gr) return;
-    if (!n.on) { gr.visible = false; return; }
-    n.t += Math.min(dtRaw, .05); const t = n.t; n.walk = false;
+    if (!n.on) { gr.visible = false; if (bub.current) bub.current.visible = false; return; }
+    const dt = Math.min(dtRaw, .05); n.t += dt; const t = n.t; n.walk = false;
     const LIE = -1.45, t1 = JT.arc, t2 = t1 + JT.lie, t3 = t2 + JT.getUp, t4 = t3 + JT.run;
     let x = n.to[0], z = n.to[1], y = .13, rx = LIE, yaw = n.yaw;
     if (t < t1) { const u = t / t1; x = n.from[0] + (n.to[0] - n.from[0]) * u; z = n.from[2] + (n.to[1] - n.from[2]) * u; y = n.from[1] * (1 - u) + .13 * u + 1.1 * Math.sin(Math.PI * u); rx = LIE * ease(u * 1.4); }
     else if (t < t2) { /* lying in the road */ }
     else if (t < t3) { const u = ease((t - t2) / JT.getUp); rx = LIE * (1 - u); y = .13 * (1 - u); }
+    else if (n.chase) {   // step 7: the owner does not just run off: they chase you, shout, then stand and phone the police (Step 6 sends the patrol)
+      const tc = t3 + OWNER_CHASE_SECS, tr = tc + OWNER_REPORT_SECS; rx = 0; y = 0;
+      const tg = VEH.drv ? VEH : GAME.player, dx = tg.x - n.cx, dz = tg.z - n.cz, d = Math.hypot(dx, dz) || 1;
+      if (t < tc && d < 45) { if (d > 1.8) { const st = Math.min(d - 1.8, 5.2 * dt); n.cx += dx / d * st; n.cz += dz / d * st; n.walk = true; } if (OWNER.until < wnow()) ownerSay(OWNER_LINES[Math.floor(t * 1.7) % OWNER_LINES.length], 1.6); }
+      else if (t < tr) { if (!n.said) { n.said = 1; ownerSay('Hello? Police! Somebody stole my car!', OWNER_REPORT_SECS + 1.2); } }
+      else if (t < tr + 3) { if (!n.called) { n.called = true; if (reportCrime(n.cx, n.cz)) GAME.notice = '📞 The owner is calling the police on you!'; } }
+      else { n.on = false; gr.visible = false; if (bub.current) bub.current.visible = false; OWNER.until = 0; return; }
+      x = n.cx; z = n.cz; yaw = Math.atan2(dx, dz);
+    }
     else if (t < t4) { rx = 0; y = 0; const dx = n.run[0] - n.to[0], dz = n.run[1] - n.to[1], d = Math.hypot(dx, dz) || 1, k = Math.min(1, (t - t3) * JT.runSpeed / d); x = n.to[0] + dx * k; z = n.to[1] + dz * k; yaw = Math.atan2(dx, dz); n.walk = k < 1; }
     else { n.on = false; gr.visible = false; return; }
     gr.visible = true; gr.rotation.order = 'YXZ'; gr.position.set(x, y, z); gr.rotation.set(rx, yaw, 0);
+    if (bub.current) { bub.current.visible = t >= t3 && OWNER.until > wnow(); bub.current.position.set(x, 2.3, z); }
   });
-  return <group ref={g} visible={false}><Human key={look.skin + look.outfit + look.hairColor} look={look} getState={() => (JACK.npc.walk ? 'walk' : 'idle')} getAnim={() => undefined} getSpeed={() => 2.6} /></group>;
+  return <><group ref={g} visible={false}><Human key={look.skin + look.outfit + look.hairColor} look={look} getState={() => (JACK.npc.walk ? 'walk' : 'idle')} getAnim={() => undefined} getSpeed={() => (JACK.npc.chase ? 3.6 : 2.6)} /></group>
+    <group ref={bub} visible={false}><Html center zIndexRange={[6, 0]}>{say ? <div className="npcShout" style={{ position: 'relative' }}>{say}</div> : null}</Html></group></>;
 }
 /** a frozen copy of a real player's car, used only while the carjack scene plays */
 function JackGhost() {
@@ -1206,8 +1218,18 @@ const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return a
 const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis) === 'r' && timeToGreen(t, carAxis) > 5.5;
 function Pedestrians() {
   const peds = useMemo(makePeds, []);
-  const rx = useRef<(Reaction | null)[]>([]), pose = useRef(Array.from({ length: PED_N }, () => ({ up: 0, crouch: 0, film: 0, angry: 0 }))), W = useRef({ punchUntil: 0, armedAt: 0 }), phone = useRef<THREE.InstancedMesh>(null!);
+  const rx = useRef<(Reaction | null)[]>([]), pose = useRef(Array.from({ length: PED_N }, () => ({ up: 0, crouch: 0, film: 0, angry: 0, give: 0 }))), W = useRef({ punchUntil: 0, armedAt: 0, after: {} as Record<number, { at: number; fx: number; fz: number }> }), phone = useRef<THREE.InstancedMesh>(null!);
   useFrame(() => { for (let i = 0; i < peds.length; i++) { const p = peds[i], e = PEDPOS[i] || (PEDPOS[i] = { x: 1e5, z: 1e5 }); e.x = p.hidden ? 1e5 : p.x; e.z = p.hidden ? 1e5 : p.z; } });
+  useEffect(() => {   // step 7: a pedestrian you held up hands the cash over (then runs), bolts without paying, or squares up. The SERVER already decided whether the robbery worked.
+    const h = (e: Event) => {
+      const d = (e as CustomEvent).detail as { idx: number; result: 'give' | 'bolt' | 'resist' } | undefined; if (!d || !peds[d.idx]) return;
+      const now = wnow(), me = GAME.player, mk = (kind: Reaction['kind'], secs: number, shoutIn: number): Reaction => ({ kind, until: now + secs, fx: me.x, fz: me.z, sense: 'saw', callAt: 0, shoutAt: now + shoutIn, calledIn: false });
+      if (d.result === 'give') { rx.current[d.idx] = mk('give', 1.7, .1); W.current.after[d.idx] = { at: now + 1.7, fx: me.x, fz: me.z }; }
+      else if (d.result === 'bolt') { rx.current[d.idx] = mk('flee', 9, 4); shout(d.idx, BOLT_LINES[Math.floor(Math.random() * BOLT_LINES.length)], 2.4); }
+      else { rx.current[d.idx] = mk('confront', 7, 4); shout(d.idx, RESIST_LINES[Math.floor(Math.random() * RESIST_LINES.length)], 2.6); }
+    };
+    window.addEventListener('arl-ped-demand', h); return () => window.removeEventListener('arl-ped-demand', h);
+  }, [peds]);
   const torso = useRef<THREE.InstancedMesh>(null!), head = useRef<THREE.InstancedMesh>(null!), legs = useRef<THREE.InstancedMesh>(null!), arms = useRef<THREE.InstancedMesh>(null!);
   const T = useMemo(() => ({ base: new THREE.Matrix4(), m: new THREE.Matrix4(), t: new THREE.Matrix4(), r: new THREE.Matrix4(), pos: new THREE.Vector3(), one: new THREE.Vector3(1, 1, 1), sc: new THREE.Vector3(1, 1, 1), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0), Z: new THREE.Vector3(0, 0, 1) }), []);
   useLayoutEffect(() => {
@@ -1236,7 +1258,7 @@ function Pedestrians() {
       if (!assaultQuiet()) { let vi = -1, vd = 2.8; peds.forEach((q, qi) => { const d = Math.hypot(q.x - me.x, q.z - me.z); if (!q.hidden && d < vd) { vd = d; vi = qi; } }); if (vi >= 0) pushCrime({ kind: 'assault', x: me.x, z: me.z, victim: vi }); }
     }
     if ((NET.me.anim === 'shoot' || NET.me.anim === 'reload') && NET.me.animUntil > nowMs && holdingGun) WS.armedAt = nowMs;
-    const brandishing = holdingGun && nowMs - WS.armedAt < 6000;   // a gun counts as "out" for a few seconds after you fire or reload
+    const brandishing = holdingGun;   // step 7: a DRAWN gun counts as out (GTA: people react to the weapon, you do not have to fire first)
     peds.forEach((p, i) => {
       let fall = 0; p.moving = false; p.hidden = false;
       const yw = Number.isNaN(p.yaw) ? 0 : p.yaw, persona = personaOf(i);
@@ -1246,6 +1268,7 @@ function Pedestrians() {
         const cur = rx.current[i]; if (cur && cur.until > nowS && PRI[cur.kind] >= PRI[k]) return;
         react = rx.current[i] = { kind: k, until: nowS + duration(k, Math.random()), fx, fz, sense, callAt: k === 'film' ? nowS + 2.5 + Math.random() * 2 : 0, shoutAt: nowS + .15 + Math.random() * .7, calledIn: false };
       };
+      const af = WS.after[i]; if (af && nowS >= af.at) { delete WS.after[i]; react = rx.current[i] = { kind: 'flee', until: nowS + 9, fx: af.fx, fz: af.fz, sense: 'saw', callAt: 0, shoutAt: nowS + .5, calledIn: false }; }   // step 7: handed it over, now runs
       if (!p.hidden && p.down <= 0) {
         for (const c of crimes) {   // somebody did something: can I see or hear it, and what do I do about it?
           const dx = c.x - p.x, dz = c.z - p.z, d = Math.hypot(dx, dz) || .01, victim = i === c.victim;
@@ -1264,7 +1287,7 @@ function Pedestrians() {
           }
         }
       }
-      const rk = react ? (react as Reaction).kind : null;
+      const rk = react ? (react as Reaction).kind : null; PEDSTATE[i] = rk;   // CrimeActions shows 'demand cash' only once hands are really up
       if (react) {
         const R = react as Reaction;
         if (nowS >= R.shoutAt) { if (Math.hypot(p.x - me.x, p.z - me.z) < 45) shout(i, lineFor(R.kind), R.kind === 'freeze' ? 1.8 : 2.6); R.shoutAt = R.kind === 'flee' || R.kind === 'confront' ? nowS + 4 + Math.random() * 3 : 1e9; }
@@ -1315,14 +1338,14 @@ function Pedestrians() {
       if (Number.isNaN(p.yaw)) p.yaw = yawT; let dyw = yawT - p.yaw; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw)); p.yaw += dyw * Math.min(1, dt * (react ? 14 : 9)); const pv = PEDVIEW[i] || (PEDVIEW[i] = { x: 0, z: 0, yaw: 0, on: false }); pv.x = p.x; pv.z = p.z; pv.yaw = p.yaw; pv.on = !p.hidden && p.down <= 0; // turn smoothly instead of snapping 180°
       p.vis += ((p.hidden ? 0 : 1) - p.vis) * Math.min(1, dt * 5); const sc = Math.max(.001, p.vis); T.sc.set(sc, sc, sc);
       const Pz = pose.current[i], kk = Math.min(1, dt * 8);   // smooth the reaction pose so hands go up / crouch / phone comes out over a moment
-      Pz.up += ((rk === 'handsup' ? 1 : rk === 'cower' ? .75 : 0) - Pz.up) * kk; Pz.crouch += ((rk === 'cower' ? 1 : 0) - Pz.crouch) * kk; Pz.film += ((rk === 'film' ? 1 : 0) - Pz.film) * kk; Pz.angry += ((rk === 'confront' ? 1 : 0) - Pz.angry) * kk;
+      Pz.up += ((rk === 'handsup' ? 1 : rk === 'cower' ? .75 : 0) - Pz.up) * kk; Pz.crouch += ((rk === 'cower' ? 1 : 0) - Pz.crouch) * kk; Pz.film += ((rk === 'film' ? 1 : 0) - Pz.film) * kk; Pz.angry += ((rk === 'confront' ? 1 : 0) - Pz.angry) * kk; Pz.give += ((rk === 'give' ? 1 : 0) - Pz.give) * kk;
       const lean = (rk === 'flee' && p.moving ? .22 : 0) + Pz.crouch * .45;
       T.qa.setFromAxisAngle(T.Y, p.yaw); T.qb.setFromAxisAngle(T.Z, -(fall * Math.PI / 2 + lean)); T.q.copy(T.qa).multiply(T.qb);
       T.pos.set(p.x, .12 * fall - .36 * Pz.crouch + (p.moving ? Math.abs(sw) * .03 : 0), p.z); T.base.compose(T.pos, T.q, T.sc);
       part(torso.current, i, 0, 1.05, 0); part(head.current, i, 0, 1.52, 0);
       part(legs.current, i * 2, 0, .78, .1, sw * .7 + Pz.crouch, -.38); part(legs.current, i * 2 + 1, 0, .78, -.1, -sw * .7 + Pz.crouch, -.38);
       const trem = Math.sin(t * 22 + i) * .07 * Pz.up, aL = -sw * .6 * (1 - Pz.up) + (2.8 + trem) * Pz.up, aR0 = sw * .6 * (1 - Pz.up) + (2.8 - trem) * Pz.up;
-      const aR = aR0 * (1 - Pz.film - Pz.angry) + 1.75 * Pz.film + (1.25 + Math.sin(t * 10 + i) * .55) * Pz.angry;   // hands up / phone held out / angry gesture
+      const aR = aR0 * (1 - Pz.film - Pz.angry - Pz.give) + 1.75 * Pz.film + (1.25 + Math.sin(t * 10 + i) * .55) * Pz.angry + 1.55 * Pz.give;   // hands up / phone held out / angry gesture
       part(arms.current, i * 2, 0, 1.3, .27, aL, -.25); part(arms.current, i * 2 + 1, 0, 1.3, -.27, aR, -.25);
       if (Pz.film > .6) { T.t.makeTranslation(.52, 1.4, -.27); T.m.copy(T.base).multiply(T.t); } else T.m.makeScale(0, 0, 0);
       phone.current.setMatrixAt(i, T.m);

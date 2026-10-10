@@ -431,6 +431,8 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   if (k === 'music') { const s = sin(t * 5.5); j.llX = .12 * s; j.rlX = -.12 * s; j.lkX = .2 + .15 * mx(0, s); j.rkX = .2 + .15 * mx(0, -s); j.hipY = -.02 + .02 * Math.abs(s); j.sZ = .08 * s; j.hZ = -.14 * s; j.laX = .3; j.raX = .3; j.leX = .9; j.reX = .9 + .3 * s; }
   if (k === 'shoot') { j.sX = -.08; j.sY = -.08; j.laX = .72; j.leX = 1.1; j.laZ = .06; j.raX = .78; j.reX = 1.05; j.raZ = -.04; j.llX = .04; j.rlX = -.04; }
   if (k === 'reload') { const s = .5 + .5 * sin(t * 10); j.sX = .08; j.hX = .12; j.raX = .9 + .15 * s; j.reX = 1.2; j.laX = .8; j.leX = 1.1; j.laZ = .18; j.raZ = -.08; }
+  if (k === 'handsup') { const tr = .05 * sin(t * 22); j.laX = 2.8 + tr; j.raX = 2.8 - tr; j.laZ = .22; j.raZ = .22; j.leX = .35; j.reX = .35; j.hX = -.12; j.sX = -.04; j.lkX = .1; j.rkX = .1; }   // step 7: hands up, trembling (shop clerk during a hold-up)
+  if (k === 'reach') { const b = .5 + .5 * sin(t * 7); j.sX = .3; j.hX = .15; j.laX = 2.8; j.laZ = .22; j.leX = .35; j.raX = 1.0 + .25 * b; j.raZ = -.1; j.reX = 1.2; j.hipY = -.04; j.lkX = .15; j.rkX = .15; }   // one hand up, the other creeping down under the counter
   if (k === 'aim') { j.sX = -.08; j.laX = .7; j.leX = 1.0; j.raX = .7; j.reX = 1.0; j.laZ = .05; j.raZ = -.05; }
   if (k === 'punch') { const s = sin(t * 21), a = mx(0, s), b = mx(0, -s); j.sX = .12; j.sY = .28 * s; j.hX = .05; j.raX = .5 + 1.0 * a; j.reX = 1.7 - 1.6 * a; j.raZ = -.05; j.laX = .5 + 1.0 * b; j.leX = 1.7 - 1.6 * b; j.laZ = .05; j.llX = .25; j.rlX = -.25; j.lkX = .3; j.rkX = .3; }
   // party emotes (PARTIES.md)

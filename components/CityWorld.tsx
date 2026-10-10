@@ -310,7 +310,7 @@ function carKit(): Kit {
     body: ext([[-2.12, .34], [2.12, .34], [2.16, .6], [1.55, .8], [-1.92, .84], [-2.16, .68]], 1.7, .08),
     cabin: ext([[-1.25, .84], [1.0, .84], [.5, 1.34], [-.85, 1.34]], 1.46, .04),
     wheels, head: mergeGeometries(lamp(2.2, .6))!, tail: mergeGeometries(lamp(-2.2, .68))!,
-    glass: new THREE.MeshStandardMaterial({ color: '#16222c', metalness: .8, roughness: .1 }),
+    glass: new THREE.MeshStandardMaterial({ color: '#cfe6f2', metalness: .05, roughness: .04, transparent: true, opacity: .16, depthWrite: false }), // clear glass: you can see the driver through the windshield
     tire: new THREE.MeshStandardMaterial({ color: '#141619', roughness: .9 }),
     headM: new THREE.MeshStandardMaterial({ color: '#fff7d6', emissive: '#fff2b0', emissiveIntensity: 1.4 }),
     tailM: new THREE.MeshStandardMaterial({ color: '#ff3030', emissive: '#ff1a1a', emissiveIntensity: 1.2 }),
@@ -318,15 +318,44 @@ function carKit(): Kit {
 }
 const BODYMATS = new Map<string, THREE.MeshStandardMaterial>();
 const bodyMat = (c: string) => { let m = BODYMATS.get(c); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, metalness: .55, roughness: .32 }); BODYMATS.set(c, m); } return m; };
-function CarModel({ kit, color, kind, model, style }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number } }) {
+/* ───────── clear-glass interior: seats, dash, steering wheel and a driver you can see through the windshield ───────── */
+const DRV_SKINS = ['#f1c9a5', '#d9a577', '#c68642', '#8d5524', '#5c3a21', '#3b2417'], DRV_SHIRTS = ['#e8e8e8', '#2a4a7a', '#7a2a2a', '#2f6b4a', '#d99a42', '#444b55', '#6b3a7a'], DRV_HAIRS = ['#111', '#1b1410', '#2b1d12', '#555'];
+const drvHash = (str: string) => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
+const DRV_MATS = new Map<string, THREE.MeshStandardMaterial>();
+const drvMat = (c: string, rough = .8, metal = .05) => { const k = c + rough + metal; let m = DRV_MATS.get(k); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal }); DRV_MATS.set(k, m); } return m; };
+function CarInterior({ seed, shirt, suv }: { seed: string; shirt?: string; suv?: boolean }) {
+  const h = drvHash(seed), skin = DRV_SKINS[h % DRV_SKINS.length], top = shirt || DRV_SHIRTS[(h >> 3) % DRV_SHIRTS.length], hair = DRV_HAIRS[(h >> 6) % DRV_HAIRS.length], seatC = '#2a2d31', dash = '#15181b';
+  const w = suv ? 1.34 : 1.26;
+  return <group>
+    {/* seats: driver (left-hand drive, -z), passenger and rear bench */}
+    {[-.4, .4].map(z => <group key={z}><mesh position={[-.3, .92, z]} material={drvMat(seatC)}><boxGeometry args={[.5, .1, .42]} /></mesh><mesh position={[-.58, 1.1, z]} material={drvMat(seatC)}><boxGeometry args={[.1, .42, .42]} /></mesh></group>)}
+    <mesh position={[-.95, .92, 0]} material={drvMat(seatC)}><boxGeometry args={[.45, .1, w]} /></mesh>
+    <mesh position={[-1.17, 1.06, 0]} material={drvMat(seatC)}><boxGeometry args={[.1, .32, w]} /></mesh>
+    <mesh position={[.66, .94, 0]} material={drvMat(dash, .6, .2)}><boxGeometry args={[.34, .14, w]} /></mesh>
+    {/* driver */}
+    <group position={[0, 0, -.4]}>
+      <mesh position={[-.3, 1.06, 0]} material={drvMat(top)}><boxGeometry args={[.24, .32, .36]} /></mesh>
+      <mesh position={[-.27, 1.27, 0]} material={drvMat(skin, .6)}><sphereGeometry args={[.095, 14, 12]} /></mesh>
+      <mesh position={[-.28, 1.29, 0]} material={drvMat(hair, .9)}><sphereGeometry args={[.1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 1.9]} /></mesh>
+      {[-.15, .15].map(z => <mesh key={z} position={[0, 1.04, z]} rotation-z={.12} material={drvMat(top)}><boxGeometry args={[.56, .07, .07]} /></mesh>)}
+      <group position={[.3, 1.02, 0]} rotation-z={.65}><mesh rotation-y={Math.PI / 2} material={drvMat('#0e0f11', .5, .3)}><torusGeometry args={[.13, .014, 8, 18]} /></mesh></group>
+    </group>
+  </group>;
+}
+function CarModel({ kit, color, kind, model, style, shirt, driver = true }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
-  const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims==='sport' ? '#d8dde3' : style?.rims==='black' ? '#111' : '#141619'; const glassColor = style?.tint ? '#0b1117' : '#16222c';
+  const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims==='sport' ? '#d8dde3' : style?.rims==='black' ? '#111' : '#141619';
   return <group scale={sc}>
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
-    <mesh geometry={kit.cabin} material={style?.tint ? new THREE.MeshStandardMaterial({color:glassColor,metalness:.8,roughness:.08}) : kit.glass} />
+    {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} />}
+    <mesh geometry={kit.cabin} material={kit.glass} renderOrder={2} />
+    {[1, -1].map(sd => <group key={sd}>
+      <mesh position={[.75, 1.09, sd * .73]} rotation-z={Math.PI / 4} material={bodyMat(color)}><boxGeometry args={[.06, .72, .05]} /></mesh>
+      <mesh position={[-1.05, 1.09, sd * .73]} rotation-z={-.675} material={bodyMat(color)}><boxGeometry args={[.07, .64, .05]} /></mesh>
+    </group>)}
     <mesh position={[-.17, suv ? 1.43 : 1.38, 0]} material={bodyMat(color)}><boxGeometry args={[suv ? 1.48 : 1.32, .07, suv ? 1.56 : 1.5]} /></mesh>
     <mesh position={[2.14, .62, 0]} material={new THREE.MeshStandardMaterial({ color: grille, metalness: .75, roughness: .2 })}><boxGeometry args={[.08, .28, suv ? .95 : .78]} /></mesh>
     <mesh position={[1.8, .55, 0]} material={new THREE.MeshStandardMaterial({ color: '#111820', metalness: .3, roughness: .4 })}><boxGeometry args={[.18, .08, suv ? 1.05 : .9]} /></mesh>
@@ -541,14 +570,13 @@ function BusBody() { // faces +x like every vehicle: a yellow city bus with a wi
     </group>)}
   </group>;
 }
-function TaxiBody({ kit, driver }: { kit: Kit; driver?: boolean }) {
+function TaxiBody({ kit }: { kit: Kit; driver?: boolean }) {
   return <group>
-    <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" />
+    <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" shirt="#d99a42" />
     <group position={[-.05, 1.56, 0]}> {/* roof sign: real 3D text on both sides, so no floating label to clutter the view */}
       <mesh><boxGeometry args={[.9, .2, .5]} /><meshStandardMaterial color="#111" /></mesh>
       {[1, -1].map(sd => <Text key={sd} position={[0, .01, sd * .26]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.15} color="#ffd23f" anchorX="center" anchorY="middle">TAXI</Text>)}
     </group>
-    {driver && <group position={[.12, .3, -.4]} rotation-y={Math.PI / 2} scale={.6}><Human look={{ ...DEFAULT_LOOK, name: 'Taxi Driver', outfit: '#d99a42' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
   </group>;
 }
 function BikeBody({ scale = 1, rider }: { scale?: number; rider?: boolean }) { // faces +x like every vehicle: a motorcycle (okada) with fat tyres, fork, tank, seat, engine and exhaust
@@ -585,7 +613,7 @@ function PoliceBody({ kit }: { kit: Kit }) {
   const red = useRef<THREE.MeshStandardMaterial>(null!), blue = useRef<THREE.MeshStandardMaterial>(null!);
   useFrame(st => { const f = Math.floor(st.clock.elapsedTime * 5) % 2, k = NIGHT.n * 3 + 1.2; if (red.current) red.current.emissiveIntensity = f ? .1 : k; if (blue.current) blue.current.emissiveIntensity = f ? k : .1; });
   return <group>
-    <CarModel kit={kit} color="#eef1f6" kind={0} model="toyota-corolla-2024" />
+    <CarModel kit={kit} color="#eef1f6" kind={0} model="toyota-corolla-2024" shirt="#1d3f8f" />
     <mesh position={[-.17, 1.47, 0]}><boxGeometry args={[.5, .05, 1.2]} /><meshStandardMaterial color="#111" /></mesh>
     <mesh position={[-.17, 1.55, .3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={red} color="#ff2b2b" emissive="#ff1010" emissiveIntensity={1} /></mesh>
     <mesh position={[-.17, 1.55, -.3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={blue} color="#2b6bff" emissive="#1050ff" emissiveIntensity={1} /></mesh>

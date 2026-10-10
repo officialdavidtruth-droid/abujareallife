@@ -2067,7 +2067,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Roads />
       <Billboards />
       <TransportVehicles look={look} />
-      <Inst items={SLABS} color="#b4b6b2" h={.12} y={.06} receive />
+      <Inst items={SLABS} color="#b4b6b2" h={.03} y={.015} receive />{/* sidewalk slab: was 12 cm tall, which buried the feet of everyone standing on it (characters walk at y = 0) */}
       <Inst items={MARKS.yellow} color="#f2b705" h={.02} y={.025} />
       <Inst items={MARKS.white} color="#f4f1e4" h={.02} y={.025} />
       <Inst items={MARKS.zebra} color="#f4f1e4" h={.02} y={.025} />

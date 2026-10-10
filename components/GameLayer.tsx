@@ -15,6 +15,7 @@ import { CRIMES, FAME_TIERS, checkAccess, HELP_FAME, HELP_TIP, JAIL_CELL_POS, PO
 
 import RuntimeStyle from './RuntimeStyle';
 import { GoalsPanel, GuideChip } from './Goals';
+import { RacingPanel } from './Racing';
 import Market from './Market';
 import Inventory from './Inventory';
 import Messages from './Messages';
@@ -28,7 +29,7 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
 /* Everything "no rules, real consequences": quests, crime, wanted level, real police arrests, jail, building access, relationships. */
 export default function GameLayer({ username, onCash, near, role, onEnter, onDenied, open, onToggle, onCityTab, cityTab, getMinute }: { username: string; onCash: (n: number) => void; near: { name: string; type: string; id: string } | null; role: 'player' | 'police'; onEnter: (id: string) => void; onDenied?: (reason: string) => void; open: boolean; onToggle: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; getMinute?: () => number }) {
-  const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | 'city' | 'goals' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
+  const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | 'city' | 'goals' | 'racing' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
   const [quest, setQuest] = useState<{ id: string; end: number } | null>(null), [, tick] = useState(0), [bail, setBail] = useState(0), [enter, setEnter] = useState<{ ok: boolean; reason: string; name: string } | null>(null);
   const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null), [chatWith, setChatWith] = useState<string | null>(null), [unread, setUnread] = useState(0), seenMsg = useRef('');
   const [ping, setPing] = useState<{ from: string; text: string; n: number } | null>(null), pingT = useRef<any>(null), live = useRef<{ tab: string | null; chat: string | null }>({ tab: null, chat: null });
@@ -144,7 +145,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   if (!st) return null;
   const items: [string, string, () => void][] = [
     ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🎒', 'My Stuff', () => setStuff(true)], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
-    ['🎯', 'Goals', () => setTab('goals')], ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
+    ['🎯', 'Goals', () => setTab('goals')], ['🏁', 'Racing', () => setTab('racing')], ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
     ['❤️', 'Love', () => setTab('love')], ['🌆', 'City Life', () => setTab('city')], ['📱', 'Phone', () => setTab('phone')], ['💰', 'Wallet', () => window.dispatchEvent(new Event('arl-open-wallet'))], ['💸', 'Send Money', () => setSendTo('')], ['🕶️', 'Crime', () => setTab('crime')],
   ];
   if (role === 'police') items.push(['👮', 'Police', () => setTab('police')]);
@@ -185,6 +186,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
       {tab === 'police' && <><h3>Wanted (real players)</h3><p className="m">Get within {POLICE_ARREST_RANGE} m, then arrest.</p>{wanted.length === 0 && <p>Nobody is wanted right now.</p>}{wanted.map(w => <button key={w.name} onClick={() => arrest(w.name)}><b>{w.name}</b><small>heat {w.heat}</small></button>)}</>}
       {tab === 'love' && <><h3>❤️ Real-player relationships</h3><p className="muted">Meet another player in Abuja, connect, date, get engaged, then both choose marriage.</p>{reqs.map(r => <div key={r.id} className="row"><span>{r.aName} wants to be {r.status}</span><button onClick={() => love({ action: 'accept', from: r.aName })}>Accept</button></div>)}<input placeholder="Player name" value={to} onChange={e => setTo(e.target.value)} />{p.relationship === 'single' && <button disabled={!to} onClick={() => love({ action: 'propose', to, status: 'dating' })}>❤️ Ask to date</button>}{p.relationship === 'dating' && p.partner && <button disabled={!to || to !== p.partner} onClick={() => love({ action: 'propose', to, status: 'engaged' })}>💍 Ask to get engaged</button>}{p.relationship === 'engaged' && p.partner && <button disabled={!to || to !== p.partner} onClick={() => love({ action: 'propose', to, status: 'married' })}>💒 Ask to get married</button>}{p.partner && <button onClick={() => love({ action: 'end' })}>End relationship</button>}{near && <button disabled={!to} onClick={async () => { const r = await post('/api/invite', { to, building: near.id }); say(r.ok ? `Invited ${to} to ${near.name}` : r.d.error); }}>Invite {to || 'player'} to {near.name}</button>}</>}
       {tab === 'goals' && <GoalsPanel onCash={onCash} say={say} />}
+      {tab === 'racing' && <RacingPanel onCash={onCash} say={say} />}
       {tab === 'fame' && <FamePanel st={st} board={board} />}
       {tab === 'players' && <PlayersPanel username={username} onClose={() => setTab(null)} onOrder={n => { setTab(null); setOrderFor(n); }} />}
       {tab === 'me' && <MyLifePanel username={username} st={st} prof={prof} profile={p} />}

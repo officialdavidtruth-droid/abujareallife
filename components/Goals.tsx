@@ -25,10 +25,13 @@ async function load(): Promise<Progress | null> {
 
 /* ───────── the floating "what to do next" chip ───────── */
 export function GuideChip({ cash, fame, hidden, onOpen }: { cash: number; fame: number; hidden: boolean; onOpen: () => void }) {
-  const [p, setP] = useState<Progress | null>(null), [gone, setGoneState] = useState<string>(''), [welcome, setWelcome] = useState(false), seen = useRef(false);
-  // remember a dismissed chip across remounts / street changes / reloads (until the next goal changes the tag)
-  useEffect(() => { try { setGoneState(localStorage.getItem('arl-goals-gone') || ''); } catch { /* storage blocked */ } }, []);
-  const setGone = (t: string) => { setGoneState(t); try { localStorage.setItem('arl-goals-gone', t); } catch { /* ignore */ } };
+  const [p, setP] = useState<Progress | null>(null), [welcome, setWelcome] = useState(false), seen = useRef(false);
+  // each chip is shown ONCE per device: it is recorded as "shown" the moment it appears, so changing street,
+  // reloading or remounting never brings it back. Everything else lives in the menu under Goals.
+  const [active, setActive] = useState<string>('');
+  const shownSet = () => { try { return new Set<string>(JSON.parse(localStorage.getItem('arl-goals-shown') || '[]')); } catch { return new Set<string>(); } };
+  const markShown = (t: string) => { try { const s = shownSet(); s.add(t); localStorage.setItem('arl-goals-shown', JSON.stringify(Array.from(s).slice(-200))); } catch { /* storage blocked */ } };
+  const setGone = (_t: string) => { setActive(''); };
   const refetch = useCallback(async () => { const d = await load(); if (d) setP(d); }, []);
   useEffect(() => { refetch(); const t = setInterval(refetch, 120_000); const h = (e: Event) => { const d = (e as CustomEvent).detail; if (d) setP(d); else refetch(); }; window.addEventListener(REFRESH, h); return () => { clearInterval(t); window.removeEventListener(REFRESH, h); }; }, [refetch]);
   // progress moves when money or fame moves: re-check shortly after (debounced), so "ready to claim" shows up quickly
@@ -40,9 +43,18 @@ export function GuideChip({ cash, fame, hidden, onOpen }: { cash: number; fame: 
   }, [p]);
   const closeWelcome = (open: boolean) => { setWelcome(false); try { localStorage.setItem('arl-goals-welcome', '1'); } catch { /* ignore */ } if (open) onOpen(); };
   const n = p?.next, tag = n ? n.kind + n.id + (n.ready ? '!' : '') : '';
+  // show a new chip only if it has never been shown on this device, then fade it after 8s
+  useEffect(() => {
+    if (!tag || hidden || welcome || active === tag) return;
+    if (shownSet().has(tag)) return;
+    markShown(tag); setActive(tag);
+    const t = setTimeout(() => setActive(a => (a === tag ? '' : a)), 8000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tag, hidden, welcome]);
   return <>
     {welcome && !hidden && <div className="gcWelcome" role="dialog"><b>👋 Welcome to Abuja!</b><p>Not sure what to do? Follow the <b>Goals</b>: short steps that teach you the city and pay you cash as you go. Come back every day for rewards and a streak bonus.</p><div><button onClick={() => closeWelcome(true)}>Show me my goals</button><button className="alt" onClick={() => closeWelcome(false)}>Later</button></div></div>}
-    {n && !hidden && !welcome && gone !== tag && <div className={'gcChip' + (n.ready ? ' ready' : '')}><button onClick={() => { sfx('open'); setGone(tag); onOpen(); }} title={n.how || ''}><i>{n.ready ? '🎁' : n.e}</i><span><small>{n.ready ? 'Ready to claim' : 'Next goal'}</small><b>{n.title}</b></span></button><button className="gcX" aria-label="Hide" onClick={() => setGone(tag)}>×</button></div>}
+    {n && !hidden && !welcome && active === tag && <div className={'gcChip' + (n.ready ? ' ready' : '')}><button onClick={() => { sfx('open'); setGone(tag); onOpen(); }} title={n.how || ''}><i>{n.ready ? '🎁' : n.e}</i><span><small>{n.ready ? 'Ready to claim' : 'Next goal'}</small><b>{n.title}</b></span></button><button className="gcX" aria-label="Hide" onClick={() => setGone(tag)}>×</button></div>}
     <RuntimeStyle id="arl-goals-chip" css={CHIP_CSS} />
   </>;
 }

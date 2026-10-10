@@ -25,6 +25,8 @@ import { businessStatus } from '../lib/businessHours';
 import { AUTO, idleFor } from '../lib/autoState';
 
 import RuntimeStyle from './RuntimeStyle';
+import JobGame, { type Score } from './JobGames';
+import { gameFor, type GameKind } from '../lib/jobGames';
 type Go = { path: [number, number][]; i: number; stuck: number; open?: { kind: 'spot'; id: string } | { kind: 'npc'; idx: number } };
 type Cam = { yaw: number; pitch: number; dist: number };
 const STAFF_POS: Record<number, { x: number; z: number }> = {}; // where each NPC is right now, so you can walk up to them
@@ -152,6 +154,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   const ctl = useRef<Ctl>({ keys: new Set(), joy: { x: 0, y: 0 }, run: false, act: false }), snap = useRef<{ x: number; z: number; r: number } | null>(null), staff = useMemo(() => room.posts.map(p => staffLook(biz, p)), [room, biz]);
   const [store, setStore] = useState(false), [spot, setSpot] = useState<Spot | null>(null), [menu, setMenu] = useState<Spot | null>(null), [actionOpen, setActionOpen] = useState(false), [msg, setMsg] = useState(''), [txt, setTxt] = useState('');
   const [job, setJob] = useState<{ kind: 'shift' | 'quest' | 'mtask'; id: string | number; end: number; label: string } | null>(null), [, tick] = useState(0), [near, setNear] = useState<string | null>(null);
+  const [gameOpen, setGameOpen] = useState(false), [score, setScore] = useState<Score>({ pts: 0, rounds: 0, bonus: 0 }), [gameKind, setGameKind] = useState<GameKind | null>(null); // optional job mini-game during a shift
   const toast = (m: string, bad = false) => { setMsg(m); setTimeout(() => setMsg(''), 4500); sfx(bad ? 'error' : /^(Done|💰|🎉|🚔 .* arrested)/.test(m) ? 'success' : 'pop'); };
   useEffect(() => { sfx('door'); }, []);
   /* Shop hold-up: the server hides when the police arrive. Staying fills the bag; running early takes a partial share; waiting too long = arrested. */
@@ -190,7 +193,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     load(); const i = setInterval(load, 20000); return () => clearInterval(i);
   }, [bizId]);
   useEffect(() => { (async () => { const r = await post('/api/shift', { action: 'status' }); if (r.ok && r.d.active && !restored.current) { restored.current = true;
-    setJob(j => j || { kind: 'shift', id: r.d.idx, end: Date.now() + r.d.left * 1000, label: `${r.d.label} · ${r.d.task}` }); const po = room.posts.find(x => x.idx === r.d.idx); if (po) snap.current = stand(po); } })(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    setJob(j => j || { kind: 'shift', id: r.d.idx, end: Date.now() + r.d.left * 1000, label: `${r.d.label} · ${r.d.task}` }); setGameKind(r.d.game || null); setScore({ pts: r.d.pts || 0, rounds: r.d.rounds || 0, bonus: r.d.bonus || 0 }); const po = room.posts.find(x => x.idx === r.d.idx); if (po) snap.current = stand(po); } })(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (mgr?.me.isHolder && room.office && !snappedMgr.current) { snappedMgr.current = true; if (!snap.current) snap.current = { x: room.office.sx, z: room.office.sz, r: 0 }; } }, [mgr, room]); // the manager starts the day at their desk
   const left = job ? Math.max(0, Math.ceil((job.end - Date.now()) / 1000)) : 0;
   useEffect(() => { const i = setInterval(() => { tick(x => x + 1); let b: string | null = null, bd = POLICE_ARREST_RANGE; Object.entries(ROOM.peers).forEach(([n, q]) => { const d = Math.hypot(q.x - ROOM.me.x, q.z - ROOM.me.z); if (d < bd) { bd = d; b = n; } }); setNear(b); }, 400); return () => clearInterval(i); }, []);
@@ -220,7 +223,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
       try {
         const r = await post('/api/shift', { action: 'start', idx: w.idx });
         if (!r.ok) { if (!/already on a shift/i.test(r.d.error || '')) { AUTO.blocked = true; toast(r.d.error || 'Auto-work paused.', true); L.onExit(); } return; }
-        autoShift.current = true; setJob({ kind: 'shift', id: w.idx, end: Date.now() + r.d.secs * 1000, label: `${w.job} · ${r.d.task}` });
+        autoShift.current = true; setGameKind(null); setJob({ kind: 'shift', id: w.idx, end: Date.now() + r.d.secs * 1000, label: `${w.job} · ${r.d.task}` });
         const po = room.posts.find(x => x.idx === w.idx); if (po) snap.current = stand(po);
         toast(`📍 ${w.job}: ${r.d.task} (${Math.round(r.d.secs / 60)} min)`);
       } finally { autoBusy.current = false; }
@@ -229,14 +232,14 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   }, [bizId]); // eslint-disable-line react-hooks/exhaustive-deps
   const cops = () => Object.values(ROOM.peers).filter(q => isCop(q.look) && Math.hypot(q.x - ROOM.me.x, q.z - ROOM.me.z) < 25).length;
   useEffect(() => { if (job && left === 0) (async () => {
-    const r = job.kind === 'shift' ? await post('/api/shift', { action: 'finish' }) : job.kind === 'mtask' ? await post('/api/manager', { action: 'task_finish' }) : await post('/api/quest', { action: 'finish', id: job.id }); setJob(null);
+    const r = job.kind === 'shift' ? await post('/api/shift', { action: 'finish' }) : job.kind === 'mtask' ? await post('/api/manager', { action: 'task_finish' }) : await post('/api/quest', { action: 'finish', id: job.id }); setJob(null); setGameOpen(false); setGameKind(null);
     if (r.ok && r.d.info) setMgr(r.d.info);
-    if (r.ok) { onCash(r.d.cash); toast(`Done: +${naira(r.d.pay ?? r.d.reward)}${r.d.heatAdded ? ' · heat up 🔥' : ''}`); if (autoShift.current) { autoShift.current = false; AUTO.drain?.(); } } else toast(r.d.error, true);
+    if (r.ok) { onCash(r.d.cash); toast(`Done: +${naira(r.d.pay ?? r.d.reward)}${r.d.bonus ? ` (incl. +${r.d.bonus}% skill bonus 🎮)` : ''}${r.d.heatAdded ? ' · heat up 🔥' : ''}`); if (autoShift.current) { autoShift.current = false; AUTO.drain?.(); } } else toast(r.d.error, true);
   })(); }, [left, job]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (o: Opt) => {
     if (holdRef.current && o.t !== 'info') return toast('Finish the hold-up first.', true);
     if (job && (o.t === 'shift' || o.t === 'quest' || o.t === 'crime' || o.t === 'holdup')) return toast('Finish what you are doing first.', true);
-    if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: `${o.label} · ${r.d.task}` }); setMenu(null); const po = room.posts.find(x => x.idx === o.idx); if (po) snap.current = stand(po); toast(`📍 ${o.label}: ${r.d.task} (${Math.round(r.d.secs / 60)} min). Stay in the building, walk around if you like - the shift keeps running.`); }
+    if (o.t === 'shift') { const r = await post('/api/shift', { action: 'start', idx: o.idx }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'shift', id: o.idx, end: Date.now() + r.d.secs * 1000, label: `${o.label} · ${r.d.task}` }); const gk = gameFor(biz.type, o.label); setGameKind(gk); setScore({ pts: 0, rounds: 0, bonus: 0 }); setMenu(null); const po = room.posts.find(x => x.idx === o.idx); if (po) snap.current = stand(po); toast(`📍 ${o.label}: ${r.d.task} (${Math.round(r.d.secs / 60)} min). Stay in the building, walk around if you like - the shift keeps running.${gk ? ' Tap 🎮 to play the job for bonus pay.' : ''}`); }
     else if (o.t === 'quest') { const q = QUESTS.find(x => x.id === o.id)!, r = await post('/api/quest', { action: 'start', id: o.id }); if (!r.ok) return toast(r.d.error, true); setJob({ kind: 'quest', id: o.id, end: Date.now() + r.d.secs * 1000, label: q.title }); setMenu(null); }
     else if (o.t === 'holdup') { const r = await post('/api/holdup', { action: 'start' }); if (!r.ok) return toast(r.d.error, true); const h: Hold = { ticket: r.d.ticket, start: Date.now(), bagSecs: r.d.bagSecs, minSecs: r.d.minSecs, busy: false }; holdRef.current = h; setHold(h); setMenu(null); toast('🔫 Hands up! The clerk is emptying the till…'); }
     else if (o.t === 'store') { setStore(true); setMenu(null); }
@@ -284,13 +287,15 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     </Canvas></div>
     <div className="inTop"><div className="inIdentity"><span className="inEyebrow">INSIDE</span><b>{biz.name}</b><span className="inMeta">{biz.type} · {businessStatus(biz.type, getMinute ? getMinute() : 0).label} · {net.enabled ? `${net.roster.length + 1} inside` : 'solo'}</span></div></div>
     <button className="inLeaveSide" onClick={leave} aria-label="Leave building">🚪 <span>Leave</span></button>
-    {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}</div>}{msg && <div className="inToast">{msg}</div>}
+    {job && <div className="inToast">⏳ {job.label}: {job.kind === 'quest' ? `${left}s` : fmtClock(left)}{job.kind === 'shift' && gameKind && left > 15 && <button className="jgOpen" onClick={() => setGameOpen(true)}>🎮 Play{score.bonus ? ` · +${score.bonus}%` : ''}</button>}</div>}{msg && <div className="inToast">{msg}</div>}
     {spot && !menu && <button className="inAct" onClick={() => setMenu(spot)}>{spot.e} {spot.label} <small>(tap or E)</small></button>}
     <div className={"inDock" + (actionOpen ? " open" : "")}><button className="inActionsToggle" onClick={() => setActionOpen(v => !v)}>🎮 <span>{actionOpen ? "Close actions" : "Actions"}</span></button>{actionOpen && <div className="inActionTray"><i>What can I do here?</i>{room.spots.map(sp => <button key={sp.id} className={'gd-' + sp.id + (spot?.id === sp.id ? ' on' : '')} onClick={() => { setActionOpen(false); goSpot(sp); }}><span className="glIco">{sp.e}</span><span className="glTx">{sp.label}</span></button>)}</div>}</div>
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
     {(BAR_TYPES as string[]).includes(biz.type) && <DrinksMenu onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
     {dealerAt(biz.type) && <Dealers onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
     {biz.type === 'Nightclub' && <Underworld onCash={onCash} onFx={onFx} toast={toast} />}
+    {gameOpen && job?.kind === 'shift' && gameKind && left > 5 && <JobGame kind={gameKind} initial={score} onClose={() => setGameOpen(false)} onStars={async (stars) => { const r = await post('/api/shift', { action: 'play', stars }); if (!r.ok) return null; const sc: Score = { pts: r.d.pts, rounds: r.d.rounds, bonus: r.d.bonus, capped: r.d.capped }; setScore(sc); return sc; }} />}
+    <RuntimeStyle id="arl-jobopen" css={`.jgOpen{all:unset;cursor:pointer;margin-left:8px;padding:3px 9px;border-radius:99px;background:#d99a42;color:#1a1208;font-weight:900;font-size:11px;pointer-events:auto}`} />
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}
     {hold && (() => { const el = (Date.now() - hold.start) / 1000, pct = Math.min(100, Math.round(el / hold.bagSecs * 100)), canRun = el >= hold.minSecs;
       return <div className="hdBox"><b>🔫 HOLD-UP · 🚨 police on the way</b><i><u style={{ width: pct + '%' }} /></i><small>{pct >= 100 ? 'Bag is full!' : `Bagging the cash… ${pct}%`}</small><button disabled={!canRun} onClick={() => exitNow()}>{canRun ? '🏃 Take it & run' : 'Wait for the clerk…'}</button></div>; })()}

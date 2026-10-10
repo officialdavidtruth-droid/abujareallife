@@ -25,6 +25,7 @@ import { createPortal } from 'react-dom';
 import { BUILDS_WORLD, BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
 import ChopYards from './ChopYards';
+import { PEDVIEW, PRI, SHOUTS, assaultQuiet, decide, drainCrimes, duration, lineFor, perceive, personaOf, pushCrime, reportCrime, shout, wnow, type Reaction } from '../lib/witness';
 import { GRID, CURB, halfW, signalised, sidewalkSpawn, billboardSpot, planRide, newRide, stepRide, type Route, type RideState } from '../lib/roadRoute'; // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
@@ -1092,6 +1093,7 @@ const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return a
 const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis) === 'r' && timeToGreen(t, carAxis) > 5.5;
 function Pedestrians() {
   const peds = useMemo(makePeds, []);
+  const rx = useRef<(Reaction | null)[]>([]), pose = useRef(Array.from({ length: PED_N }, () => ({ up: 0, crouch: 0, film: 0, angry: 0 }))), W = useRef({ punchUntil: 0, armedAt: 0 }), phone = useRef<THREE.InstancedMesh>(null!);
   useFrame(() => { for (let i = 0; i < peds.length; i++) { const p = peds[i], e = PEDPOS[i] || (PEDPOS[i] = { x: 1e5, z: 1e5 }); e.x = p.hidden ? 1e5 : p.x; e.z = p.hidden ? 1e5 : p.z; } });
   const torso = useRef<THREE.InstancedMesh>(null!), head = useRef<THREE.InstancedMesh>(null!), legs = useRef<THREE.InstancedMesh>(null!), arms = useRef<THREE.InstancedMesh>(null!);
   const T = useMemo(() => ({ base: new THREE.Matrix4(), m: new THREE.Matrix4(), t: new THREE.Matrix4(), r: new THREE.Matrix4(), pos: new THREE.Vector3(), one: new THREE.Vector3(1, 1, 1), sc: new THREE.Vector3(1, 1, 1), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0), Z: new THREE.Vector3(0, 0, 1) }), []);
@@ -1113,8 +1115,48 @@ function Pedestrians() {
       mesh.setMatrixAt(idx, T.m);
     };
     const eventActive = (wc.hh >= 0 && wc.hh % 6 === 0) || wx.storm;
+    /* ── witness AI (step 5): what the player did this frame, and who can see it ── */
+    const nowS = wnow(), nowMs = Date.now(), me = GAME.player, WS = W.current, crimes = drainCrimes();
+    const holdingGun = !!(window as any).__arlWeapon && !VEH.drv && !GAME.jailed;
+    if (NET.me.anim === 'punch' && NET.me.animUntil > nowMs && NET.me.animUntil !== WS.punchUntil) {   // a swing next to a pedestrian is an assault they (and others) can see
+      WS.punchUntil = NET.me.animUntil;
+      if (!assaultQuiet()) { let vi = -1, vd = 2.8; peds.forEach((q, qi) => { const d = Math.hypot(q.x - me.x, q.z - me.z); if (!q.hidden && d < vd) { vd = d; vi = qi; } }); if (vi >= 0) pushCrime({ kind: 'assault', x: me.x, z: me.z, victim: vi }); }
+    }
+    if ((NET.me.anim === 'shoot' || NET.me.anim === 'reload') && NET.me.animUntil > nowMs && holdingGun) WS.armedAt = nowMs;
+    const brandishing = holdingGun && nowMs - WS.armedAt < 6000;   // a gun counts as "out" for a few seconds after you fire or reload
     peds.forEach((p, i) => {
       let fall = 0; p.moving = false; p.hidden = false;
+      const yw = Number.isNaN(p.yaw) ? 0 : p.yaw, persona = personaOf(i);
+      let react: Reaction | null = rx.current[i] && rx.current[i]!.until > nowS ? rx.current[i] : null;
+      if (rx.current[i] && !react) { rx.current[i] = null; p.sp = 1.1 * p.vf; p.tc = 0; }   // calmed down: back to normal walking
+      const start = (k: Reaction['kind'], fx: number, fz: number, sense: 'saw' | 'heard') => {
+        const cur = rx.current[i]; if (cur && cur.until > nowS && PRI[cur.kind] >= PRI[k]) return;
+        react = rx.current[i] = { kind: k, until: nowS + duration(k, Math.random()), fx, fz, sense, callAt: k === 'film' ? nowS + 2.5 + Math.random() * 2 : 0, shoutAt: nowS + .15 + Math.random() * .7, calledIn: false };
+      };
+      if (!p.hidden && p.down <= 0) {
+        for (const c of crimes) {   // somebody did something: can I see or hear it, and what do I do about it?
+          const dx = c.x - p.x, dz = c.z - p.z, d = Math.hypot(dx, dz) || .01, victim = i === c.victim;
+          const sense = victim ? 'saw' : perceive(c.kind, d, (Math.cos(yw) * dx - Math.sin(yw) * dz) / d); if (!sense) continue;
+          const k = decide(persona, c.kind, sense, d, victim, false, Math.random()); if (k) start(k, c.x, c.z, sense);
+        }
+        if (brandishing) {   // a weapon in hand: people nearby notice, and anyone you point it at puts their hands up
+          const dx = me.x - p.x, dz = me.z - p.z, d = Math.hypot(dx, dz) || .01;
+          if (d < 14) {
+            const aimed = d < 12 && (Math.sin(me.r) * -dx + Math.cos(me.r) * -dz) / d > .82;
+            if (react && react.kind === 'handsup' && aimed) react.until = Math.max(react.until, nowS + 1.5);
+            else if (!react && Math.random() < dt * 2.5) {
+              const sense = perceive('armed', d, (Math.cos(yw) * dx - Math.sin(yw) * dz) / d);
+              if (sense === 'saw') { const k = decide(persona, 'armed', 'saw', d, false, aimed, Math.random()); if (k) start(k, me.x, me.z, 'saw'); }
+            }
+          }
+        }
+      }
+      const rk = react ? (react as Reaction).kind : null;
+      if (react) {
+        const R = react as Reaction;
+        if (nowS >= R.shoutAt) { if (Math.hypot(p.x - me.x, p.z - me.z) < 45) shout(i, lineFor(R.kind), R.kind === 'freeze' ? 1.8 : 2.6); R.shoutAt = R.kind === 'flee' || R.kind === 'confront' ? nowS + 4 + Math.random() * 3 : 1e9; }
+        if (R.kind === 'film' && !R.calledIn && R.callAt && nowS >= R.callAt) { R.calledIn = true; if (reportCrime(R.fx, R.fz)) GAME.notice = '📞 A witness is calling the police on you!'; }   // step 6 listens for 'arl-witness-report'
+      }
       const hour=wc.hh + wc.mm/60;
       p.mode = (hour < 6 || hour >= 22) ? 'home' : (hour < 10 || (hour >= 16 && hour < 19)) ? 'commute' : hour >= 19 ? 'social' : 'work';
       if (eventActive && i % 11 === 0) p.mode='flee';
@@ -1132,7 +1174,11 @@ function Pedestrians() {
       if (p.down > 0) { p.down -= dt; fall = Math.min(1, (3.2 - p.down) / .25) * Math.min(1, Math.max(0, p.down) / .35); }
       else {
         let go = !lingering;
-        if(p.mode==='flee'){ p.dir = p.axis==='x' ? (p.target[0]>=p.x?1:-1) : (p.target[1]>=p.z?1:-1); p.sp=2.8*p.vf; }
+        if (rk) { // reacting to a crime: everything except fleeing stands still; fleeing sprints along the pavement away from it
+          go = rk === 'flee';
+          if (go) { const al = p.axis === 'x' ? p.x - react!.fx : p.z - react!.fz; if (Math.abs(al) > .5) p.dir = al > 0 ? 1 : -1; p.sp = 3.4 * p.vf; }
+        }
+        else if(p.mode==='flee'){ p.dir = p.axis==='x' ? (p.target[0]>=p.x?1:-1) : (p.target[1]>=p.z?1:-1); p.sp=2.8*p.vf; }
         else if(!lingering && td>4){
           const tx=p.target[0],tz=p.target[1],ox=p.x,oz=p.z;
           if(p.tc<=0){ // walk the pavements: go along the road to the junction nearest the target, turn there, never cut across blocks
@@ -1147,27 +1193,46 @@ function Pedestrians() {
           p.sp = (p.mode==='commute'?1.8:p.mode==='social'?1.35:1.1)*p.vf;
         }
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
-        if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x')) go = false; } // wait at the kerb for a red light
-        if (go) { const activityFactor = night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
+        if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x') && rk !== 'flee') go = false; } // wait at the kerb for a red light (not when running for your life)
+        if (go) { const activityFactor = rk === 'flee' ? 1 : night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
       }
       if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }
-      if (p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 3.5) { const dx = p.x - VEH.x, dz = p.z - VEH.z; if (dx * dx + dz * dz < 3.6) { p.down = 3.2; VEH.v *= .9; thud(.5); } } // clipped by the player's car
-      const yawT = p.axis === 'x' ? (p.dir > 0 ? 0 : Math.PI) : -p.dir * Math.PI / 2, sw = p.moving ? Math.sin(p.ph) : 0;
-      if (Number.isNaN(p.yaw)) p.yaw = yawT; let dyw = yawT - p.yaw; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw)); p.yaw += dyw * Math.min(1, dt * 9); // turn smoothly instead of snapping 180°
+      if (p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 3.5) { const dx = p.x - VEH.x, dz = p.z - VEH.z; if (dx * dx + dz * dz < 3.6) { p.down = 3.2; VEH.v *= .9; thud(.5); pushCrime({ kind: 'runover', x: p.x, z: p.z, victim: i }); } } // clipped by the player's car
+      const yawT = react && rk !== 'flee' ? Math.atan2(-((react as Reaction).fz - p.z), (react as Reaction).fx - p.x) : p.axis === 'x' ? (p.dir > 0 ? 0 : Math.PI) : -p.dir * Math.PI / 2, sw = p.moving ? Math.sin(p.ph) : 0;   // witnesses turn to look at the crime
+      if (Number.isNaN(p.yaw)) p.yaw = yawT; let dyw = yawT - p.yaw; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw)); p.yaw += dyw * Math.min(1, dt * (react ? 14 : 9)); const pv = PEDVIEW[i] || (PEDVIEW[i] = { x: 0, z: 0, yaw: 0, on: false }); pv.x = p.x; pv.z = p.z; pv.yaw = p.yaw; pv.on = !p.hidden && p.down <= 0; // turn smoothly instead of snapping 180°
       p.vis += ((p.hidden ? 0 : 1) - p.vis) * Math.min(1, dt * 5); const sc = Math.max(.001, p.vis); T.sc.set(sc, sc, sc);
-      T.qa.setFromAxisAngle(T.Y, p.yaw); T.qb.setFromAxisAngle(T.Z, -fall * Math.PI / 2); T.q.copy(T.qa).multiply(T.qb);
-      T.pos.set(p.x, .12 * fall + (p.moving ? Math.abs(sw) * .03 : 0), p.z); T.base.compose(T.pos, T.q, T.sc);
+      const Pz = pose.current[i], kk = Math.min(1, dt * 8);   // smooth the reaction pose so hands go up / crouch / phone comes out over a moment
+      Pz.up += ((rk === 'handsup' ? 1 : rk === 'cower' ? .75 : 0) - Pz.up) * kk; Pz.crouch += ((rk === 'cower' ? 1 : 0) - Pz.crouch) * kk; Pz.film += ((rk === 'film' ? 1 : 0) - Pz.film) * kk; Pz.angry += ((rk === 'confront' ? 1 : 0) - Pz.angry) * kk;
+      const lean = (rk === 'flee' && p.moving ? .22 : 0) + Pz.crouch * .45;
+      T.qa.setFromAxisAngle(T.Y, p.yaw); T.qb.setFromAxisAngle(T.Z, -(fall * Math.PI / 2 + lean)); T.q.copy(T.qa).multiply(T.qb);
+      T.pos.set(p.x, .12 * fall - .36 * Pz.crouch + (p.moving ? Math.abs(sw) * .03 : 0), p.z); T.base.compose(T.pos, T.q, T.sc);
       part(torso.current, i, 0, 1.05, 0); part(head.current, i, 0, 1.52, 0);
-      part(legs.current, i * 2, 0, .78, .1, sw * .7, -.38); part(legs.current, i * 2 + 1, 0, .78, -.1, -sw * .7, -.38);
-      part(arms.current, i * 2, 0, 1.3, .27, -sw * .6, -.25); part(arms.current, i * 2 + 1, 0, 1.3, -.27, sw * .6, -.25);
+      part(legs.current, i * 2, 0, .78, .1, sw * .7 + Pz.crouch, -.38); part(legs.current, i * 2 + 1, 0, .78, -.1, -sw * .7 + Pz.crouch, -.38);
+      const trem = Math.sin(t * 22 + i) * .07 * Pz.up, aL = -sw * .6 * (1 - Pz.up) + (2.8 + trem) * Pz.up, aR0 = sw * .6 * (1 - Pz.up) + (2.8 - trem) * Pz.up;
+      const aR = aR0 * (1 - Pz.film - Pz.angry) + 1.75 * Pz.film + (1.25 + Math.sin(t * 10 + i) * .55) * Pz.angry;   // hands up / phone held out / angry gesture
+      part(arms.current, i * 2, 0, 1.3, .27, aL, -.25); part(arms.current, i * 2 + 1, 0, 1.3, -.27, aR, -.25);
+      if (Pz.film > .6) { T.t.makeTranslation(.52, 1.4, -.27); T.m.copy(T.base).multiply(T.t); } else T.m.makeScale(0, 0, 0);
+      phone.current.setMatrixAt(i, T.m);
     });
-    for (const m of [torso, head, legs, arms]) m.current.instanceMatrix.needsUpdate = true;
+    for (const m of [torso, head, legs, arms, phone]) m.current.instanceMatrix.needsUpdate = true;
   });
   return <>
     <instancedMesh ref={torso} args={[undefined, undefined, PED_N]} frustumCulled={false} castShadow><boxGeometry args={[.26, .56, .46]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
     <instancedMesh ref={head} args={[undefined, undefined, PED_N]} frustumCulled={false}><sphereGeometry args={[.14, 10, 8]} /><meshStandardMaterial roughness={.8} /></instancedMesh>
     <instancedMesh ref={legs} args={[undefined, undefined, PED_N * 2]} frustumCulled={false}><boxGeometry args={[.15, .76, .17]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
     <instancedMesh ref={arms} args={[undefined, undefined, PED_N * 2]} frustumCulled={false}><boxGeometry args={[.11, .52, .11]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
+    <instancedMesh ref={phone} args={[undefined, undefined, PED_N]} frustumCulled={false}><boxGeometry args={[.05, .1, .02]} /><meshBasicMaterial color="#9be8ff" /></instancedMesh>
+  </>;
+}
+
+/* ───────────── NPC speech bubbles: "Oga, abeg, don't shoot!" (newest 4 shown, anchored above the ped) ───────────── */
+function NpcShouts() {
+  const slots = useRef<(THREE.Group | null)[]>([]), [list, setList] = useState<typeof SHOUTS>([]);
+  useEffect(() => { const id = setInterval(() => { const now = wnow(), act = SHOUTS.filter(s => s.until > now).slice(-4); setList(prev => (prev.map(s => s.id).join() === act.map(s => s.id).join() ? prev : act)); }, 200); return () => clearInterval(id); }, []);
+  useFrame(() => { list.forEach((s, k) => { const g = slots.current[k], q = PEDPOS[s.i]; if (g && q && q.x < 9e4) g.position.set(q.x, 2.15, q.z); }); });
+  return <>
+    <RuntimeStyle id="arl-npc-shout" css={`.npcShout{background:#fffffff2;color:#111;border-radius:12px;padding:4px 9px;font-size:12px;font-weight:800;white-space:nowrap;box-shadow:0 3px 10px #0007;pointer-events:none;animation:popIn .15s both}.npcShout:after{content:'';position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:#fffffff2}`} />
+    {list.map((s, k) => <group key={s.id} ref={el => { slots.current[k] = el; }}><Html center zIndexRange={[6, 0]}><div className="npcShout" style={{ position: 'relative' }}>{s.text}</div></Html></group>)}
   </>;
 }
 
@@ -1516,7 +1581,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         if (tgt) fired = shoot(tgt, weapon);
         else { NET.me.anim='shoot'; NET.me.animUntil=Date.now()+360; }
         if (fired) {
-          window.dispatchEvent(new CustomEvent('arl-shot-fired', { detail: weapon }));
+          window.dispatchEvent(new CustomEvent('arl-shot-fired', { detail: weapon })); pushCrime({ kind: 'gunshot', x: p.x, z: p.z });   // everyone nearby hears it, many see it
           GAME.notice = tgt ? `🎯 Fired ${weapon} at ${tgt}` : '🔫 Shot fired — no target in your aim cone';
         }
       }
@@ -1682,6 +1747,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <JackNpc />
       <JackGhost />
       <Pedestrians />
+      <NpcShouts />
       <NpcPolice />
       <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} />
       <TrainLine />

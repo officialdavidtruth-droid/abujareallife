@@ -4,7 +4,7 @@ import { currentUser, err } from '../../../lib/auth';
 import { robCooldownLeft, secs } from '../../../lib/robbery';
 import { downState } from '../../../lib/downed';
 import { addSkillXp, insideBiz, loadState, lvl } from '../../../lib/game';
-import { CRIMES, JAIL_SECS_PER_HEAT, ROB_KIND_COOLDOWN_MS, catchChance, type CrimeId } from '../../../lib/profile';
+import { CRIMES, JAIL_SECS_PER_HEAT, ROB_KIND_COOLDOWN_MS, WITNESS_HEAT, WITNESS_MAX, catchChance, type CrimeId } from '../../../lib/profile';
 import { VEHICLE_CATALOG } from '../../../lib/vehicles';
 // Anything is allowed. Crime only has consequences: heat (wanted), being caught on the spot, and real police players.
 export async function POST(req: Request) {
@@ -22,10 +22,11 @@ export async function POST(req: Request) {
     if (wait > 0) return NextResponse.json({ error: `Lie low for ${secs(wait)}s before your next one.`, retryIn: wait }, { status: 429 });
   }
   const nearCops = Math.max(0, Math.min(3, Math.floor(Number(b.policeNearby) || 0)));
+  const witnesses = ROB_KIND_COOLDOWN_MS[kind] !== undefined ? Math.max(0, Math.min(WITNESS_MAX, Math.floor(Number(b.witnesses) || 0))) : 0;   // only street crimes can be witnessed
   const caught = Math.random() < catchChance(kind, lvl(st.profile, c.skill), nearCops);
   const loot = caught ? 0 : c.loot[0] + Math.floor(Math.random() * (c.loot[1] - c.loot[0]));
   const jackRole = kind === 'carjack' ? String(b.role || '') : '';
-  const heat = Math.min(200, st.save.heat + c.heat + (jackRole === 'police' ? 30 : 0));   // jacking a police car draws extra heat
+  const heat = Math.min(200, st.save.heat + c.heat + witnesses * WITNESS_HEAT + (jackRole === 'police' ? 30 : 0));   // jacking a police car draws extra heat
   const data: Record<string, unknown> = { heat, heatAt: new Date() };
   if (!caught) { data.cash = { increment: loot }; data.profile = addSkillXp(st.profile, c.skill, 6); }
   let jailSecs = 0;
@@ -44,5 +45,5 @@ export async function POST(req: Request) {
   await prisma.crime.create({ data: { userId: u.id, kind, caught, loot } });
   if (loot) await prisma.transaction.create({ data: { userId: u.id, type: 'CRIME', amount: loot, description: kind } });
   const n = await loadState(u.id);
-  return NextResponse.json({ caught, loot, car, heat: n!.save.heat, wanted: n!.save.heat >= 40, jailSecs, cash: n!.save.cash });
+  return NextResponse.json({ witnesses, caught, loot, car, heat: n!.save.heat, wanted: n!.save.heat >= 40, jailSecs, cash: n!.save.cash });
 }

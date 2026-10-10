@@ -134,6 +134,7 @@ export const CRIMES: Record<'pickpocket' | 'mug_npc' | 'rob_shop' | 'carjack' | 
   rob_bank: { at: ['Bank'], label: 'Break into the vault', loot: [300_000, 900_000], heat: 90, skill: 'stealth' as SkillId, base: 0.8 },
 };
 export type CrimeId = keyof typeof CRIMES;
+export const WITNESS_HEAT = 6, WITNESS_MAX = 3;   // extra heat for each NPC (max 3) who SAW a street crime; the count comes from the client like policeNearby
 export const WANTED_AT = 40;                // heat at/above this makes you WANTED: police can arrest you
 export const HEAT_DECAY_PER_MIN = 3;        // heat cools while you lie low
 export const JAIL_SECS_PER_HEAT = 1.2;      // jail time scales with how hot you were

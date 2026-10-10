@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { GAME, JACK, PEDPOS, TPOS } from './CityWorld';
 import RuntimeStyle from './RuntimeStyle';
 import { NET } from '../lib/cityNet';
+import { pushCrime } from '../lib/witness';
 import { CARJACK_RANGE, ROB_ANY_COOLDOWN_MS, ROB_KIND_COOLDOWN_MS, ROB_RANGE } from '../lib/profile';
 
 /* Physical crime: walk up to someone and use the button that appears. Nothing here is a menu action any more.
@@ -57,6 +58,8 @@ export default function CrimeActions({ username, say, refresh }: { username: str
   const go = async (a: Act) => {
     if (busy.current || left(a.k) > 0) return; busy.current = true; setTimeout(() => { busy.current = false; }, 1500);
     if (a.k === 'chop') { const f = (window as any).__arlChopSteal as ((n: number) => void) | undefined; if (f) f(copsNear()); return; }   // the chop shop job (components/ChopShop.tsx) does the rest
+    // street crime on an NPC happens in front of other NPCs: they react in the world, and the server adds heat per witness who saw it
+    const wit = a.k === 'pick' || a.k === 'mug' || a.k === 'npcjack' ? pushCrime({ kind: a.k === 'pick' ? 'pickpocket' : a.k === 'mug' ? 'mug' : 'carjack', x: NET.me.x, z: NET.me.z, victim: a.idx }) : 0;
     NET.me.anim = 'punch'; NET.me.animUntil = Date.now() + 450;
     if (a.k === 'rob' || a.k === 'jack') {
       const q = a.name ? NET.peers[a.name] : null; if (!q || !a.name) return say('They moved away.');
@@ -75,12 +78,12 @@ export default function CrimeActions({ username, say, refresh }: { username: str
     } else {
       const kind = a.k === 'pick' ? 'pickpocket' : a.k === 'mug' ? 'mug_npc' : 'carjack';
       const ci = a.k === 'npcjack' ? JACK.nearest(NET.me.x, NET.me.z, 8) : -1, info = ci >= 0 ? JACK.info(ci) : null;   // which vehicle you are jacking (car, taxi, police, bus, bike)
-      const r = await post('/api/crime', { kind, policeNearby: copsNear(), ...(info ? { role: info.role, model: info.model } : {}) });
+      const r = await post('/api/crime', { kind, policeNearby: copsNear(), witnesses: wit, ...(info ? { role: info.role, model: info.model } : {}) });
       if (!r.ok) { if (r.d.retryIn) startCooldown(a.k, r.d.retryIn); return say(r.d.error || 'It did not work.'); }
       startCooldown(a.k);
       if (ci >= 0 && !r.d.caught) JACK.start(ci);   // GTA-style: open the door, throw the driver out, take the wheel
       if (a.idx !== undefined) done.current.set(a.idx, Date.now() + PED_RETRY_MS);
-      say(r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : a.k === 'mug' ? '😱 They screamed and fought back. You are WANTED.' : '😬 It went wrong. You are WANTED.') : `💰 You got away with ${naira(r.d.loot)}${r.d.car ? ` · 🚗 ${r.d.car} is now in your garage (stolen: unregistered, uninsured)` : ''}${r.d.wanted ? ' · you are WANTED' : ''}`);
+      say((wit ? `👀 ${Math.min(3, wit)} saw you. ` : '') + (r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : a.k === 'mug' ? '😱 They screamed and fought back. You are WANTED.' : '😬 It went wrong. You are WANTED.') : `💰 You got away with ${naira(r.d.loot)}${r.d.car ? ` · 🚗 ${r.d.car} is now in your garage (stolen: unregistered, uninsured)` : ''}${r.d.wanted ? ' · you are WANTED' : ''}`));
     }
     refresh();
   };

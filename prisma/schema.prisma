@@ -195,6 +195,7 @@ model Transaction {
   createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([type, createdAt])
 }
 
 model EmailCode {
@@ -467,4 +468,93 @@ model Deal {
   createdAt DateTime @default(now())
   @@index([toId, status])
   @@index([fromId, status])
+}
+
+
+// ── Crews, gangs and companies (CREW.md) ──
+model Crew {
+  id        String   @id @default(cuid())
+  name      String
+  nameKey   String   @unique
+  tag       String
+  tagKey    String   @unique
+  kind      String   @default("crew") // crew | gang | company
+  motto     String   @default("")
+  open      Boolean  @default(false)  // anyone may join without an invite
+  treasury  Int      @default(0)
+  rating    Int      @default(0)      // leaderboard score: cup placings and turf wars
+  createdAt DateTime @default(now())
+  members   CrewMember[]
+  invites   CrewInvite[]
+  messages  CrewMessage[]
+  turf      CrewTurf[]
+
+  @@index([rating])
+}
+
+model CrewMember {
+  id         String   @id @default(cuid())
+  crewId     String
+  crew       Crew     @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  userId     String   @unique         // one crew per player
+  username   String
+  role       String   @default("member") // leader | officer | member
+  joinedAt   DateTime @default(now())
+  chatReadAt DateTime @default(now())
+
+  @@index([crewId])
+}
+
+model CrewInvite {
+  id        String   @id @default(cuid())
+  crewId    String
+  crew      Crew     @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  toName    String
+  fromName  String
+  createdAt DateTime @default(now())
+
+  @@unique([crewId, toName])
+  @@index([toName])
+}
+
+model CrewMessage {
+  id        String   @id @default(cuid())
+  crewId    String
+  crew      Crew     @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  fromName  String
+  kind      String   @default("chat") // chat | sys
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([crewId, createdAt])
+}
+
+model CrewTurf {
+  id         String   @id @default(cuid())
+  district   String   @unique
+  crewId     String
+  crew       Crew     @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  claimedAt  DateTime @default(now())
+  lastPaidAt DateTime @default(now())
+
+  @@index([crewId])
+}
+
+model CrewEvent {
+  id         String   @id @default(cuid())
+  key        String   @unique         // cup:2026-10-10 | war:<id>
+  kind       String                   // cup | war
+  status     String   @default("active") // active | done
+  startsAt   DateTime
+  endsAt     DateTime
+  attackerId String?
+  defenderId String?
+  district   String?
+  data       Json?
+  result     Json?
+  createdAt  DateTime @default(now())
+
+  @@index([status, endsAt])
+  @@index([attackerId])
+  @@index([defenderId])
 }

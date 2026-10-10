@@ -21,6 +21,7 @@ import Market from './Market';
 import Inventory from './Inventory';
 import Messages from './Messages';
 import CityLifePanel from './CityLifePanel';
+import CrewPanel from './Crew';
 type Tier = { id: string; label: string; e: string; at: number; next: { label: string; at: number } | null; pct: number };
 type St = { cash: number; heat: number; wanted: boolean; jailLeft: number; rank: number; profile: Profile; origin: Origin | null; hasCar: boolean; fame: number; tier: Tier; drunk?: number; high?: number };
 type Row = { rank: number; name: string; fame: number; origin: string | null; tier: string; you: boolean };
@@ -30,7 +31,7 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 
 /* Everything "no rules, real consequences": quests, crime, wanted level, real police arrests, jail, building access, relationships. */
 export default function GameLayer({ username, onCash, near, role, onEnter, onDenied, open, onToggle, onCityTab, cityTab, getMinute }: { username: string; onCash: (n: number) => void; near: { name: string; type: string; id: string } | null; role: 'player' | 'police'; onEnter: (id: string) => void; onDenied?: (reason: string) => void; open: boolean; onToggle: () => void; onCityTab: (t: CityTab) => void; cityTab: CityTab; getMinute?: () => number }) {
-  const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | 'city' | 'goals' | 'racing' | 'casino' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
+  const [st, setSt] = useState<St | null>(null), [entering, setEntering] = useState(false), [tab, setTab] = useState<'quests' | 'crime' | 'police' | 'love' | 'me' | 'fame' | 'players' | 'phone' | 'city' | 'goals' | 'racing' | 'casino' | 'crew' | null>(null), [board, setBoard] = useState<{ top: Row[]; me: { rank: number | null; fame: number; tier: string } | null } | null>(null), [msg, setMsg] = useState(''), [wanted, setWanted] = useState<{ name: string; heat: number }[]>([]);
   const [quest, setQuest] = useState<{ id: string; end: number } | null>(null), [, tick] = useState(0), [bail, setBail] = useState(0), [enter, setEnter] = useState<{ ok: boolean; reason: string; name: string } | null>(null);
   const [reqs, setReqs] = useState<any[]>([]), [to, setTo] = useState(''), wasJailed = useRef(false), [market, setMarket] = useState<{ seller?: string } | null>(null), [chatWith, setChatWith] = useState<string | null>(null), [unread, setUnread] = useState(0), seenMsg = useRef('');
   const [ping, setPing] = useState<{ from: string; text: string; n: number } | null>(null), pingT = useRef<any>(null), live = useRef<{ tab: string | null; chat: string | null }>({ tab: null, chat: null });
@@ -146,7 +147,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   if (!st) return null;
   const items: [string, string, () => void][] = [
     ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🎒', 'My Stuff', () => setStuff(true)], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
-    ['🎯', 'Goals', () => setTab('goals')], ['🏁', 'Racing', () => setTab('racing')], ['🎰', 'Casino', () => setTab('casino')], ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
+    ['🎯', 'Goals', () => setTab('goals')], ['🏁', 'Racing', () => setTab('racing')], ['🎰', 'Casino', () => setTab('casino')], ['🛡️', 'Crew', () => setTab('crew')], ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
     ['❤️', 'Love', () => setTab('love')], ['🌆', 'City Life', () => setTab('city')], ['📱', 'Phone', () => setTab('phone')], ['💰', 'Wallet', () => window.dispatchEvent(new Event('arl-open-wallet'))], ['💸', 'Send Money', () => setSendTo('')], ['🕶️', 'Crime', () => setTab('crime')],
   ];
   if (role === 'police') items.push(['👮', 'Police', () => setTab('police')]);
@@ -192,6 +193,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
       {tab === 'fame' && <FamePanel st={st} board={board} />}
       {tab === 'players' && <PlayersPanel username={username} onClose={() => setTab(null)} onOrder={n => { setTab(null); setOrderFor(n); }} />}
       {tab === 'me' && <MyLifePanel username={username} st={st} prof={prof} profile={p} />}
+      {tab === 'crew' && <CrewPanel onCash={n => { onCash(n); refresh(); }} say={say} />}
       {tab === 'city' && <CityLifePanel />}
     </div>}
     <RuntimeStyle css={`.glToast{position:absolute;left:50%;transform:translateX(-50%);top:calc(64px + var(--sat,0px));z-index:30;background:#000c;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;max-width:90vw;text-align:center}

@@ -433,6 +433,13 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   if (k === 'reload') { const s = .5 + .5 * sin(t * 10); j.sX = .08; j.hX = .12; j.raX = .9 + .15 * s; j.reX = 1.2; j.laX = .8; j.leX = 1.1; j.laZ = .18; j.raZ = -.08; }
   if (k === 'aim') { j.sX = -.08; j.laX = .7; j.leX = 1.0; j.raX = .7; j.reX = 1.0; j.laZ = .05; j.raZ = -.05; }
   if (k === 'punch') { const s = sin(t * 21), a = mx(0, s), b = mx(0, -s); j.sX = .12; j.sY = .28 * s; j.hX = .05; j.raX = .5 + 1.0 * a; j.reX = 1.7 - 1.6 * a; j.raZ = -.05; j.laX = .5 + 1.0 * b; j.leX = 1.7 - 1.6 * b; j.laZ = .05; j.llX = .25; j.rlX = -.25; j.lkX = .3; j.rkX = .3; }
+  // party emotes (PARTIES.md)
+  if (k === 'shaku') { const s = sin(t * 8), c = cos(t * 8); j.hipY = -.05 + .03 * Math.abs(s); j.llX = .35 * s; j.rlX = -.35 * s; j.lkX = .5 * mx(0, s); j.rkX = .5 * mx(0, -s); j.laX = 1.0 + .8 * s; j.raX = 1.0 - .8 * s; j.laZ = .3; j.raZ = .3; j.leX = 1.4; j.reX = 1.4; j.sY = .25 * s; j.sZ = .08 * c; j.hZ = .08 * s; }
+  if (k === 'azonto') { const s = sin(t * 7), c = cos(t * 7); j.hipY = -.08 + .03 * Math.abs(s); j.sX = .1; j.laX = .9 + .4 * s; j.raX = .9 - .4 * s; j.leX = 1.6; j.reX = 1.6; j.laZ = .15; j.raZ = .15; j.sY = .4 * c; j.llX = .2 * c; j.rlX = -.2 * c; j.lkX = .35 + .25 * mx(0, s); j.rkX = .35 + .25 * mx(0, -s); j.hY = -.25 * c; }
+  if (k === 'clap') { const b = .5 + .5 * sin(t * 10); j.laX = .9; j.raX = .9; j.leX = 1.3; j.reX = 1.3; j.laZ = -.15 + .3 * b; j.raZ = -.15 + .3 * b; j.sX = .04; j.hX = -.06; j.hipY = -.01 * b; }
+  if (k === 'bow') { const b = .5 + .5 * sin(t * 1.2); j.sX = .55 + .35 * b; j.hX = .2; j.laX = .2; j.raX = .2; j.laZ = .06; j.raZ = .06; j.hipY = -.05; j.lkX = .15; j.rkX = .15; }
+  if (k === 'spray') { const b = .5 + .5 * sin(t * 7); j.raX = 2.2 + .5 * b; j.reX = .4 + .9 * b; j.raZ = .4; j.sY = -.15 * b; j.laZ = .15; j.hX = -.05; j.hipY = -.02 + .02 * b; j.llX = .1 * sin(t * 3.5); j.rlX = -.1 * sin(t * 3.5); }
+  if (k === 'laugh') { const s = sin(t * 14); j.hX = -.25 + .1 * s; j.sX = -.1 + .06 * s; j.laX = .5; j.raX = .5; j.leX = 1.0; j.reX = 1.0; j.hipY = .01 * s; }
   return j;
 }
 

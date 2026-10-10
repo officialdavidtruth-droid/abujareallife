@@ -989,6 +989,7 @@ export default function Sim() {
   useEffect(() => { if (ui.toast) sfx('pop'); }, [ui.toast]);
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.cash === 'number') S.cash = d.cash; }; window.addEventListener('arl-mission-paid', f); window.addEventListener('arl-cash-update', f); return () => { window.removeEventListener('arl-mission-paid', f); window.removeEventListener('arl-cash-update', f); }; }, []);
   useEffect(() => { const f = () => { setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f); }, []); // killed: wake up in your house
+  useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d === 'object') for (const k of Object.keys(d)) if (k in S.needs && Number.isFinite(d[k])) S.needs[k as N] = cl(S.needs[k as N] + d[k]); }; window.addEventListener('arl-need-fx', f); return () => window.removeEventListener('arl-need-fx', f); }, []); // parties and other panels change needs through this event
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.meals === 'number') { S.meals = d.meals; S.supplies = d.supplies; } }; window.addEventListener('arl-pantry', f); return () => window.removeEventListener('arl-pantry', f); }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
   return <div className={'sim' + (outside ? ' outside' : '')}>

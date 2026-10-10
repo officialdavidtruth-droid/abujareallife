@@ -582,3 +582,58 @@ model CrewEvent {
   @@index([attackerId])
   @@index([defenderId])
 }
+
+// A party, hangout, owambe or club night hosted by a player (PARTIES.md). LIVE until it ends by itself or the host ends it.
+model Party {
+  id         String      @id @default(cuid())
+  hostId     String
+  hostName   String
+  kind       String      // hangout | house | owambe | club
+  title      String
+  occasion   String?     // owambe: what is being celebrated
+  dress      String?     // owambe: asoebi colour
+  genre      String      @default("afrobeats")
+  venueId    String?     // club night: the Nightclub business id
+  venueName  String
+  district   String
+  cover      Int         @default(0)
+  markup     Float       @default(1)
+  friendsOnly Boolean    @default(false)
+  cap        Int
+  status     String      @default("LIVE") // LIVE | ENDED
+  vibe       Float       @default(0)
+  vibeAt     DateTime    @default(now())
+  peak       Float       @default(0)
+  guestsTotal Int        @default(0)
+  hostEarned Int         @default(0)
+  sprayTotal Int         @default(0)
+  musicAt    DateTime?
+  startsAt   DateTime    @default(now())
+  endsAt     DateTime
+  endedAt    DateTime?
+  guests     PartyGuest[]
+
+  @@index([status, endsAt])
+  @@index([hostId, status])
+  @@index([venueId, status])
+}
+
+model PartyGuest {
+  id         String    @id @default(cuid())
+  partyId    String
+  userId     String
+  username   String
+  status     String    @default("IN") // IN | LEFT | KICKED
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+  spent      Int       @default(0)
+  sprayed    Int       @default(0)
+  received   Int       @default(0)
+  dances     Int       @default(0)
+  lastDanceAt DateTime?
+  party      Party     @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@unique([partyId, userId])
+  @@index([userId, status])
+  @@index([partyId, status])
+}

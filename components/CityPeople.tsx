@@ -1,18 +1,17 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { ACT_LIST, INTERACT_RANGE, NET, type useCityNet } from '../lib/cityNet';
+import { ACT_EMOJI, ACT_LIST, EMOTE_LIST, INTERACT_RANGE, NET, REPLY_ACT, type useCityNet } from '../lib/cityNet';
 
 import RuntimeStyle from './RuntimeStyle';
 type Net = ReturnType<typeof useCityNet>;
 const dist = (n: string) => { const p = NET.peers[n]; return p ? Math.hypot(p.x - NET.me.x, p.z - NET.me.z) : Infinity; };
-const ACT_EMOJI: Record<string, string> = { wave: '👋', cheer: '🙌', dance: '💃' };
 
 /* Everything social in the open city: online list + chat, player card (wave / high-five / dance / mute),
    incoming interaction notices. */
 type Pub = { name: string; you: boolean; since: number; origin: string | null; fame: number; fameRank: number; tier: { e: string; label: string; next: { label: string; at: number } | null; pct: number }; rank: number; profession: { e: string; label: string } | null; style: string; bio: string; relationship: string; partner: string | null; top: { id: string; label: string; e: string; lv: number }[]; stalls: number; itemsSold: number };
 const since = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
 export default function CityPeople({ net, sel, setSel }: { net: Net; sel: string | null; setSel: (n: string | null) => void }) {
-  const [open, setOpen] = useState(false), [txt, setTxt] = useState(''), [, tick] = useState(0), box = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false), [emotes, setEmotes] = useState(false), [txt, setTxt] = useState(''), [, tick] = useState(0), box = useRef<HTMLDivElement>(null);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   useEffect(() => { if (open) { net.clearUnread(); box.current?.scrollTo(0, 1e9); } }, [open, net.log.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (sel && !net.roster.includes(sel)) setSel(null); }, [sel, net.roster, setSel]);
@@ -29,8 +28,16 @@ export default function CityPeople({ net, sel, setSel }: { net: Net; sel: string
     <RuntimeStyle css={CSS} />
     <button className="cpOnline" onClick={() => setOpen(o => !o)} aria-label="Players and chat"><span>🌍</span><em>{label}</em><b>{net.enabled ? count : '–'}</b>{net.unread > 0 && !open && <i>{net.unread > 9 ? '9+' : net.unread}</i>}</button>
 
+    <button className="cpEmoteBtn" onClick={() => setEmotes(o => !o)} aria-label="Emotes">🕺</button>
+    {emotes && <div className="cpEmotes"><button className="cpX" onClick={() => setEmotes(false)} aria-label="Close">×</button>
+      <div className="cpTitle">🕺 Emotes</div>
+      <div className="cpGrid cpGrid3">{EMOTE_LIST.map(([k, e, l]) => <button key={k} onClick={() => { net.act(k); setEmotes(false); }}>{e}<small>{l}</small></button>)}
+        <button className="cpCircle" onClick={() => { net.act('circle', '*'); setEmotes(false); }}>🔥<small>Dance circle</small></button></div>
+      <p>Everyone within reach sees your emote. A dance circle invites them all to join, and dancing together fills Social faster.</p>
+    </div>}
+
     <div className="cpStack">
-      {net.notices.map(n => <div key={n.id} className="cpCard"><div>{ACT_EMOJI[n.k]} <b>{n.from}</b> {n.text}</div><div className="cpRow">{dist(n.from) <= INTERACT_RANGE && <button className="ok" onClick={() => { net.act(n.k, n.from); net.dismissNotice(n.id); }}>{n.reply}</button>}<button onClick={() => net.dismissNotice(n.id)}>Dismiss</button></div></div>)}
+      {net.notices.map(n => <div key={n.id} className="cpCard"><div>{ACT_EMOJI[n.k]} <b>{n.from}</b> {n.text}</div><div className="cpRow">{dist(n.from) <= INTERACT_RANGE && <button className="ok" onClick={() => { net.act(REPLY_ACT[n.k] || n.k, n.from); net.dismissNotice(n.id); }}>{n.reply}</button>}<button onClick={() => net.dismissNotice(n.id)}>Dismiss</button></div></div>)}
     </div>
 
     {sel && net.roster.includes(sel) && <div className="cpSheet">
@@ -66,6 +73,10 @@ export default function CityPeople({ net, sel, setSel }: { net: Net; sel: string
 }
 
 const CSS = `
+.cpEmoteBtn{position:absolute;z-index:12;left:calc(50% + 96px);top:calc(10px + env(safe-area-inset-top,0px));width:40px;height:40px;border-radius:999px;border:1px solid #ffffff3a;background:#0b1511e0;color:#fff;font-size:19px;cursor:pointer;padding:0}
+.cpEmotes{position:absolute;z-index:31;left:50%;transform:translateX(-50%);top:calc(58px + env(safe-area-inset-top,0px));width:min(340px,calc(100vw - 24px));background:#09130ff7;border:1px solid #ffffff2a;border-radius:16px;padding:12px;color:#fff;display:flex;flex-direction:column;gap:8px}
+.cpEmotes p{margin:0;font-size:10px;color:#7f968b}.cpGrid3{grid-template-columns:repeat(3,1fr)}.cpGrid button.cpCircle{background:#4a2a12;border-color:#d99a42}
+@media (pointer:coarse),(max-width:820px){.cpEmoteBtn{left:calc(162px + env(safe-area-inset-left,0px));top:calc(100px + env(safe-area-inset-top,0px));width:46px;height:46px}.cpEmotes{left:auto;right:calc(66px + env(safe-area-inset-right,0px));transform:none;top:calc(56px + env(safe-area-inset-top,0px));width:min(320px,calc(100vw - 90px))}}
 .cpProf{display:flex;flex-direction:column;gap:7px;margin:6px 0 8px}.cpBadges{display:flex;flex-wrap:wrap;gap:5px}.cpBadges span{background:#13231d;border:1px solid #ffffff20;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700}.cpBadges .cpTier{background:#d99a42;color:#1a1410;border-color:#d99a42}
 .cpBio{margin:0;font-size:12px;color:#cfe0d7;font-style:italic}.cpStats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.cpStats div{background:#0d1b16;border:1px solid #ffffff12;border-radius:10px;padding:6px 2px;text-align:center}.cpStats b{display:block;font-size:13px;color:#f0b94a}.cpStats small{font-size:9px;color:#8fa79b}
 .cpSkills{display:flex;flex-wrap:wrap;gap:5px}.cpSkills span{font-size:11px;background:#10201a;border-radius:8px;padding:3px 8px}.cpRel{margin:0;font-size:12px}.cpLoad{font-size:12px;color:#8fa79b;margin:6px 0}.cpStall{background:#35c46b;color:#06210f;border:0;border-radius:10px;padding:9px;font-weight:800;font-size:12px;cursor:pointer}.cpFind{background:#0a1511;border:1px solid #2a4337;border-radius:9px;padding:8px;color:#fff;font-size:13px;margin-bottom:6px}.cpPeople small{opacity:.6;margin-left:4px}

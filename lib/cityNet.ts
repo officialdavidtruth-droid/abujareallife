@@ -49,10 +49,23 @@ const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, 
 
 export const INTERACT_RANGE = 10; // metres: how close you must be to wave / high-five / dance with someone
 export const ACT_LIST = [['wave', '👋', 'Wave'], ['cheer', '🙌', 'High-five'], ['dance', '💃', 'Dance']] as const;
+/* Emotes you play on your own (everyone nearby sees them). 'circle' is the group one: it invites everybody within reach to dance with you. */
+export const EMOTE_LIST = [['dance', '💃', 'Dance'], ['shaku', '🕺', 'Shaku shaku'], ['azonto', '🪩', 'Azonto'], ['clap', '👏', 'Clap'], ['bow', '🙇', 'Greet / bow'], ['laugh', '😂', 'Laugh'], ['spray', '💸', 'Spray'], ['wave', '👋', 'Wave'], ['cheer', '🙌', 'Cheer']] as const;
+export const ACT_EMOJI: Record<string, string> = { wave: '👋', cheer: '🙌', dance: '💃', shaku: '🕺', azonto: '🪩', clap: '👏', bow: '🙇', laugh: '😂', spray: '💸', circle: '🔥', phone: '📱' };
+/** What a "Join in" reply plays for a notice of this kind (a dance circle is answered by dancing, not by starting another circle). */
+export const REPLY_ACT: Record<string, string> = { circle: 'dance' };
+const DANCING = new Set(['dance', 'shaku', 'azonto', 'circle']);
 const ACTS: Record<string, { text: string; reply: string; ms: number }> = {
   wave: { text: 'waved at you', reply: 'Wave back', ms: 3200 },
   cheer: { text: 'wants a high-five', reply: 'High-five!', ms: 3200 },
   dance: { text: 'invited you to dance', reply: 'Dance too', ms: 7000 },
+  shaku: { text: 'is doing the shaku shaku at you', reply: 'Dance too', ms: 7000 },
+  azonto: { text: 'is doing the azonto at you', reply: 'Dance too', ms: 7000 },
+  clap: { text: 'is clapping for you', reply: 'Take a bow', ms: 3500 },
+  bow: { text: 'greeted you respectfully', reply: 'Greet back', ms: 3500 },
+  laugh: { text: 'is laughing with you', reply: 'Laugh too', ms: 4000 },
+  spray: { text: 'is spraying you money!', reply: 'Dance!', ms: 5000 },
+  circle: { text: 'started a dance circle', reply: 'Join in', ms: 9000 },
   phone: { text: 'is using their phone', reply: 'Okay', ms: 8000 },
 };
 export type Notice = { id: number; from: string; k: string; text: string; reply: string };
@@ -181,8 +194,8 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
           if (cur !== c) return;
           const u = String(payload?.u), k = String(payload?.k), a = ACTS[k], p = NET.peers[u];
           if (!a || !p || muted.current.has(u)) return;
-          p.anim = k; p.animUntil = Date.now() + a.ms;
-          if (payload.to === name) {
+          p.anim = k === 'circle' ? 'dance' : k; p.animUntil = Date.now() + a.ms;
+          if (payload.to === name || (payload.to === '*' && Math.hypot(p.x - NET.me.x, p.z - NET.me.z) <= INTERACT_RANGE * 1.5)) {
             const id = ++seq.current;
             setNotices(l => [...l.slice(-2), { id, from: u, k, text: a.text, reply: a.reply }]);
             setTimeout(() => setNotices(l => l.filter(n => n.id !== id)), 9000);
@@ -271,11 +284,14 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     return () => clearInterval(id);
   }, [name]);
 
-  // standing near other real players fills the Social need
+  // standing near other real players fills the Social need: the more people, the faster (hanging out). Dancing together fills it faster still.
   useEffect(() => {
     const id = setInterval(() => {
-      const m = NET.me;
-      if (Object.values(NET.peers).some(p => Math.hypot(p.x - m.x, p.z - m.z) < 7)) socialRef.current?.();
+      const m = NET.me, now = Date.now(), near = Object.values(NET.peers).filter(p => Math.hypot(p.x - m.x, p.z - m.z) < 7);
+      if (!near.length) return;
+      let n = Math.min(4, near.length) * 0.06;
+      if (DANCING.has(m.anim) && m.animUntil > now) n += 0.2 * Math.min(4, near.filter(p => DANCING.has(p.anim) && p.animUntil > now).length);
+      socialRef.current?.(n);
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -298,10 +314,12 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
   const clearUnread = useCallback(() => setUnread(0), []);
   const act = useCallback((k: string, to?: string) => {
     const a = ACTS[k], now = Date.now(); if (!a || now - lastAct.current < 1500) return false;
-    lastAct.current = now; NET.me.anim = k; NET.me.animUntil = now + a.ms;
+    lastAct.current = now; NET.me.anim = k === 'circle' ? 'dance' : k; NET.me.animUntil = now + a.ms;
     ch.current?.send({ type: 'broadcast', event: 'act', payload: { u: name, to: to || '', k } });
-    socialRef.current?.(to ? 3 : 1); return true;
+    socialRef.current?.(to === '*' ? 2 : to ? 3 : 1); return true;
   }, [name]);
+  // other panels (the Party app) ask the net layer to play an emote so everyone nearby sees it
+  useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (d.k) act(String(d.k), d.to ? String(d.to) : undefined); }; window.addEventListener('arl-do-act', f); return () => window.removeEventListener('arl-do-act', f); }, [act]);
   useEffect(() => { const f = () => { const a = ACTS.phone, now = Date.now(); NET.me.anim = 'phone'; NET.me.animUntil = now + a.ms; ch.current?.send({ type: 'broadcast', event: 'act', payload: { u: name, to: '', k: 'phone' } }); }; window.addEventListener('arl-phone-use', f); return () => window.removeEventListener('arl-phone-use', f); }, [name]);
   useEffect(() => { const f = (e: Event) => { const to = String((e as CustomEvent).detail || ''); if (to) ch.current?.send({ type: 'broadcast', event: 'dm', payload: { u: name, to } }); }; window.addEventListener('arl-dm-sent', f); return () => window.removeEventListener('arl-dm-sent', f); }, [name]); // tell the recipient (if in the same city) to check their messages now
   const dismissNotice = useCallback((id: number) => setNotices(l => l.filter(n => n.id !== id)), []);

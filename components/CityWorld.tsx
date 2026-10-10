@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Human from './Human';
+import { handGeometry, pedFootGeometry, pedSoleGeometry } from '../lib/humanRig';
 import { CITY } from '../lib/cityData';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import type { CityBuilding } from '../lib/cityTypes';
@@ -272,7 +273,7 @@ function StreetLamps() {
 
 /* ───────────── shared world state (cars, pedestrians and the player talk through these) ───────────── */
 export const TPOS: { x: number; z: number; r: number }[] = [];
-export const PEDPOS: { x: number; z: number }[] = []; // live position of every pedestrian (1e5 when hidden), read by the crime buttons // live position of every AI car
+export const PEDPOS: { x: number; z: number; d?: boolean }[] = []; // live position of every pedestrian (1e5 when hidden), read by the crime buttons // live position of every AI car
 const OBS = [{ x: 0, z: 0, on: false, sp: 4.5 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }, { x: 0, z: 0, on: false, sp: 7 }]; // things AI cars must stop for: [0] player on foot, [1] player's car, [2] the taxi/bike carrying the player
 const VEH = { x: 0, z: 0, r: 0, v: 0, placed: false, drv: false, brake: false }; // the player's own car
 const NIGHT = { n: 0 }; // 0 = full day, 1 = full night
@@ -590,6 +591,8 @@ function Traffic() {
     const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
     const wc = worldCalendar(); const wx = weatherAt(); const rainFactor = wx.storm ? .62 : wx.rain > .45 ? .78 : 1; const rush = (wc.hh >= 7 && wc.hh < 10) || (wc.hh >= 16 && wc.hh < 19) ? 1.18 : 1;
     let nearI = -1, nearD = 90;
+    const ROBS: typeof OBS = []; for (const [n, q] of Object.entries(NET.peers)) { if (!q.init) continue; if (q.drv || q.cp) { if (!JACK.hides(n)) ROBS.push({ x: q.cx, z: q.cz, on: true, sp: 7 }); } if (!q.drv) ROBS.push({ x: q.x, z: q.z, on: true, sp: 4.5 }); }   // traffic stops for every real player, in a car or on foot
+    const OB = ROBS.length ? OBS.concat(ROBS) : OBS;
     flat.forEach(({ l, c }, i) => {
       const tp = TPOS[i] || (TPOS[i] = { x: 0, z: 0, r: 0 }), g = refs.current[i];
       if (c.busy) { tp.x = 1e5; tp.z = 1e5; if (g) g.visible = false; return; } // it is carrying a player (the ride has its own model)
@@ -616,7 +619,7 @@ function Traffic() {
       for (const o of l.cars) if (o !== c && !o.busy) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) gap = d; }
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
       if(c.role==='car' && c.hail===0 && gap<12 && gap>5 && Math.abs(l.fixed)<100){ const sign=hs('ov'+i)>0.5?1:-1; c.laneShift += (sign*1.15-c.laneShift)*Math.min(1,dt*2.5); v=Math.min(base*1.08,Math.max(v,base*.92)); } else c.laneShift += (0-c.laneShift)*Math.min(1,dt*3);
-      for (const o of OBS) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
+      for (const o of OB) { if (!o.on) continue; const perp = l.axis === 'x' ? Math.abs(o.z - l.fixed) : Math.abs(o.x - l.fixed), along = ((l.axis === 'x' ? o.x : o.z) - c.s) * l.dir; if (perp < 1.7 && along > 0) adv = Math.min(adv, Math.max(0, along - o.sp)); } // stop for the player (on foot or in a car)
       const nx = nextCenter(c.s, l.dir), d = (nx - c.s) * l.dir, ci = Math.round(nx / GRID);
       const ls = lightState(t, l.axis); if (Math.abs(ci) <= 5 && signalised(ci, l.road) && (ls === 'r' || (ls === 'y' && d - (halfW(ci) + 5.2) > 9)) && d >= halfW(ci) + 5.2 - .05) adv = Math.min(adv, Math.max(0, d - (halfW(ci) + 5.2))); // stop at the red light
       c.s += adv * l.dir; if (c.s > 118) c.s = -118; else if (c.s < -118) c.s = 118;
@@ -1205,7 +1208,7 @@ function PolicePatrol() {
 }
 
 /* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
-type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number]; vis:number; yaw:number; off:number; vf:number; tc:number; rest:number; ox:number; oz:number };
+type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number]; vis:number; yaw:number; off:number; vf:number; tc:number; rest:number; ox:number; oz:number; lat:number; latT:number };
 const SHIRTS = ['#c0392b', '#2c5aa0', '#e8e8ea', '#1e9e55', '#f1c40f', '#7c3aed', '#0f766e', '#d97706', '#111827', '#be185d'];
 const PANTS = ['#1f2937', '#374151', '#4b5563', '#111827', '#2b3a55', '#5b4636'];
 const SKINS = ['#3b2417', '#4a2e1c', '#5a3825', '#6b4429', '#7a4f32', '#8d5f3d'];
@@ -1214,15 +1217,30 @@ const pick = <T,>(a: T[], k: string) => a[Math.floor(hs(k) * a.length) % a.lengt
 function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {
     const ri = Math.floor(hs('pi' + n) * 11) - 5, side = hs('ps' + n) < .5 ? 1 : -1, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
-    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0 };
+    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0, lat:0, latT:0 };
   });
 }
 const timeToGreen = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 0 : 32 - c) : (c >= 16 && c < 30 ? 0 : c < 16 ? 16 - c : 48 - c); };
 const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis) === 'r' && timeToGreen(t, carAxis) > 5.5;
+/* ───────────── solid bodies ─────────────
+ * Nobody walks or drives through anybody else. Pedestrians sidestep what is in their way and stop when there is no room; you, other players and cars are pushed out of each other. */
+const BODY_R = .3, PED_PUSH = .6;   // body radius of a person; how close two people's centres may get
+type Spot = { x: number; z: number };
+/** every other real player on foot (those driving are inside their car) */
+const peersOnFoot = () => { const o: Spot[] = []; for (const q of Object.values(NET.peers)) if (q.init && !q.drv) o.push({ x: q.x, z: q.z }); return o; };
+/** every other real player's car (parked or driven), except one that is being carjacked right now */
+const remoteCars = () => { const o: { x: number; z: number; r: number }[] = []; for (const [n, q] of Object.entries(NET.peers)) if (q.init && (q.cp || q.drv) && !JACK.hides(n)) o.push({ x: q.cx, z: q.cz, r: q.cr }); return o; };
+/** push p out of a circle at (x, z) with the given reach. true if it moved. */
+function pushFrom(p: Spot, x: number, z: number, reach: number) {
+  const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz);
+  if (d >= reach) return false;
+  if (d > 1e-4) { p.x = x + dx / d * reach; p.z = z + dz / d * reach; } else p.x += reach;
+  return true;
+}
 function Pedestrians() {
   const peds = useMemo(makePeds, []);
   const rx = useRef<(Reaction | null)[]>([]), pose = useRef(Array.from({ length: PED_N }, () => ({ up: 0, crouch: 0, film: 0, angry: 0, give: 0 }))), W = useRef({ punchUntil: 0, armedAt: 0, after: {} as Record<number, { at: number; fx: number; fz: number }> }), phone = useRef<THREE.InstancedMesh>(null!);
-  useFrame(() => { for (let i = 0; i < peds.length; i++) { const p = peds[i], e = PEDPOS[i] || (PEDPOS[i] = { x: 1e5, z: 1e5 }); e.x = p.hidden ? 1e5 : p.x; e.z = p.hidden ? 1e5 : p.z; } });
+  useFrame(() => { for (let i = 0; i < peds.length; i++) { const p = peds[i], e = PEDPOS[i] || (PEDPOS[i] = { x: 1e5, z: 1e5 }); e.x = p.hidden ? 1e5 : p.x; e.z = p.hidden ? 1e5 : p.z; e.d = p.down > 0; } });
   useEffect(() => {   // step 7: a pedestrian you held up hands the cash over (then runs), bolts without paying, or squares up. The SERVER already decided whether the robbery worked.
     const h = (e: Event) => {
       const d = (e as CustomEvent).detail as { idx: number; result: 'give' | 'bolt' | 'resist' } | undefined; if (!d || !peds[d.idx]) return;
@@ -1234,14 +1252,18 @@ function Pedestrians() {
     window.addEventListener('arl-ped-demand', h); return () => window.removeEventListener('arl-ped-demand', h);
   }, [peds]);
   const torso = useRef<THREE.InstancedMesh>(null!), head = useRef<THREE.InstancedMesh>(null!), legs = useRef<THREE.InstancedMesh>(null!), arms = useRef<THREE.InstancedMesh>(null!);
+  const handA = useRef<THREE.InstancedMesh>(null!), handB = useRef<THREE.InstancedMesh>(null!), footA = useRef<THREE.InstancedMesh>(null!), footB = useRef<THREE.InstancedMesh>(null!), soles = useRef<THREE.InstancedMesh>(null!);
+  // real hands (palm, four fingers, thumb) and bare feet with five toes. The arm at +z has its thumb on the -z side, hence s = -1 for A.
+  const G = useMemo(() => ({ handA: handGeometry(false, -1, Math.PI / 2), handB: handGeometry(false, 1, Math.PI / 2), footA: pedFootGeometry(-1), footB: pedFootGeometry(1), sole: pedSoleGeometry() }), []);
   const T = useMemo(() => ({ base: new THREE.Matrix4(), m: new THREE.Matrix4(), t: new THREE.Matrix4(), r: new THREE.Matrix4(), pos: new THREE.Vector3(), one: new THREE.Vector3(1, 1, 1), sc: new THREE.Vector3(1, 1, 1), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), q: new THREE.Quaternion(), Y: new THREE.Vector3(0, 1, 0), Z: new THREE.Vector3(0, 0, 1) }), []);
   useLayoutEffect(() => {
     const c = new THREE.Color();
     peds.forEach((p, i) => {
       torso.current.setColorAt(i, c.set(p.shirt)); head.current.setColorAt(i, c.set(p.skin));
       for (let s = 0; s < 2; s++) { legs.current.setColorAt(i * 2 + s, c.set(p.pants)); arms.current.setColorAt(i * 2 + s, c.set(p.shirt)); }
+      for (const m of [handA, handB, footA, footB]) m.current.setColorAt(i, c.set(p.skin));
     });
-    for (const m of [torso, head, legs, arms]) if (m.current.instanceColor) m.current.instanceColor.needsUpdate = true;
+    for (const m of [torso, head, legs, arms, handA, handB, footA, footB]) if (m.current.instanceColor) m.current.instanceColor.needsUpdate = true;
   }, [peds]);
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
@@ -1252,6 +1274,10 @@ function Pedestrians() {
       if (dy) { T.t.makeTranslation(0, dy, 0); T.m.multiply(T.t); }
       mesh.setMatrixAt(idx, T.m);
     };
+    const partFlat = (mesh: THREE.InstancedMesh, idx: number, tx: number, ty: number, tz: number, rz: number, dy: number) => { // like part(), but turned back so a foot stays level while its leg swings
+      T.t.makeTranslation(tx, ty, tz); T.m.copy(T.base).multiply(T.t); T.r.makeRotationZ(rz); T.m.multiply(T.r); T.t.makeTranslation(0, dy, 0); T.m.multiply(T.t); T.r.makeRotationZ(-rz); T.m.multiply(T.r); mesh.setMatrixAt(idx, T.m);
+    };
+    const feetOn = peersOnFoot();   // other real players, for the pedestrians to make way for
     const eventActive = (wc.hh >= 0 && wc.hh % 6 === 0) || wx.storm;
     /* ── witness AI (step 5): what the player did this frame, and who can see it ── */
     const nowS = wnow(), nowMs = Date.now(), me = GAME.player, WS = W.current, crimes = drainCrimes();
@@ -1331,11 +1357,25 @@ function Pedestrians() {
           }
           p.sp = (p.mode==='commute'?1.8:p.mode==='social'?1.35:1.1)*p.vf;
         }
+        { // bodies are solid: step aside for whoever is in the way (to your own side, so two people walking towards each other pass cleanly), and stop when there is no room
+          const ax = p.axis === 'x'; let dodge = false, stop = false;
+          const see = (ox: number, oz: number) => {
+            const along = ((ax ? ox - p.x : oz - p.z)) * p.dir, perp = ax ? oz - p.z : ox - p.x, railPerp = ax ? oz - (p.z - p.lat) : ox - (p.x - p.lat);
+            if (along > -.6 && along < 1.7 && Math.abs(railPerp) < PED_PUSH) dodge = true;
+            if (along > -.05 && along < PED_PUSH + .15 && Math.abs(perp) < PED_PUSH - .1) stop = true;
+          };
+          for (let q = 0; q < peds.length; q++) { const o = peds[q]; if (q !== i && !o.hidden && o.down <= 0) see(o.x, o.z); }
+          if (!VEH.drv && !GAME.jailed) see(me.x, me.z);
+          for (const f of feetOn) see(f.x, f.z);
+          if (stop && rk !== 'flee') go = false;
+          p.latT = dodge ? PED_PUSH * p.dir : 0;
+        }
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
         if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x') && rk !== 'flee') go = false; } // wait at the kerb for a red light (not when running for your life)
         if (go) { const activityFactor = rk === 'flee' ? 1 : night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124) p.dir = -1; else if (p.u < -124) p.dir = 1; }
       }
       if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }
+      p.lat += (p.latT - p.lat) * Math.min(1, dt * 3.5); if (p.axis === 'x') p.z += p.lat; else p.x += p.lat;   // the sidestep
       if (p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 3.5) { const dx = p.x - VEH.x, dz = p.z - VEH.z; if (dx * dx + dz * dz < 3.6) { p.down = 3.2; VEH.v *= .9; thud(.5); pushCrime({ kind: 'runover', x: p.x, z: p.z, victim: i }); } } // clipped by the player's car
       const yawT = react && rk !== 'flee' ? Math.atan2(-((react as Reaction).fz - p.z), (react as Reaction).fx - p.x) : p.axis === 'x' ? (p.dir > 0 ? 0 : Math.PI) : -p.dir * Math.PI / 2, sw = p.moving ? Math.sin(p.ph) : 0;   // witnesses turn to look at the crime
       if (Number.isNaN(p.yaw)) p.yaw = yawT; let dyw = yawT - p.yaw; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw)); p.yaw += dyw * Math.min(1, dt * (react ? 14 : 9)); const pv = PEDVIEW[i] || (PEDVIEW[i] = { x: 0, z: 0, yaw: 0, on: false }); pv.x = p.x; pv.z = p.z; pv.yaw = p.yaw; pv.on = !p.hidden && p.down <= 0; // turn smoothly instead of snapping 180°
@@ -1350,16 +1390,23 @@ function Pedestrians() {
       const trem = Math.sin(t * 22 + i) * .07 * Pz.up, aL = -sw * .6 * (1 - Pz.up) + (2.8 + trem) * Pz.up, aR0 = sw * .6 * (1 - Pz.up) + (2.8 - trem) * Pz.up;
       const aR = aR0 * (1 - Pz.film - Pz.angry - Pz.give) + 1.75 * Pz.film + (1.25 + Math.sin(t * 10 + i) * .55) * Pz.angry + 1.55 * Pz.give;   // hands up / phone held out / angry gesture
       part(arms.current, i * 2, 0, 1.3, .27, aL, -.25); part(arms.current, i * 2 + 1, 0, 1.3, -.27, aR, -.25);
+      part(handA.current, i, 0, 1.3, .27, aL, -.5); part(handB.current, i, 0, 1.3, -.27, aR, -.5);   // hands at the wrists, following the arms
+      partFlat(footA.current, i, 0, .78, .1, sw * .7 + Pz.crouch, -.725); partFlat(footB.current, i, 0, .78, -.1, -sw * .7 + Pz.crouch, -.725); partFlat(soles.current, i * 2, 0, .78, .1, sw * .7 + Pz.crouch, -.725); partFlat(soles.current, i * 2 + 1, 0, .78, -.1, -sw * .7 + Pz.crouch, -.725);
       if (Pz.film > .6) { T.t.makeTranslation(.52, 1.4, -.27); T.m.copy(T.base).multiply(T.t); } else T.m.makeScale(0, 0, 0);
       phone.current.setMatrixAt(i, T.m);
     });
-    for (const m of [torso, head, legs, arms, phone]) m.current.instanceMatrix.needsUpdate = true;
+    for (const m of [torso, head, legs, arms, handA, handB, footA, footB, soles, phone]) m.current.instanceMatrix.needsUpdate = true;
   });
   return <>
     <instancedMesh ref={torso} args={[undefined, undefined, PED_N]} frustumCulled={false} castShadow><boxGeometry args={[.26, .56, .46]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
     <instancedMesh ref={head} args={[undefined, undefined, PED_N]} frustumCulled={false}><sphereGeometry args={[.14, 10, 8]} /><meshStandardMaterial roughness={.8} /></instancedMesh>
     <instancedMesh ref={legs} args={[undefined, undefined, PED_N * 2]} frustumCulled={false}><boxGeometry args={[.15, .76, .17]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
     <instancedMesh ref={arms} args={[undefined, undefined, PED_N * 2]} frustumCulled={false}><boxGeometry args={[.11, .52, .11]} /><meshStandardMaterial roughness={.9} /></instancedMesh>
+    <instancedMesh ref={handA} args={[G.handA, undefined, PED_N]} frustumCulled={false}><meshStandardMaterial roughness={.6} /></instancedMesh>
+    <instancedMesh ref={handB} args={[G.handB, undefined, PED_N]} frustumCulled={false}><meshStandardMaterial roughness={.6} /></instancedMesh>
+    <instancedMesh ref={footA} args={[G.footA, undefined, PED_N]} frustumCulled={false}><meshStandardMaterial roughness={.6} /></instancedMesh>
+    <instancedMesh ref={footB} args={[G.footB, undefined, PED_N]} frustumCulled={false}><meshStandardMaterial roughness={.6} /></instancedMesh>
+    <instancedMesh ref={soles} args={[G.sole, undefined, PED_N * 2]} frustumCulled={false}><meshStandardMaterial color="#2a2623" roughness={.9} /></instancedMesh>
     <instancedMesh ref={phone} args={[undefined, undefined, PED_N]} frustumCulled={false}><boxGeometry args={[.05, .1, .02]} /><meshBasicMaterial color="#9be8ff" /></instancedMesh>
   </>;
 }
@@ -1778,12 +1825,18 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         const cp = { x: V.x + fxw * o, z: V.z + fzw * o }, ox = cp.x, oz = cp.z; pushOut(cp, CAR_R);
         const dx = cp.x - ox, dz = cp.z - oz; if (dx || dz) { V.x += dx; V.z += dz; hit = Math.max(hit, Math.hypot(dx, dz)); }
       }
-      for (const tc of TPOS.concat(POLICE_CARS)) { // other cars (traffic and police)
+      const RC = remoteCars();
+      for (const tc of TPOS.concat(POLICE_CARS, RC)) { // other cars (traffic, police, other players')
         const tx = Math.cos(tc.r), tz = -Math.sin(tc.r);
         for (const to of [-1.1, 1.1]) for (const o of CAR_OFFS) {
           const ax = tc.x + tx * to, az = tc.z + tz * to, bx = V.x + fxw * o, bz = V.z + fzw * o, dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz);
           if (d < CAR_R * 2 && d > 1e-4) { const push = CAR_R * 2 - d; V.x += dx / d * push; V.z += dz / d * push; hit = Math.max(hit, push); }
         }
+      }
+      { // people are solid too: real players on foot always, pedestrians when you are not fast enough to run them down (above ~3.5 m/s a ped is knocked over, as before)
+        const bump = (x: number, z: number, reach: number) => { for (const o of CAR_OFFS) { const dx = V.x + fxw * o - x, dz = V.z + fzw * o - z, d = Math.hypot(dx, dz); if (d < reach && d > 1e-4) { const push = reach - d; V.x += dx / d * push; V.z += dz / d * push; hit = Math.max(hit, push); } } };
+        for (const f of peersOnFoot()) bump(f.x, f.z, CAR_R + .45);
+        if (Math.abs(V.v) <= 3.5) for (let i = 0; i < PEDPOS.length; i++) { const q = PEDPOS[i]; if (q && q.x < 9e4 && !q.d) bump(q.x, q.z, CAR_R + .4); }
       }
       if (hit > .01) { if (hitCool.current <= 0 && Math.abs(V.v) > 4) { thud(Math.abs(V.v) / 20); hitCool.current = .35; } V.v *= hit > .15 ? .55 : .93; }
       const lim = LIM - 2; if (Math.abs(V.x) > lim || Math.abs(V.z) > lim) { V.x = THREE.MathUtils.clamp(V.x, -lim, lim); V.z = THREE.MathUtils.clamp(V.z, -lim, lim); V.v *= .6; }
@@ -1799,9 +1852,14 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         p.r += wrap(Math.atan2(wx, wz) - p.r) * Math.min(1, dt * 12);
       }
       pushOut(p);
-      for (const tc of TPOS.concat(POLICE_CARS)) { // cars are solid
+      for (const tc of TPOS.concat(POLICE_CARS, remoteCars())) { // cars are solid (traffic, police, other players')
         const tx = Math.cos(tc.r), tz = -Math.sin(tc.r);
         for (const to of [-1.1, 1.1]) { const ax = tc.x + tx * to, az = tc.z + tz * to, dx = p.x - ax, dz = p.z - az, d = Math.hypot(dx, dz); if (d < 1.45 && d > 1e-4) { p.x = ax + dx / d * 1.45; p.z = az + dz / d * 1.45; } }
+      }
+      if (!GAME.jailed) { // people are solid: pedestrians (unless lying on the ground) and other real players on foot
+        for (let i = 0; i < PEDPOS.length; i++) { const q = PEDPOS[i]; if (q && q.x < 9e4 && !q.d) pushFrom(p, q.x, q.z, PED_PUSH); }
+        for (const f of peersOnFoot()) pushFrom(p, f.x, f.z, PED_PUSH);
+        pushOut(p);   // never into a wall
       }
       // Parked taxi/bike stands are solid too; prevent the player from walking through them.
       for (const t of TRANSPORT_SOLIDS) {

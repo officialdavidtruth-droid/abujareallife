@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { defaultOutfitModel, outfitOk, type Look } from './characterModels';
 
 // A procedural, fully-animated human. Y up, faces +Z, ~1.75 m tall. No model files, so skin/hair/clothes are exact.
@@ -51,6 +52,47 @@ const clm = (c: string, r = .75) => new THREE.MeshStandardMaterial({ color: c, r
 const metal = (c: string, r = .3) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: .85 });
 const GOLD = '#d9a22b';
 const lum = (c: string) => { const k = new THREE.Color(c); return .299 * k.r + .587 * k.g + .114 * k.b; };
+
+
+/* ───────────── hands and feet ─────────────
+ * One merged skin geometry per hand / foot, so a real hand (palm, four fingers with three bones each, a two-bone thumb) costs a single draw call.
+ * Rig frame: Y up, the character faces +Z, the arm of side s sits at x = s * shoulder width, so the inner side (towards the body) is -s.
+ * A hand hangs from its wrist at y = 0 and points down; fingers curl a little towards the palm; the thumb is on the inner, forward side. */
+const mergeAll = (parts: THREE.BufferGeometry[]) => { const mixed = parts.some(q => !q.index), flat = parts.map(q => { const n = mixed && q.index ? q.toNonIndexed() : q; if (n !== q) q.dispose(); return n; }); const g = mergeGeometries(flat, false); flat.forEach(q => q.dispose()); return g || new THREE.BufferGeometry(); };   // RoundedBox is non-indexed, the rest are indexed: merge needs them alike
+const rotM = (ax: 'x' | 'y' | 'z', a: number) => (ax === 'x' ? new THREE.Matrix4().makeRotationX(a) : ax === 'y' ? new THREE.Matrix4().makeRotationY(a) : new THREE.Matrix4().makeRotationZ(a));
+/** a bone chain: each bone a capsule hanging below its joint, bending by curls[i] (radians) about the Z axis, towards -s */
+function boneChain(parts: THREE.BufferGeometry[], at: [number, number, number], bones: number[], r: number, curls: number[], s: number, splayX = 0, splayZ = 0) {
+  const m = new THREE.Matrix4().makeTranslation(at[0], at[1], at[2]);
+  if (splayX) m.multiply(rotM('x', splayX)); if (splayZ) m.multiply(rotM('z', splayZ));
+  bones.forEach((len, i) => {
+    m.multiply(rotM('z', -s * curls[i]));
+    const g = new THREE.CapsuleGeometry(r * (1 - i * .07), len, 2, 6); g.translate(0, -len / 2, 0); g.applyMatrix4(m); parts.push(g);
+    m.multiply(new THREE.Matrix4().makeTranslation(0, -len, 0));
+  });
+}
+/** s = +1 for the arm on the +x side, -1 for the other; yaw turns the whole hand about Y (the instanced pedestrians face +x, not +z) */
+export function handGeometry(female: boolean, s: number, yaw = 0): THREE.BufferGeometry {
+  const k = female ? .86 : 1, parts: THREE.BufferGeometry[] = [];
+  const palm = new THREE.SphereGeometry(1, 12, 8); palm.scale(.027 * k, .052 * k, .043 * k); palm.translate(0, -.048 * k, 0); parts.push(palm);
+  const back = new THREE.SphereGeometry(1, 8, 6); back.scale(.03 * k, .03 * k, .035 * k); back.translate(0, -.012 * k, .003); parts.push(back);   // base of the palm, so the wrist is not a slice
+  // index, middle, ring, little: knuckle position across the hand (z), length factor, relaxed curl of the three joints
+  const F: [number, number, number][] = [[.0285, .92, 1], [.0095, 1, 1.12], [-.0095, .93, 1.25], [-.0285, .76, 1.4]];
+  for (const [z, len, c] of F) boneChain(parts, [0, -.088 * k, z * k], [.036 * len * k, .027 * len * k, .021 * len * k], .0098 * k, [.16 * c, .38 * c, .3 * c], s);
+  boneChain(parts, [-s * .02 * k, -.034 * k, .036 * k], [.031 * k, .025 * k], .0125 * k, [.12, .3], s, -.62, -s * -.1);   // thumb: forward and a little outwards from the inner side
+  const g = mergeAll(parts); if (yaw) g.rotateY(yaw); return g;
+}
+/** a bare foot on a sandal: foot top, five toes (big toe on the inner side). Ankle at the origin, toes towards +Z. */
+function sandalFootGeometry(female: boolean, s: number): THREE.BufferGeometry {
+  const k = female ? .88 : 1, parts: THREE.BufferGeometry[] = [];
+  const top = new THREE.SphereGeometry(1, 12, 8); top.scale(.039 * k, .027, .115 * k); top.translate(0, .0, .05); parts.push(top);   // foot top
+  const toes: [number, number, number][] = [[-.03, .0135, .034], [-.0125, .0105, .028], [.004, .0098, .024], [.0185, .0092, .02], [.0305, .0085, .016]];   // x across (inner first), radius, length
+  for (const [x, r, len] of toes) { const g = new THREE.CapsuleGeometry(r * k, len * k, 2, 6); g.rotateX(Math.PI / 2); g.translate(-s * x * k, -.014, .152 * k + len * k / 2 + .006); parts.push(g); }
+  return mergeAll(parts);
+}
+/** a bare foot with toes for the instanced pedestrians (who face +x): foot top and five toes, ankle at the origin */
+export function pedFootGeometry(s: number): THREE.BufferGeometry { const g = sandalFootGeometry(false, s); g.translate(0, .0, -.02); g.rotateY(Math.PI / 2); return g; }
+/** the thin dark sole under a bare foot (pedestrians) */
+export function pedSoleGeometry(): THREE.BufferGeometry { const g = new RoundedBoxGeometry(.1, .018, .27, 2, .008); g.translate(0, -.04, .06); g.rotateY(Math.PI / 2); return g; }
 
 export function buildHuman(look: Look): Rig {
   const f = look.gender === 'f';
@@ -346,6 +388,7 @@ export function buildHuman(look: Look): Rig {
     } else { // sandal
       add(ft, mesh(new RoundedBoxGeometry(f ? .09 : .104, .02, f ? .26 : .285, 2, .008), shoe), 0, -.036, .05);
       for (const z of [.0, .09]) add(ft, mesh(new THREE.BoxGeometry(f ? .084 : .098, .018, .03), shoe), 0, -.012, z);
+      add(ft, mesh(sandalFootGeometry(f, s), skin), 0, .002, 0);   // the bare foot in the sandal, with all five toes
     }
     return { up, kn, ft };
   };
@@ -370,8 +413,7 @@ export function buildHuman(look: Look): Rig {
     if (sp.slv === 'wide') add(sh, mesh(new THREE.CylinderGeometry(rA + .012, .2, .5, 26, 1, true), sleeveM), 0, -.27, 0);
     add(el, mesh(new THREE.SphereGeometry(f ? .037 : .05, 12, 10), skin));
     add(el, mesh(cap(f ? .034 : .048, .21), skin), 0, -.155, 0);
-    const hand = add(el, mesh(new THREE.SphereGeometry(.05, 14, 12), skin), 0, -.32, .005); hand.scale.set(f ? .72 : .92, f ? 1.05 : 1.2, f ? .55 : .65);
-    add(el, mesh(new THREE.SphereGeometry(.016, 8, 8), skin), s * -.035, -.3, .03);
+    add(el, mesh(handGeometry(f, s), skin), 0, -.3, 0);   // a real hand: palm, four fingers and a thumb
     if (M === 'designer' || (M === 'gown' && f) || M === 'ankara') add(el, mesh(new THREE.TorusGeometry(f ? .036 : .05, .005, 6, 18), gold), 0, -.27, 0).rotation.x = Math.PI / 2; // bracelet
     if (M === 'designer' && !f && s === 1) add(el, mesh(new THREE.CylinderGeometry(.052, .052, .03, 16), metal('#c9ced1')), 0, -.285, 0); // watch
     return { sh, el };

@@ -324,7 +324,7 @@ const drvHash = (str: string) => { let h = 2166136261; for (let i = 0; i < str.l
 const DRV_MATS = new Map<string, THREE.MeshStandardMaterial>();
 const drvMat = (c: string, rough = .8, metal = .05) => { const k = c + rough + metal; let m = DRV_MATS.get(k); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal }); DRV_MATS.set(k, m); } return m; };
 const driverStyle = (seed: string, shirt?: string) => { const h = drvHash(seed); return { skin: DRV_SKINS[h % DRV_SKINS.length], top: shirt || DRV_SHIRTS[(h >> 3) % DRV_SHIRTS.length], hair: DRV_HAIRS[(h >> 6) % DRV_HAIRS.length] }; };
-function CarInterior({ seed, shirt, suv, driverRef }: { seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Group | null) => void }) {
+function CarInterior({ seed, shirt, suv, driverRef }: { seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Object3D | null) => void }) {
   const { skin, top, hair } = driverStyle(seed, shirt), seatC = '#2a2d31', dash = '#15181b';
   const w = suv ? 1.34 : 1.26;
   return <group>
@@ -343,7 +343,7 @@ function CarInterior({ seed, shirt, suv, driverRef }: { seed: string; shirt?: st
     </group>
   </group>;
 }
-function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; doorRef?: (g: THREE.Group | null) => void; driverRef?: (g: THREE.Group | null) => void }) {
+function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
@@ -352,12 +352,17 @@ function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRe
   return <group scale={sc}>
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
     {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} />}
-    {/* driver-side door: hinged at the front edge, swings outward (a carjack opens it) */}
+    {/* driver-side door: hinged at the front edge, swings outward. Closed it is a normal door; open it shows a recessed door well, an inner trim panel and an empty window frame */}
+    <mesh position={[.05, .58, -.936]} material={drvMat('#17191c', .9)}><boxGeometry args={[1.0, .4, .02]} /></mesh>
     <group ref={doorRef} position={[.55, 0, -.95]}>
       <mesh position={[-.5, .58, 0]} material={bodyMat(bodyColor)}><boxGeometry args={[.98, .4, .045]} /></mesh>
+      <mesh position={[-.5, .58, .03]} material={drvMat('#2a2d31', .8)}><boxGeometry args={[.9, .32, .02]} /></mesh>
       <mesh position={[-.78, .72, -.03]} material={new THREE.MeshStandardMaterial({ color: '#c7ccd1', metalness: .8, roughness: .25 })}><boxGeometry args={[.16, .035, .03]} /></mesh>
+      <mesh position={[-.5, 1.04, 0]} material={kit.glass}><boxGeometry args={[.93, .46, .015]} /></mesh>
+      {[[-.02, 1.04, .05, .5], [-.98, 1.04, .05, .5]].map(([x, y, bw, bh]) => <mesh key={x} position={[x, y, 0]} material={bodyMat(bodyColor)}><boxGeometry args={[bw, bh, .05]} /></mesh>)}
+      <mesh position={[-.5, 1.3, 0]} material={bodyMat(bodyColor)}><boxGeometry args={[1.0, .05, .05]} /></mesh>
     </group>
-    <mesh geometry={kit.cabin} material={kit.glass} renderOrder={2} />
+    <mesh ref={glassRef} geometry={kit.cabin} material={kit.glass} renderOrder={2} />
     {[1, -1].map(sd => <group key={sd}>
       <mesh position={[.75, 1.09, sd * .73]} rotation-z={Math.PI / 4} material={bodyMat(color)}><boxGeometry args={[.06, .72, .05]} /></mesh>
       <mesh position={[-1.05, 1.09, sd * .73]} rotation-z={-.675} material={bodyMat(color)}><boxGeometry args={[.07, .64, .05]} /></mesh>
@@ -385,70 +390,117 @@ function busManifest(): BusStop[] {
   return pool.slice(0, k).map(d => ({ name: d.name, x: d.x, z: d.z, n: 1 + Math.floor(Math.random() * 3) }));
 }
 const ROAM = { autoGo: (_i: number) => {}, lanes: [] as Lane[], cars: [] as { l: Lane; c: SimCar }[], sel: -1, rideIdx: -1, openSheet: (_i: number) => {}, tap: (_i: number) => {} };
-/* ───────────── GTA-style carjack: the avatar walks to the driver door, yanks it open, throws the driver out and takes the wheel ───────────── */
-const DOORS: (THREE.Group | null)[] = [], DRIVERS: (THREE.Group | null)[] = [];
+/* ───────────── GTA-style carjack: the avatar walks to the driver door, yanks it open, throws the driver out and takes the wheel ─────────────
+   Works on traffic cars, taxis, police cars, buses and okadas (bikes), and on a real player's car (a frozen "ghost" copy of it is used,
+   because the server has already moved the car to you by the time the scene plays). Every duration lives in JT: tweak it live from the
+   browser console, e.g.  __arlJackT.throw = 0.9  */
+type JRole = 'car' | 'taxi' | 'police' | 'bus' | 'bike';
+type JRefs = { door?: THREE.Object3D | null; driver?: THREE.Object3D | null; glass?: THREE.Object3D | null };
+const JR: Record<string, JRefs> = {};
+const jrefs = (key: string) => { const o = JR[key] || (JR[key] = {}); return { doorRef: (g: THREE.Object3D | null) => { o.door = g; }, driverRef: (g: THREE.Object3D | null) => { o.driver = g; }, glassRef: (g: THREE.Object3D | null) => { o.glass = g; } }; };
+type JCfg = { stand: [number, number]; seat: [number, number]; seatY: number; land: [number, number]; away: [number, number]; step: [number, number]; ride: [number, number]; wp: [number, number]; door: boolean };
+// car-local coordinates: the vehicle faces +x and the driver's side is -z
+const JCFG: Record<'car' | 'bus' | 'bike', JCfg> = {
+  car: { stand: [.2, -2.5], seat: [-.27, -.4], seatY: .95, land: [-1.3, -3.3], away: [-1.3, -9], step: [.1, -1.5], ride: [-.25, -.4], wp: [3.4, -1.8], door: true },
+  bus: { stand: [2.7, -3.1], seat: [2.4, -.7], seatY: 1.35, land: [1.2, -4.4], away: [-.5, -12], step: [2.6, -2.0], ride: [2.4, -.6], wp: [4.8, -2.8], door: true },
+  bike: { stand: [0, -1.7], seat: [-.2, 0], seatY: .85, land: [-.5, -3], away: [-.5, -9], step: [0, -1], ride: [-.1, -.2], wp: [2.4, -1.8], door: false },
+};
+const jcfg = (r: JRole) => (r === 'bus' ? JCFG.bus : r === 'bike' ? JCFG.bike : JCFG.car);
+export const JT = { walk: 7, open: .45, openWait: .5, throw: .6, step: .8, close: .3, finish: .35, giveUp: 4, arc: .55, lie: 1.05, getUp: .45, run: 3.55, runSpeed: 4.6 };
+if (typeof window !== 'undefined') (window as any).__arlJackT = JT; // eslint-disable-line @typescript-eslint/no-explicit-any
+const specOf = (id: string) => vehicleById(id) || vehicleByName(id) || VEHICLE_CATALOG[0];
+const COROLLA = 'toyota-corolla-2024';
+const J_SHIRT: Partial<Record<JRole, string>> = { taxi: '#d99a42', police: '#1d3f8f', bus: '#5b6b7a', bike: '#2d8f62' };
 export const JACK = {
-  idx: -1, ph: 0, t: 0, wp: 0, walk: false, fx: false,
-  stolen: -1, model: '', color: '', refresh: () => {}, setNpcLook: (_l: Look) => {},
-  npc: { on: false, t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0] as [number, number], run: [0, 0] as [number, number], yaw: 0, x: 0, y: 0, z: 0, rx: 0, walk: false },
-  /** nearest ordinary car (not taxi / police / bus / bike) within range */
+  key: '', idx: -1, role: 'car' as JRole, ghost: false, gp: { x: 0, z: 0, r: 0 }, ghostOn: false, gModel: '', gColor: '', gLook: DEFAULT_LOOK as Look,
+  ph: 0, t: 0, wp: 0, walk: false, fx: false,
+  on: false, sRole: 'car' as JRole, stolenIdx: -1, model: '', color: '', victimUntil: 0,
+  refresh: () => {}, ghostRefresh: () => {}, setNpcLook: (_l: Look) => {},
+  npc: { on: false, t: 0, from: [0, 0, 0] as [number, number, number], to: [0, 0] as [number, number], run: [0, 0] as [number, number], yaw: 0, walk: false },
+  /** nearest vehicle you could jack: ordinary car, taxi, police car, bus or bike (not one that is carrying / being hailed) */
   nearest(px: number, pz: number, range: number) {
     let bi = -1, bd = range;
-    ROAM.cars.forEach((e, i) => { const tp = TPOS[i]; if (!tp || tp.x > 9e4 || e.c.role !== 'car' || e.c.busy || e.c.hail || e.c.hold) return; const d = Math.hypot(px - tp.x, pz - tp.z); if (d < bd) { bd = d; bi = i; } });
+    ROAM.cars.forEach((e, i) => { const tp = TPOS[i]; if (!tp || tp.x > 9e4 || e.c.busy || e.c.hail || e.c.hold) return; const d = Math.hypot(px - tp.x, pz - tp.z); if (d < bd) { bd = d; bi = i; } });
     return bi;
   },
+  /** what the server needs to know to give you the car: its role and catalogue model (taxis and police cars are Corollas) */
+  info(i: number) { const c = ROAM.cars[i]?.c; if (!c) return null; return { role: c.role as JRole, model: c.role === 'taxi' || c.role === 'police' ? COROLLA : c.model }; },
   start(i: number) {
     const e = ROAM.cars[i], tp = TPOS[i];
-    if (JACK.idx >= 0 || !e || !tp || e.c.role !== 'car' || e.c.busy || GAME.ride || VEH.drv || GAME.jailed || CINE.on) return false;
-    JACK.release(); JACK.idx = i; JACK.ph = 1; JACK.t = 0; JACK.wp = 0; JACK.fx = false; e.c.hold = true; return true;
+    if (JACK.ph || !e || !tp || e.c.busy || GAME.ride || VEH.drv || GAME.jailed || CINE.on) return false;
+    JACK.release(); Object.assign(JACK, { key: 'n' + i, idx: i, role: e.c.role as JRole, ghost: false, ph: 1, t: 0, wp: 0, fx: false }); e.c.hold = true; return true;
   },
-  /** give the stolen car back to traffic */
-  release() { const i = JACK.stolen; if (i < 0) return; JACK.stolen = -1; respawnRoamer(i); JACK.refresh(); },
-  abort() { const i = JACK.idx; const e = ROAM.cars[i]; if (e) e.c.hold = false; if (DOORS[i]) DOORS[i]!.rotation.y = 0; if (DRIVERS[i]) DRIVERS[i]!.visible = true; JACK.idx = -1; JACK.ph = 0; JACK.walk = false; },
+  /** a real player's car: it is already yours server-side, so the scene plays on a frozen copy of it where it stood */
+  startGhost(name: string, x: number, z: number, r: number, look: Look) {
+    if (JACK.ph || GAME.ride || VEH.drv || GAME.jailed || CINE.on) return false;
+    JACK.release(); const m = VEHICLE_CATALOG[Math.floor(hs(name) * VEHICLE_CATALOG.length)];
+    Object.assign(JACK, { key: 'ghost', idx: -1, role: 'car' as JRole, ghost: true, gp: { x, z, r }, gModel: m.id, gColor: m.color, gLook: look, ghostOn: true, ph: 1, t: 0, wp: 0, fx: false });
+    JACK.ghostRefresh(); return true;
+  },
+  /** hand the jacked traffic vehicle back to traffic (the car you own is in your garage) */
+  release() { if (!JACK.on) return; JACK.on = false; if (JACK.stolenIdx >= 0) respawnRoamer(JACK.stolenIdx); JACK.stolenIdx = -1; JACK.refresh(); },
+  abort() {
+    const o = JR[JACK.key] || {}, c = ROAM.cars[JACK.idx]?.c; if (c) c.hold = false;
+    if (o.door) o.door.rotation.y = 0; if (o.glass) o.glass.visible = true; if (o.driver) o.driver.visible = true;
+    if (JACK.ghost) { JACK.ghostOn = false; JACK.ghostRefresh(); }
+    JACK.npc.on = false; JACK.idx = -1; JACK.ph = 0; JACK.walk = false; JACK.ghost = false;
+  },
+  /** you were the one driving when someone took your car: you are thrown out and left on the ground */
+  victimEject() {
+    const cs = Math.cos(VEH.r), sn = Math.sin(VEH.r);
+    GAME.tp = { x: VEH.x - .3 * cs - 2.6 * sn, z: VEH.z + .3 * sn - 2.6 * cs }; JACK.victimUntil = Date.now() + 1800; engineStop(); thud(1.2);
+  },
 };
 const ease = (u: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
 function stepJack(p: { x: number; z: number; r: number; y: number; vy: number }, dt: number, ctl: { recenter: boolean }) {
-  const i = JACK.idx, e = ROAM.cars[i], tp = TPOS[i];
-  if (!e || !tp || e.c.busy || GAME.jailed || GAME.ride) { JACK.abort(); return; }
-  const c = e.c, cs = Math.cos(tp.r), sn = Math.sin(tp.r), door = DOORS[i], now = Date.now();
-  const w = (lx: number, lz: number): [number, number] => [tp.x + lx * cs + lz * sn, tp.z - lx * sn + lz * cs]; // car-local -> world (car faces +x, driver door on -z)
+  const cfg = jcfg(JACK.role), o = JR[JACK.key] || {}, e = ROAM.cars[JACK.idx], c = e?.c, tp = JACK.ghost ? JACK.gp : TPOS[JACK.idx];
+  if (!tp || (!JACK.ghost && (!c || c.busy)) || GAME.jailed || GAME.ride) { JACK.abort(); return; }
+  const cs = Math.cos(tp.r), sn = Math.sin(tp.r), now = Date.now(), door = o.door, glassy = JACK.role === 'bike' ? null : o.glass;
+  const w = (l: [number, number]): [number, number] => [tp.x + l[0] * cs + l[1] * sn, tp.z - l[0] * sn + l[1] * cs]; // vehicle-local -> world
   JACK.t += dt; JACK.walk = false; p.y = 0; p.vy = 0;
   const goto = (x: number, z: number, sp: number) => { const dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz); if (d < .12) return true; const s = Math.min(d, sp * dt); p.x += dx / d * s; p.z += dz / d * s; p.r = Math.atan2(dx, dz); JACK.walk = true; return false; };
   const faceCar = () => { p.r = Math.atan2(tp.x - p.x, tp.z - p.z); };
   const punch = () => { NET.me.anim = 'punch'; NET.me.animUntil = now + 450; };
-  if (JACK.ph === 1) { // walk round to the driver's door (going round the nose/tail if you are on the passenger side)
-    const dx = p.x - tp.x, dz = p.z - tp.z, lx = dx * cs - dz * sn, lz = dx * sn + dz * cs, stand = w(.2, -2.5);
+  if (JACK.ph === 1) { // walk round to the driver's side (going round the nose / tail if you start on the other side)
+    const dx = p.x - tp.x, dz = p.z - tp.z, lx = dx * cs - dz * sn, lz = dx * sn + dz * cs, stand = w(cfg.stand);
     let arrived = false;
-    if (JACK.wp === 0 && lz > -1.4) { const g = w((lx >= 0 ? 1 : -1) * 3.4, -1.8); if (goto(g[0], g[1], 7)) JACK.wp = 1; }
-    else arrived = goto(stand[0], stand[1], 7);
-    if ((arrived && (c.v ?? 99) < .5) || JACK.t > 4) { c.v = 0; p.x = stand[0]; p.z = stand[1]; faceCar(); JACK.ph = 2; JACK.t = 0; }
-  } else if (JACK.ph === 2) { // yank the door open
+    if (JACK.wp === 0 && lz > cfg.stand[1] + 1.1) { const g = w([(lx >= 0 ? 1 : -1) * cfg.wp[0], cfg.wp[1]]); if (goto(g[0], g[1], JT.walk)) JACK.wp = 1; }
+    else arrived = goto(stand[0], stand[1], JT.walk);
+    if ((arrived && (JACK.ghost || (c!.v ?? 99) < .5)) || JACK.t > JT.giveUp) { if (c) c.v = 0; p.x = stand[0]; p.z = stand[1]; faceCar(); JACK.ph = 2; JACK.t = 0; }
+  } else if (JACK.ph === 2) { // yank the door open (a bike has none: the rider just gets shoved)
     faceCar(); if (!JACK.fx) { JACK.fx = true; punch(); }
-    if (door) door.rotation.y = -1.15 * ease(JACK.t / .45);
-    if (JACK.t >= .5) { // grab the driver and throw them out
-      const st = driverStyle(c.color + (vehicleById(c.model) || vehicleByName(c.model) || VEHICLE_CATALOG[0]).model), n = JACK.npc, from = w(-.27, -.4), to = w(-1.3, -3.3), away = w(-1.3, -9);
-      JACK.setNpcLook({ ...DEFAULT_LOOK, name: 'Driver', skin: st.skin, outfit: st.top, hairColor: st.hair });
-      if (DRIVERS[i]) DRIVERS[i]!.visible = false;
-      Object.assign(n, { on: true, t: 0, from: [from[0], .95, from[1]], to, run: away, yaw: Math.atan2(to[0] - from[0], to[1] - from[1]) });
+    if (cfg.door) { if (door) door.rotation.y = -1.15 * ease(JACK.t / JT.open); if (glassy) glassy.visible = false; } // clear glass out of the way so the open door really is an opening
+    if (JACK.t >= JT.openWait) { // grab the driver and throw them out
+      let look: Look;
+      if (JACK.ghost) look = { ...JACK.gLook };
+      else {
+        const seed = JACK.role === 'car' ? c!.color + specOf(c!.model).model : JACK.role === 'taxi' ? '#e5b72f' + specOf(COROLLA).model : JACK.role === 'police' ? '#eef1f6' + specOf(COROLLA).model : JACK.key + 'x';
+        const st = driverStyle(seed, J_SHIRT[JACK.role]); look = { ...DEFAULT_LOOK, name: 'Driver', skin: st.skin, outfit: st.top, hairColor: st.hair };
+      }
+      JACK.setNpcLook(look); if (o.driver) o.driver.visible = false;
+      const from = w(cfg.seat), to = w(cfg.land), away = w(cfg.away);
+      Object.assign(JACK.npc, { on: true, t: 0, from: [from[0], cfg.seatY, from[1]], to, run: away, yaw: Math.atan2(to[0] - from[0], to[1] - from[1]) });
       punch(); thud(.8); JACK.ph = 3; JACK.t = 0;
     }
   } else if (JACK.ph === 3) { // the throw
-    faceCar(); if (JACK.t >= .6) { JACK.ph = 4; JACK.t = 0; }
+    faceCar(); if (JACK.t >= JT.throw) { JACK.ph = 4; JACK.t = 0; }
   } else if (JACK.ph === 4) { // step up to the open door
-    const spot = w(.1, -1.5); const there = goto(spot[0], spot[1], 5); if (there || JACK.t > .8) { JACK.ph = 5; JACK.t = 0; }
-  } else if (JACK.ph === 5) { // get in, door shuts, drive off
-    const seat = w(-.25, -.4); p.x += (seat[0] - p.x) * Math.min(1, dt * 9); p.z += (seat[1] - p.z) * Math.min(1, dt * 9); p.r = tp.r + Math.PI / 2;
-    if (door) door.rotation.y = -1.15 * (1 - ease(JACK.t / .3));
-    if (JACK.t >= .35) {
-      if (door) door.rotation.y = 0; if (DRIVERS[i]) DRIVERS[i]!.visible = true;
+    const spot = w(cfg.step); const there = goto(spot[0], spot[1], 5); if (there || JACK.t > JT.step) { JACK.ph = 5; JACK.t = 0; }
+  } else if (JACK.ph === 5) { // get in, the door shuts, you drive off
+    const seat = w(cfg.ride); p.x += (seat[0] - p.x) * Math.min(1, dt * 9); p.z += (seat[1] - p.z) * Math.min(1, dt * 9); p.r = tp.r + Math.PI / 2;
+    if (cfg.door && door) door.rotation.y = -1.15 * (1 - ease(JACK.t / JT.close));
+    if (JACK.t >= JT.finish) {
+      if (door) door.rotation.y = 0; if (glassy) glassy.visible = true; if (o.driver) o.driver.visible = true;
       VEH.x = tp.x; VEH.z = tp.z; VEH.r = tp.r; VEH.v = 0; VEH.placed = true; VEH.drv = true; engineStart(); ctl.recenter = true;
       p.x = tp.x; p.z = tp.z;
-      JACK.stolen = i; JACK.model = c.model; JACK.color = c.color; c.hold = false; c.v = 0; c.busy = true; // the traffic car is now YOUR car
-      JACK.idx = -1; JACK.ph = 0; JACK.walk = false; JACK.refresh();
+      JACK.on = true; JACK.sRole = JACK.role;
+      if (JACK.ghost) { JACK.model = JACK.gModel; JACK.color = JACK.gColor; JACK.stolenIdx = -1; JACK.ghostOn = false; JACK.ghostRefresh(); }
+      else { JACK.model = JACK.role === 'taxi' || JACK.role === 'police' ? COROLLA : c!.model; JACK.color = JACK.role === 'taxi' ? '#e5b72f' : JACK.role === 'police' ? '#eef1f6' : c!.color; JACK.stolenIdx = JACK.idx; c!.hold = false; c!.v = 0; c!.busy = true; } // the traffic vehicle is now YOUR vehicle
+      JACK.idx = -1; JACK.ph = 0; JACK.walk = false; JACK.ghost = false; JACK.refresh();
     }
   }
 }
-/** the thrown-out driver: flies out of the seat, lands on the road, gets up and runs away */
+/** the thrown-out driver: flies out of the seat, lands on the road, lies there, gets up and runs away */
 function JackNpc() {
   const g = useRef<THREE.Group>(null!), [look, setLook] = useState<Look>(DEFAULT_LOOK);
   useEffect(() => { JACK.setNpcLook = setLook; return () => { JACK.setNpcLook = () => {}; }; }, []);
@@ -456,18 +508,23 @@ function JackNpc() {
     const n = JACK.npc, gr = g.current; if (!gr) return;
     if (!n.on) { gr.visible = false; return; }
     n.t += Math.min(dtRaw, .05); const t = n.t; n.walk = false;
-    const LIE = -1.45; let x = n.to[0], z = n.to[1], y = .13, rx = LIE, yaw = n.yaw;
-    if (t < .55) { const u = t / .55; x = n.from[0] + (n.to[0] - n.from[0]) * u; z = n.from[2] + (n.to[1] - n.from[2]) * u; y = n.from[1] * (1 - u) + .13 * u + 1.1 * Math.sin(Math.PI * u); rx = LIE * ease(u * 1.4); }
-    else if (t < 1.6) { /* lying in the road */ }
-    else if (t < 2.05) { const u = ease((t - 1.6) / .45); rx = LIE * (1 - u); y = .13 * (1 - u); }
-    else if (t < 5.6) {
-      rx = 0; y = 0; const dx = n.run[0] - n.to[0], dz = n.run[1] - n.to[1], d = Math.hypot(dx, dz) || 1, k = Math.min(1, (t - 2.05) * 4.6 / d);
-      x = n.to[0] + dx * k; z = n.to[1] + dz * k; yaw = Math.atan2(dx, dz); n.walk = k < 1;
-    } else { n.on = false; gr.visible = false; return; }
-    n.x = x; n.y = y; n.z = z; n.rx = rx;
+    const LIE = -1.45, t1 = JT.arc, t2 = t1 + JT.lie, t3 = t2 + JT.getUp, t4 = t3 + JT.run;
+    let x = n.to[0], z = n.to[1], y = .13, rx = LIE, yaw = n.yaw;
+    if (t < t1) { const u = t / t1; x = n.from[0] + (n.to[0] - n.from[0]) * u; z = n.from[2] + (n.to[1] - n.from[2]) * u; y = n.from[1] * (1 - u) + .13 * u + 1.1 * Math.sin(Math.PI * u); rx = LIE * ease(u * 1.4); }
+    else if (t < t2) { /* lying in the road */ }
+    else if (t < t3) { const u = ease((t - t2) / JT.getUp); rx = LIE * (1 - u); y = .13 * (1 - u); }
+    else if (t < t4) { rx = 0; y = 0; const dx = n.run[0] - n.to[0], dz = n.run[1] - n.to[1], d = Math.hypot(dx, dz) || 1, k = Math.min(1, (t - t3) * JT.runSpeed / d); x = n.to[0] + dx * k; z = n.to[1] + dz * k; yaw = Math.atan2(dx, dz); n.walk = k < 1; }
+    else { n.on = false; gr.visible = false; return; }
     gr.visible = true; gr.rotation.order = 'YXZ'; gr.position.set(x, y, z); gr.rotation.set(rx, yaw, 0);
   });
-  return <group ref={g} visible={false}><Human key={look.skin + look.outfit} look={look} getState={() => (JACK.npc.walk ? 'walk' : 'idle')} getAnim={() => undefined} getSpeed={() => 2.6} /></group>;
+  return <group ref={g} visible={false}><Human key={look.skin + look.outfit + look.hairColor} look={look} getState={() => (JACK.npc.walk ? 'walk' : 'idle')} getAnim={() => undefined} getSpeed={() => 2.6} /></group>;
+}
+/** a frozen copy of a real player's car, used only while the carjack scene plays */
+function JackGhost() {
+  const [, bump] = useState(0), kit = pkit();
+  useEffect(() => { JACK.ghostRefresh = () => bump(v => v + 1); return () => { JACK.ghostRefresh = () => {}; }; }, []);
+  if (!JACK.ghostOn) return null;
+  return <group position={[JACK.gp.x, 0, JACK.gp.z]} rotation={[0, JACK.gp.r, 0]}><CarModel kit={kit} color={JACK.gColor} kind={0} model={JACK.gModel} {...jrefs('ghost')} /></group>;
 }
 const isHail = (r: Role) => r === 'taxi' || r === 'bike' || r === 'bus'; // vehicles a player can flag down
 const roleOf = (n: number): Role => (n % 17 === 7 ? 'bus' : n % 4 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
@@ -568,7 +625,7 @@ function Traffic() {
     {flat.map(({ l, c }, i) => <group key={i} ref={el => { refs.current[i] = el; }} position={l.axis === 'x' ? [c.s, 0, l.fixed] : [l.fixed, 0, c.s]} rotation={[0, l.rot, 0]}
       onClick={isHail(c.role) ? (e => { if (e.delta > 6) return; e.stopPropagation(); ROAM.tap(i); }) : undefined}>
       {isHail(c.role) && <mesh position={[0, 1.1, 0]}><boxGeometry args={c.role === 'bus' ? [7, 3, 3.4] : [3.4, 2.6, 5.6]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>}
-      {c.role === 'taxi' ? <TaxiBody kit={kit} /> : c.role === 'bike' ? <BikeBody scale={.95} rider /> : c.role === 'police' ? <PoliceBody kit={kit} /> : c.role === 'bus' ? <BusBody /> : <CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} doorRef={el => { DOORS[i] = el; }} driverRef={el => { DRIVERS[i] = el; }} />}
+      {c.role === 'taxi' ? <TaxiBody kit={kit} refs={jrefs('n' + i)} /> : c.role === 'bike' ? <BikeBody scale={.95} rider {...jrefs('n' + i)} /> : c.role === 'police' ? <PoliceBody kit={kit} refs={jrefs('n' + i)} /> : c.role === 'bus' ? <BusBody {...jrefs('n' + i)} /> : <CarModel kit={kit} color={c.color} kind={c.kind} model={c.model} {...jrefs('n' + i)} />}
     </group>)}
     <group ref={lbl}><Html center zIndexRange={[4, 0]}><div ref={lblEl} className="hailTag" style={{ display: 'none' }} onClick={() => { const i = Number(lblEl.current?.dataset.i); if (i >= 0) ROAM.tap(i); }} /></Html></group>
   </>;
@@ -633,13 +690,30 @@ export function dispatchRide(r: { id: string; name: string; x: number; z: number
   GAME.notice = want === 'bike' ? '🚲 Your bike taxi is on its way to you...' : '🚕 Your taxi is on its way to you...';
   return null;
 }
-function BusBody() { // faces +x like every vehicle: a yellow city bus with a window band, pillars, doors, lights and a destination sign
+function BusBody({ doorRef, driverRef, glassRef }: BodyRefs) { // faces +x like every vehicle: a yellow city bus with a window band, pillars, doors, lights and a destination sign
   const Y = '#e8a923', D = '#14202a';
   return <group>
     <mesh position={[0, .95, 0]} castShadow><boxGeometry args={[6, 1.1, 2.2]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>
     <mesh position={[0, .52, 0]}><boxGeometry args={[5.9, .26, 2.12]} /><meshStandardMaterial color="#1c1c1f" /></mesh>
     <mesh position={[0, .98, 0]}><boxGeometry args={[6.02, .14, 2.22]} /><meshStandardMaterial color="#b3261e" /></mesh>
-    <mesh position={[0, 1.88, 0]}><boxGeometry args={[5.9, .76, 2.1]} /><meshStandardMaterial color={D} metalness={.55} roughness={.2} /></mesh>
+    <mesh ref={glassRef} position={[0, 1.88, 0]}><boxGeometry args={[5.9, .76, 2.1]} /><meshStandardMaterial color="#cfe6f2" metalness={.05} roughness={.04} transparent opacity={.2} depthWrite={false} /></mesh>
+    {/* cab + passenger seats, visible through the clear windows */}
+    {[-2.3, -1.5, -.7, .1, .9].map(x => [-.55, .55].map(z => <mesh key={x + ':' + z} position={[x, 1.72, z]}><boxGeometry args={[.4, .5, .6]} /><meshStandardMaterial color="#2a2d31" roughness={.9} /></mesh>))}
+    <mesh position={[2.75, 1.55, 0]}><boxGeometry args={[.4, .3, 2.0]} /><meshStandardMaterial color="#15181b" roughness={.6} /></mesh>
+    <group position={[2.4, 0, -.7]}>
+      <mesh position={[-.35, 1.7, 0]}><boxGeometry args={[.12, .55, .5]} /><meshStandardMaterial color="#2a2d31" roughness={.9} /></mesh>
+      <group ref={driverRef}>
+        <mesh position={[-.2, 1.85, 0]}><boxGeometry args={[.26, .42, .42]} /><meshStandardMaterial color="#5b6b7a" roughness={.8} /></mesh>
+        <mesh position={[-.17, 2.2, 0]}><sphereGeometry args={[.13, 14, 12]} /><meshStandardMaterial color="#8d5524" roughness={.6} /></mesh>
+        <mesh position={[.15, 1.85, 0]} rotation-z={.1}><boxGeometry args={[.5, .09, .09]} /><meshStandardMaterial color="#5b6b7a" roughness={.8} /></mesh>
+        <mesh position={[.4, 1.78, 0]} rotation-z={.9}><torusGeometry args={[.2, .02, 8, 18]} /><meshStandardMaterial color="#0e0f11" roughness={.5} /></mesh>
+      </group>
+    </group>
+    {/* driver's cab door: hinged at the front, swings outward */}
+    <group ref={doorRef} position={[2.95, 0, -1.16]}>
+      <mesh position={[-.45, 1.1, 0]}><boxGeometry args={[.9, 1.55, .05]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>
+      <mesh position={[-.45, 1.55, .03]}><boxGeometry args={[.74, .6, .02]} /><meshStandardMaterial color="#cfe6f2" transparent opacity={.25} depthWrite={false} /></mesh>
+    </group>
     {[-2.8, -1.8, -.8, .2, 1.2, 2.2, 2.85].map(x => <mesh key={x} position={[x, 1.88, 0]}><boxGeometry args={[.12, .78, 2.2]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>)}
     <mesh position={[0, 2.33, 0]} castShadow><boxGeometry args={[6, .14, 2.2]} /><meshStandardMaterial color="#f1ead7" roughness={.6} /></mesh>
     <mesh position={[-1.4, 2.43, 0]}><boxGeometry args={[.9, .1, .7]} /><meshStandardMaterial color="#cfd3d6" /></mesh>
@@ -661,16 +735,17 @@ function BusBody() { // faces +x like every vehicle: a yellow city bus with a wi
     </group>)}
   </group>;
 }
-function TaxiBody({ kit }: { kit: Kit; driver?: boolean }) {
+type BodyRefs = { doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void };
+function TaxiBody({ kit, refs }: { kit: Kit; driver?: boolean; refs?: BodyRefs }) {
   return <group>
-    <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" shirt="#d99a42" />
+    <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" shirt="#d99a42" {...refs} />
     <group position={[-.05, 1.56, 0]}> {/* roof sign: real 3D text on both sides, so no floating label to clutter the view */}
       <mesh><boxGeometry args={[.9, .2, .5]} /><meshStandardMaterial color="#111" /></mesh>
       {[1, -1].map(sd => <Text key={sd} position={[0, .01, sd * .26]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.15} color="#ffd23f" anchorX="center" anchorY="middle">TAXI</Text>)}
     </group>
   </group>;
 }
-function BikeBody({ scale = 1, rider }: { scale?: number; rider?: boolean }) { // faces +x like every vehicle: a motorcycle (okada) with fat tyres, fork, tank, seat, engine and exhaust
+function BikeBody({ scale = 1, rider, driverRef }: { scale?: number; rider?: boolean; driverRef?: (g: THREE.Object3D | null) => void; doorRef?: unknown; glassRef?: unknown }) { // faces +x like every vehicle: a motorcycle (okada) with fat tyres, fork, tank, seat, engine and exhaust
   const body = '#2d8f62', dark = '#1a1d21', steel = '#aeb4b9';
   return <group scale={[scale, scale, scale]}>
     {[-.62, .62].map(x => <group key={x} position={[x, .4, 0]}>
@@ -697,14 +772,14 @@ function BikeBody({ scale = 1, rider }: { scale?: number; rider?: boolean }) { /
     <mesh position={[.7, .88, 0]}><sphereGeometry args={[.11, 14, 10]} /><meshStandardMaterial color="#fff6c8" emissive="#ffe9a0" emissiveIntensity={.7} /></mesh>
     <mesh position={[-.3, .27, .2]} rotation-z={Math.PI / 2 - .06}><cylinderGeometry args={[.05, .045, .85, 10]} /><meshStandardMaterial color={steel} metalness={.85} roughness={.25} /></mesh>
     <mesh position={[-.72, .3, .2]}><cylinderGeometry args={[.07, .07, .3, 10]} /><meshStandardMaterial color="#8d9399" metalness={.8} roughness={.3} /></mesh>
-    {rider && <group position={[-.2, .66, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group>}
+    {rider && <group ref={driverRef}><group position={[-.2, .66, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group></group>}
   </group>;
 }
-function PoliceBody({ kit }: { kit: Kit }) {
+function PoliceBody({ kit, refs }: { kit: Kit; refs?: BodyRefs }) {
   const red = useRef<THREE.MeshStandardMaterial>(null!), blue = useRef<THREE.MeshStandardMaterial>(null!);
   useFrame(st => { const f = Math.floor(st.clock.elapsedTime * 5) % 2, k = NIGHT.n * 3 + 1.2; if (red.current) red.current.emissiveIntensity = f ? .1 : k; if (blue.current) blue.current.emissiveIntensity = f ? k : .1; });
   return <group>
-    <CarModel kit={kit} color="#eef1f6" kind={0} model="toyota-corolla-2024" shirt="#1d3f8f" />
+    <CarModel kit={kit} color="#eef1f6" kind={0} model="toyota-corolla-2024" shirt="#1d3f8f" {...refs} />
     <mesh position={[-.17, 1.47, 0]}><boxGeometry args={[.5, .05, 1.2]} /><meshStandardMaterial color="#111" /></mesh>
     <mesh position={[-.17, 1.55, .3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={red} color="#ff2b2b" emissive="#ff1010" emissiveIntensity={1} /></mesh>
     <mesh position={[-.17, 1.55, -.3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={blue} color="#2b6bff" emissive="#1050ff" emissiveIntensity={1} /></mesh>
@@ -1099,10 +1174,10 @@ function Pedestrians() {
 /* ───────────── the player's car ───────────── */
 const CAR_COLOR = '#ff6a00';
 function PlayerCar({ carRef, tagRef, spotRef, model }: { carRef: React.MutableRefObject<THREE.Group>; tagRef: React.MutableRefObject<HTMLDivElement | null>; spotRef: React.MutableRefObject<THREE.SpotLight>; model: string }) {
-  const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []); const [, bump] = useState(0); useEffect(() => { JACK.refresh = () => bump(v => v + 1); return () => { JACK.refresh = () => {}; }; }, []); const stolen = JACK.stolen >= 0; const [style,setStyle]=useState<any>(null); useEffect(()=>{fetch('/api/vehicles').then(r=>r.ok?r.json():null).then(d=>setStyle(d?.vehicles?.[0]||null)).catch(()=>{});},[model]);
+  const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []); const [, bump] = useState(0); useEffect(() => { JACK.refresh = () => bump(v => v + 1); return () => { JACK.refresh = () => {}; }; }, []); const stolen = JACK.on; const [style,setStyle]=useState<any>(null); useEffect(()=>{fetch('/api/vehicles').then(r=>r.ok?r.json():null).then(d=>setStyle(d?.vehicles?.[0]||null)).catch(()=>{});},[model]);
   useLayoutEffect(() => { spotRef.current.target = tgt; }, [tgt, spotRef]);
   return <group ref={carRef} visible={false}>
-    <CarModel kit={kit} color={stolen ? JACK.color : (vehicleByName(model).color || CAR_COLOR)} kind={0} model={stolen ? JACK.model : model} style={stolen ? undefined : (style||undefined)} />
+    {stolen && JACK.sRole === 'bus' ? <BusBody /> : stolen && JACK.sRole === 'bike' ? <BikeBody scale={.95} rider /> : stolen && JACK.sRole === 'taxi' ? <TaxiBody kit={kit} /> : stolen && JACK.sRole === 'police' ? <PoliceBody kit={kit} /> : <CarModel kit={kit} color={stolen ? JACK.color : (vehicleByName(model).color || CAR_COLOR)} kind={0} model={stolen ? JACK.model : model} style={stolen ? undefined : (style||undefined)} />}
     <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
     <primitive object={tgt} position={[16, .2, 0]} />
     <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
@@ -1375,6 +1450,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     } else if (!GAME.nav) nav.current = null;
     let ix = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0) + c.joy.x;
     let iy = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0) - c.joy.y;
+    if (JACK.victimUntil > Date.now()) { ix = 0; iy = 0; c.interact = false; c.jump = false; } // someone just threw you out of your car
     if (JACK.ph) { ix = 0; iy = 0; c.interact = false; c.jump = false; stepJack(p, dt, c); } // carjack in progress: the sequence drives the avatar
     /* Waypoints only GUIDE the player (route line on the minimap and map). The player always steers; only the idle auto-work routine (nav.auto) may walk by itself. */
     if (nav.current && GAME.nav) {
@@ -1532,11 +1608,11 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       c.jump = false;
       p.vy -= 18 * dt; p.y += p.vy * dt; if (p.y < 0) { p.y = 0; p.vy = 0; }
       if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) VEH.placed = false; // car you walked away from goes back to the garage
-      if (!VEH.placed && JACK.stolen >= 0) JACK.release(); // an abandoned stolen car goes back to traffic
+      if (!VEH.placed && JACK.on) JACK.release(); // an abandoned stolen car goes back to traffic
     }
     c.jump = false;
     GAME.player.x = p.x; GAME.player.z = p.z; GAME.player.r = p.r;
-    group.current.rotation.order = 'YXZ'; group.current.position.set(p.x, p.y + (me.ko > nowMs ? .28 : 0), p.z); group.current.rotation.y = p.r; group.current.rotation.x = me.ko > nowMs ? -Math.PI / 2 : 0; // knocked out: lying on the ground
+    group.current.rotation.order = 'YXZ'; const lying = me.ko > nowMs || JACK.victimUntil > nowMs; group.current.position.set(p.x, p.y + (lying ? .28 : 0), p.z); group.current.rotation.y = p.r; group.current.rotation.x = lying ? -Math.PI / 2 : 0; // knocked out: lying on the ground
     group.current.visible = !VEH.drv;
     if (JACK.ph) moving.current = JACK.walk;
     if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';
@@ -1604,6 +1680,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       {BUILDS.map(b => <Building key={b.id} b={b} />)}
       <Traffic />
       <JackNpc />
+      <JackGhost />
       <Pedestrians />
       <NpcPolice />
       <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} />
@@ -1782,7 +1859,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: 'E — Call your car' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
-  useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
+  useEffect(() => { const i = setInterval(() => { setHasCar(GAME.hasCar); if (!GAME.hasCar) { if (VEH.drv) JACK.victimEject(); VEH.placed = false; VEH.drv = false; } }, 600); return () => clearInterval(i); }, []);
   useEffect(() => {
     const startMission = (e: Event) => {
       const m = (e as CustomEvent).detail as { id?: string; goto?: { name?: string; type?: string; district?: string }; final?: { name?: string; type?: string; district?: string }; fresh?: boolean; label?: string; title?: string };

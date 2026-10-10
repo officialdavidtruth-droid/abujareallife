@@ -18,7 +18,7 @@ const post = async (url: string, body: object) => { const r = await fetch(url, {
 
 function scan(done: Map<number, number>): Act[] {
   const me = NET.me, now = Date.now(), out: Act[] = [];
-  if (GAME.jailed || me.drv || me.ko > now || GAME.ride) return out;
+  if (GAME.jailed || me.drv || me.ko > now || GAME.ride || JACK.ph) return out;
   let rn = '', rd = ROB_RANGE, jn = '', jd = CARJACK_RANGE;
   for (const [n, q] of Object.entries(NET.peers)) {
     if (q.safe) continue;   // just woke up: protected for a few seconds
@@ -69,16 +69,18 @@ export default function CrimeActions({ username, say, refresh }: { username: str
         if (r.d.amount) window.dispatchEvent(new CustomEvent('arl-net-fx', { detail: { to: a.name, t: `💸 ${username} robbed you of ${naira(r.d.amount)}!` } }));   // instant toast; the server also saved a message for them
       } else {
         say(`🚗 You stole ${a.name}'s ${r.d.car}${r.d.wanted ? ' · you are WANTED' : ''}`);
+        JACK.startGhost(a.name, q.cx, q.cz, q.cr, q.look);   // GTA-style: door open, they get thrown out, you drive off
         window.dispatchEvent(new CustomEvent('arl-net-fx', { detail: { to: a.name, t: `🚗 ${username} stole your ${r.d.car}!` } }));
       }
     } else {
       const kind = a.k === 'pick' ? 'pickpocket' : a.k === 'mug' ? 'mug_npc' : 'carjack';
-      const r = await post('/api/crime', { kind, policeNearby: copsNear() });
+      const ci = a.k === 'npcjack' ? JACK.nearest(NET.me.x, NET.me.z, 8) : -1, info = ci >= 0 ? JACK.info(ci) : null;   // which vehicle you are jacking (car, taxi, police, bus, bike)
+      const r = await post('/api/crime', { kind, policeNearby: copsNear(), ...(info ? { role: info.role, model: info.model } : {}) });
       if (!r.ok) { if (r.d.retryIn) startCooldown(a.k, r.d.retryIn); return say(r.d.error || 'It did not work.'); }
       startCooldown(a.k);
-      if (a.k === 'npcjack' && !r.d.jailSecs) { const ci = JACK.nearest(NET.me.x, NET.me.z, 8); if (ci >= 0) JACK.start(ci); }   // GTA-style: open the door, throw the driver out, take the wheel
+      if (ci >= 0 && !r.d.caught) JACK.start(ci);   // GTA-style: open the door, throw the driver out, take the wheel
       if (a.idx !== undefined) done.current.set(a.idx, Date.now() + PED_RETRY_MS);
-      say(r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : a.k === 'mug' ? '😱 They screamed and fought back. You are WANTED.' : '😬 It went wrong. You are WANTED.') : `💰 You got away with ${naira(r.d.loot)}${r.d.wanted ? ' · you are WANTED' : ''}`);
+      say(r.d.caught ? (r.d.jailSecs ? '🚔 Caught red-handed! Straight to jail.' : a.k === 'mug' ? '😱 They screamed and fought back. You are WANTED.' : '😬 It went wrong. You are WANTED.') : `💰 You got away with ${naira(r.d.loot)}${r.d.car ? ` · 🚗 ${r.d.car} is now in your garage (stolen: unregistered, uninsured)` : ''}${r.d.wanted ? ' · you are WANTED' : ''}`);
     }
     refresh();
   };

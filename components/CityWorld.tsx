@@ -329,8 +329,9 @@ const drvHash = (str: string) => { let h = 2166136261; for (let i = 0; i < str.l
 const DRV_MATS = new Map<string, THREE.MeshStandardMaterial>();
 const drvMat = (c: string, rough = .8, metal = .05) => { const k = c + rough + metal; let m = DRV_MATS.get(k); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal }); DRV_MATS.set(k, m); } return m; };
 const driverStyle = (seed: string, shirt?: string) => { const h = drvHash(seed); return { skin: DRV_SKINS[h % DRV_SKINS.length], top: shirt || DRV_SHIRTS[(h >> 3) % DRV_SHIRTS.length], hair: DRV_HAIRS[(h >> 6) % DRV_HAIRS.length] }; };
-function CarInterior({ seed, shirt, suv, driverRef }: { seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Object3D | null) => void }) {
-  const { skin, top, hair } = driverStyle(seed, shirt), seatC = '#2a2d31', dash = '#15181b';
+type DrvLook = { skin?: string; outfit?: string; hairColor?: string };
+function CarInterior({ seed, shirt, suv, driverRef, look }: { seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Object3D | null) => void; look?: DrvLook }) {
+  const st = driverStyle(seed, shirt), skin = look?.skin || st.skin, top = look?.outfit || st.top, hair = look?.hairColor || st.hair, seatC = '#2a2d31', dash = '#15181b';
   const w = suv ? 1.34 : 1.26;
   return <group>
     {/* seats: driver (left-hand drive, -z), passenger and rear bench */}
@@ -348,7 +349,7 @@ function CarInterior({ seed, shirt, suv, driverRef }: { seed: string; shirt?: st
     </group>
   </group>;
 }
-function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
+function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
@@ -356,7 +357,7 @@ function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRe
   const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims==='sport' ? '#d8dde3' : style?.rims==='black' ? '#111' : '#141619';
   return <group scale={sc}>
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
-    {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} />}
+    {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} look={look} />}
     {/* driver-side door: hinged at the front edge, swings outward. Closed it is a normal door; open it shows a recessed door well, an inner trim panel and an empty window frame */}
     <mesh position={[.05, .58, -.936]} material={drvMat('#17191c', .9)}><boxGeometry args={[1.0, .4, .02]} /></mesh>
     <group ref={doorRef} position={[.55, 0, -.95]}>
@@ -417,7 +418,7 @@ const specOf = (id: string) => vehicleById(id) || vehicleByName(id) || VEHICLE_C
 const COROLLA = 'toyota-corolla-2024';
 const J_SHIRT: Partial<Record<JRole, string>> = { taxi: '#d99a42', police: '#1d3f8f', bus: '#5b6b7a', bike: '#2d8f62' };
 export const JACK = {
-  key: '', idx: -1, role: 'car' as JRole, ghost: false, gp: { x: 0, z: 0, r: 0 }, ghostOn: false, gModel: '', gColor: '', gLook: DEFAULT_LOOK as Look,
+  key: '', idx: -1, role: 'car' as JRole, ghost: false, gp: { x: 0, z: 0, r: 0 }, ghostOn: false, gModel: '', gColor: '', gLook: DEFAULT_LOOK as Look, gName: '', gUntil: 0,
   ph: 0, t: 0, wp: 0, walk: false, fx: false,
   on: false, sRole: 'car' as JRole, stolenIdx: -1, model: '', color: '', victimUntil: 0,
   refresh: () => {}, ghostRefresh: () => {}, setNpcLook: (_l: Look) => {},
@@ -439,15 +440,17 @@ export const JACK = {
   startGhost(name: string, x: number, z: number, r: number, look: Look) {
     if (JACK.ph || GAME.ride || VEH.drv || GAME.jailed || CINE.on) return false;
     JACK.release(); const m = VEHICLE_CATALOG[Math.floor(hs(name) * VEHICLE_CATALOG.length)];
-    Object.assign(JACK, { key: 'ghost', idx: -1, role: 'car' as JRole, ghost: true, gp: { x, z, r }, gModel: m.id, gColor: m.color, gLook: look, ghostOn: true, ph: 1, t: 0, wp: 0, fx: false });
+    Object.assign(JACK, { key: 'ghost', idx: -1, role: 'car' as JRole, ghost: true, gp: { x, z, r }, gModel: m.id, gColor: m.color, gLook: look, gName: name, gUntil: Infinity, ghostOn: true, ph: 1, t: 0, wp: 0, fx: false });
     JACK.ghostRefresh(); return true;
   },
+  /** true while a jacked real player's own car must not be drawn by their Remote (the ghost copy is playing / the server has not caught up yet) */
+  hides(name: string) { return JACK.gName === name && Date.now() < JACK.gUntil; },
   /** hand the jacked traffic vehicle back to traffic (the car you own is in your garage) */
   release() { if (!JACK.on) return; JACK.on = false; if (JACK.stolenIdx >= 0) respawnRoamer(JACK.stolenIdx); JACK.stolenIdx = -1; JACK.refresh(); },
   abort() {
     const o = JR[JACK.key] || {}, c = ROAM.cars[JACK.idx]?.c; if (c) c.hold = false;
     if (o.door) o.door.rotation.y = 0; if (o.glass) o.glass.visible = true; if (o.driver) o.driver.visible = true;
-    if (JACK.ghost) { JACK.ghostOn = false; JACK.ghostRefresh(); }
+    if (JACK.ghost) { JACK.ghostOn = false; JACK.gUntil = Date.now() + 6000; JACK.ghostRefresh(); }
     JACK.npc.on = false; JACK.idx = -1; JACK.ph = 0; JACK.walk = false; JACK.ghost = false;
   },
   /** you were the one driving when someone took your car: you are thrown out and left on the ground */
@@ -499,7 +502,7 @@ function stepJack(p: { x: number; z: number; r: number; y: number; vy: number },
       VEH.x = tp.x; VEH.z = tp.z; VEH.r = tp.r; VEH.v = 0; VEH.placed = true; VEH.drv = true; engineStart(); ctl.recenter = true;
       p.x = tp.x; p.z = tp.z;
       JACK.on = true; JACK.sRole = JACK.role;
-      if (JACK.ghost) { JACK.model = JACK.gModel; JACK.color = JACK.gColor; JACK.stolenIdx = -1; JACK.ghostOn = false; JACK.ghostRefresh(); }
+      if (JACK.ghost) { JACK.model = JACK.gModel; JACK.color = JACK.gColor; JACK.stolenIdx = -1; JACK.ghostOn = false; JACK.gUntil = Date.now() + 6000; JACK.ghostRefresh(); }
       else { JACK.model = JACK.role === 'taxi' || JACK.role === 'police' ? COROLLA : c!.model; JACK.color = JACK.role === 'taxi' ? '#e5b72f' : JACK.role === 'police' ? '#eef1f6' : c!.color; JACK.stolenIdx = JACK.idx; c!.hold = false; c!.v = 0; c!.busy = true; } // the traffic vehicle is now YOUR vehicle
       JACK.idx = -1; JACK.ph = 0; JACK.walk = false; JACK.ghost = false; JACK.refresh();
     }
@@ -541,7 +544,7 @@ function JackGhost() {
   const [, bump] = useState(0), kit = pkit();
   useEffect(() => { JACK.ghostRefresh = () => bump(v => v + 1); return () => { JACK.ghostRefresh = () => {}; }; }, []);
   if (!JACK.ghostOn) return null;
-  return <group position={[JACK.gp.x, 0, JACK.gp.z]} rotation={[0, JACK.gp.r, 0]}><CarModel kit={kit} color={JACK.gColor} kind={0} model={JACK.gModel} {...jrefs('ghost')} /></group>;
+  return <group position={[JACK.gp.x, 0, JACK.gp.z]} rotation={[0, JACK.gp.r, 0]}><CarModel kit={kit} color={JACK.gColor} kind={0} model={JACK.gModel} look={JACK.gLook} {...jrefs('ghost')} /></group>;
 }
 const isHail = (r: Role) => r === 'taxi' || r === 'bike' || r === 'bus'; // vehicles a player can flag down
 const roleOf = (n: number): Role => (n % 17 === 7 ? 'bus' : n % 4 === 1 ? 'taxi' : n % 9 === 3 ? 'bike' : n % 12 === 5 ? 'police' : 'car');
@@ -707,7 +710,7 @@ export function dispatchRide(r: { id: string; name: string; x: number; z: number
   GAME.notice = want === 'bike' ? '🚲 Your bike taxi is on its way to you...' : '🚕 Your taxi is on its way to you...';
   return null;
 }
-function BusBody({ doorRef, driverRef, glassRef }: BodyRefs) { // faces +x like every vehicle: a yellow city bus with a window band, pillars, doors, lights and a destination sign
+function BusBody({ doorRef, driverRef, glassRef, look }: BodyRefs) { // faces +x like every vehicle: a yellow city bus with a window band, pillars, doors, lights and a destination sign
   const Y = '#e8a923', D = '#14202a';
   return <group>
     <mesh position={[0, .95, 0]} castShadow><boxGeometry args={[6, 1.1, 2.2]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>
@@ -720,9 +723,9 @@ function BusBody({ doorRef, driverRef, glassRef }: BodyRefs) { // faces +x like 
     <group position={[2.4, 0, -.7]}>
       <mesh position={[-.35, 1.7, 0]}><boxGeometry args={[.12, .55, .5]} /><meshStandardMaterial color="#2a2d31" roughness={.9} /></mesh>
       <group ref={driverRef}>
-        <mesh position={[-.2, 1.85, 0]}><boxGeometry args={[.26, .42, .42]} /><meshStandardMaterial color="#5b6b7a" roughness={.8} /></mesh>
-        <mesh position={[-.17, 2.2, 0]}><sphereGeometry args={[.13, 14, 12]} /><meshStandardMaterial color="#8d5524" roughness={.6} /></mesh>
-        <mesh position={[.15, 1.85, 0]} rotation-z={.1}><boxGeometry args={[.5, .09, .09]} /><meshStandardMaterial color="#5b6b7a" roughness={.8} /></mesh>
+        <mesh position={[-.2, 1.85, 0]}><boxGeometry args={[.26, .42, .42]} /><meshStandardMaterial color={look?.outfit || "#5b6b7a"} roughness={.8} /></mesh>
+        <mesh position={[-.17, 2.2, 0]}><sphereGeometry args={[.13, 14, 12]} /><meshStandardMaterial color={look?.skin || "#8d5524"} roughness={.6} /></mesh>
+        <mesh position={[.15, 1.85, 0]} rotation-z={.1}><boxGeometry args={[.5, .09, .09]} /><meshStandardMaterial color={look?.outfit || "#5b6b7a"} roughness={.8} /></mesh>
         <mesh position={[.4, 1.78, 0]} rotation-z={.9}><torusGeometry args={[.2, .02, 8, 18]} /><meshStandardMaterial color="#0e0f11" roughness={.5} /></mesh>
       </group>
     </group>
@@ -752,7 +755,7 @@ function BusBody({ doorRef, driverRef, glassRef }: BodyRefs) { // faces +x like 
     </group>)}
   </group>;
 }
-type BodyRefs = { doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void };
+type BodyRefs = { doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void; look?: DrvLook };
 function TaxiBody({ kit, refs }: { kit: Kit; driver?: boolean; refs?: BodyRefs }) {
   return <group>
     <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" shirt="#d99a42" {...refs} />
@@ -762,7 +765,7 @@ function TaxiBody({ kit, refs }: { kit: Kit; driver?: boolean; refs?: BodyRefs }
     </group>
   </group>;
 }
-function BikeBody({ scale = 1, rider, driverRef }: { scale?: number; rider?: boolean; driverRef?: (g: THREE.Object3D | null) => void; doorRef?: unknown; glassRef?: unknown }) { // faces +x like every vehicle: a motorcycle (okada) with fat tyres, fork, tank, seat, engine and exhaust
+function BikeBody({ scale = 1, rider, driverRef, riderLook }: { scale?: number; rider?: boolean; driverRef?: (g: THREE.Object3D | null) => void; doorRef?: unknown; glassRef?: unknown; riderLook?: Look }) { // faces +x like every vehicle: a motorcycle (okada) with fat tyres, fork, tank, seat, engine and exhaust
   const body = '#2d8f62', dark = '#1a1d21', steel = '#aeb4b9';
   return <group scale={[scale, scale, scale]}>
     {[-.62, .62].map(x => <group key={x} position={[x, .4, 0]}>
@@ -789,7 +792,7 @@ function BikeBody({ scale = 1, rider, driverRef }: { scale?: number; rider?: boo
     <mesh position={[.7, .88, 0]}><sphereGeometry args={[.11, 14, 10]} /><meshStandardMaterial color="#fff6c8" emissive="#ffe9a0" emissiveIntensity={.7} /></mesh>
     <mesh position={[-.3, .27, .2]} rotation-z={Math.PI / 2 - .06}><cylinderGeometry args={[.05, .045, .85, 10]} /><meshStandardMaterial color={steel} metalness={.85} roughness={.25} /></mesh>
     <mesh position={[-.72, .3, .2]}><cylinderGeometry args={[.07, .07, .3, 10]} /><meshStandardMaterial color="#8d9399" metalness={.8} roughness={.3} /></mesh>
-    {rider && <group ref={driverRef}><group position={[-.2, .66, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={{ ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group></group>}
+    {rider && <group ref={driverRef}><group position={[-.2, .66, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={riderLook || { ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group></group>}
   </group>;
 }
 function PoliceBody({ kit, refs }: { kit: Kit; refs?: BodyRefs }) {
@@ -1374,11 +1377,15 @@ function NpcShouts() {
 
 /* ───────────── the player's car ───────────── */
 const CAR_COLOR = '#ff6a00';
-function PlayerCar({ carRef, tagRef, spotRef, model }: { carRef: React.MutableRefObject<THREE.Group>; tagRef: React.MutableRefObject<HTMLDivElement | null>; spotRef: React.MutableRefObject<THREE.SpotLight>; model: string }) {
-  const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []); const [, bump] = useState(0); useEffect(() => { JACK.refresh = () => bump(v => v + 1); return () => { JACK.refresh = () => {}; }; }, []); const stolen = JACK.on; const [style,setStyle]=useState<any>(null); useEffect(()=>{fetch('/api/vehicles').then(r=>r.ok?r.json():null).then(d=>setStyle(d?.vehicles?.[0]||null)).catch(()=>{});},[model]);
+function PlayerCar({ carRef, tagRef, spotRef, model, look }: { carRef: React.MutableRefObject<THREE.Group>; tagRef: React.MutableRefObject<HTMLDivElement | null>; spotRef: React.MutableRefObject<THREE.SpotLight>; model: string; look: Look }) {
+  const kit = pkit(), tgt = useMemo(() => new THREE.Object3D(), []);
+  // the seated figure is YOU (your avatar is hidden while you drive): it wears your look, and it is only there while you are at the wheel. It was always there before, so a car you had just jacked still showed its old driver.
+  const drvObj = useRef<THREE.Object3D | null>(null), setDrv = useMemo(() => (g: THREE.Object3D | null) => { drvObj.current = g; }, []);
+  const dl = useMemo<DrvLook>(() => ({ skin: look.skin, outfit: look.outfit, hairColor: look.hairColor }), [look.skin, look.outfit, look.hairColor]);
+  useFrame(() => { if (drvObj.current) drvObj.current.visible = VEH.drv; }); const [, bump] = useState(0); useEffect(() => { JACK.refresh = () => bump(v => v + 1); return () => { JACK.refresh = () => {}; }; }, []); const stolen = JACK.on; const [style,setStyle]=useState<any>(null); useEffect(()=>{fetch('/api/vehicles').then(r=>r.ok?r.json():null).then(d=>setStyle(d?.vehicles?.[0]||null)).catch(()=>{});},[model]);
   useLayoutEffect(() => { spotRef.current.target = tgt; }, [tgt, spotRef]);
   return <group ref={carRef} visible={false}>
-    {stolen && JACK.sRole === 'bus' ? <BusBody /> : stolen && JACK.sRole === 'bike' ? <BikeBody scale={.95} rider /> : stolen && JACK.sRole === 'taxi' ? <TaxiBody kit={kit} /> : stolen && JACK.sRole === 'police' ? <PoliceBody kit={kit} /> : <CarModel kit={kit} color={stolen ? JACK.color : (vehicleByName(model).color || CAR_COLOR)} kind={0} model={stolen ? JACK.model : model} style={stolen ? undefined : (style||undefined)} />}
+    {stolen && JACK.sRole === 'bus' ? <BusBody driverRef={setDrv} look={dl} /> : stolen && JACK.sRole === 'bike' ? <BikeBody scale={.95} rider driverRef={setDrv} riderLook={look} /> : stolen && JACK.sRole === 'taxi' ? <TaxiBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : stolen && JACK.sRole === 'police' ? <PoliceBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : <CarModel kit={kit} color={stolen ? JACK.color : (vehicleByName(model).color || CAR_COLOR)} kind={0} driverRef={setDrv} look={dl} model={stolen ? JACK.model : model} style={stolen ? undefined : (style||undefined)} />}
     <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
     <primitive object={tgt} position={[16, .2, 0]} />
     <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
@@ -1892,7 +1899,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Pedestrians />
       <NpcShouts />
       <PolicePatrol />
-      <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} />
+      <PlayerCar carRef={carG} tagRef={carTag} spotRef={spot} model={vehicleModel} look={look} />
       <TrainLine />
       <WeatherEffects />
       <WorldEventVisuals />
@@ -1917,6 +1924,7 @@ const rWalk = (n: string) => { const q = NET.peers[n]; return !!q && q.mv > 0 &&
 const TAGS: { at: number; rank: Record<string, number> } = { at: 0, rank: {} };
 const tagRanks = () => { const now = performance.now(); if (now - TAGS.at < 250) return; TAGS.at = now; const r: Record<string, number> = {}; Object.entries(NET.peers).map(([n, q]) => [n, Math.hypot(NET.me.x - q.x, NET.me.z - q.z)] as const).sort((a, b) => a[1] - b[1]).forEach(([n], i) => { r[n] = i; }); TAGS.rank = r; };
 function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n: string) => void }) {
+  const drvObj = useRef<THREE.Object3D | null>(null), setDrv = useMemo(() => (g: THREE.Object3D | null) => { drvObj.current = g; }, []);
   const body = useRef<THREE.Group>(null!), car = useRef<THREE.Group>(null!), hum = useRef<THREE.Group>(null!), tag = useRef<HTMLDivElement | null>(null), nameEl = useRef<HTMLDivElement | null>(null);
   const kit = pkit(), remoteModel = VEHICLE_CATALOG[Math.floor(hs(name) * VEHICLE_CATALOG.length)].id, colour = useMemo(() => vehicleById(remoteModel).color, [remoteModel]);
   useFrame((_, dtRaw) => {
@@ -1926,7 +1934,8 @@ function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n:
     q.cx += (q.tcx - q.cx) * k; q.cz += (q.tcz - q.cz) * k; q.cr += wrap(q.tcr - q.cr) * k;
     const d = Math.hypot(NET.me.x - q.x, NET.me.z - q.z), near = d < 150;
     body.current.visible = near && !q.drv; body.current.rotation.order = 'YXZ'; body.current.position.set(q.x, q.ko ? .28 : 0, q.z); body.current.rotation.y = q.r; body.current.rotation.x = q.ko ? -Math.PI / 2 : 0;
-    car.current.visible = near && (q.cp || q.drv); car.current.position.set(q.cx, 0, q.cz); car.current.rotation.y = q.cr;
+    car.current.visible = near && (q.cp || q.drv) && !JACK.hides(name); car.current.position.set(q.cx, 0, q.cz); car.current.rotation.y = q.cr;
+    if (drvObj.current) drvObj.current.visible = !!q.drv;   // somebody sits in a remote car only while that player is driving it (a parked car is empty)
     tagRanks();
     const rk = TAGS.rank[name] ?? 99, full = rk < 5 || !!bub;
     if (tag.current) {
@@ -1941,7 +1950,7 @@ function Remote({ name, bub, onPick }: { name: string; bub?: string; onPick: (n:
       <Human look={p.look} getState={() => (rWalk(name) ? 'walk' : 'idle')} getAnim={() => { const q = NET.peers[name]; if (!q || rWalk(name)) return undefined; return q.anim && Date.now() < q.animUntil ? q.anim : undefined; }} getSpeed={() => ((NET.peers[name]?.mv || 0) === 2 ? 2.4 : 1.1)} />
       <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, transformOrigin: '50% 100%' }} ref={el => { tag.current = el; }}>{bub && <div className="cwSay">{bub}</div>}<div ref={nameEl} className="cityNameTag cwTapTag" onClick={() => onPick(name)}>{name}</div></div></Html>
     </group>
-    <group ref={car} visible={false}><CarModel kit={kit} color={colour} kind={0} model={remoteModel} /></group>
+    <group ref={car} visible={false}><CarModel kit={kit} color={colour} kind={0} model={remoteModel} driverRef={setDrv} look={p.look} /></group>
   </>;
 }
 function RemotePlayers({ roster, ver, bub, onPick }: { roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {

@@ -8,7 +8,10 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const u = await currentUser(); if (!u) return err('Not signed in.', 401);
-    const rows: { id: string; username: string }[] = await prisma.user.findMany({ select: { id: true, username: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: PLOT_COUNT });
-    return NextResponse.json({ houses: rows.map((r, slot) => ({ slot, u: r.username })), mine: rows.findIndex(r => r.id === u.id), capacity: PLOT_COUNT });
+    const rows: { id: string; username: string; origin: string | null }[] = await prisma.user.findMany({ select: { id: true, username: true, origin: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: PLOT_COUNT });
+    // how each house looks (lib/houseStyle.ts): one hidden inventory row per account that customised its house; everybody else shows the default for their origin
+    const styled: { userId: string; metadata: unknown }[] = await prisma.inventoryItem.findMany({ where: { itemKey: 'home_style', userId: { in: rows.map(r => r.id) } }, select: { userId: true, metadata: true } });
+    const code = new Map(styled.map(x => [x.userId, (x.metadata as { s?: unknown } | null)?.s]));
+    return NextResponse.json({ houses: rows.map((r, slot) => ({ slot, u: r.username, o: r.origin === 'NEPO' ? 'NEPO' : 'LAPO', s: typeof code.get(r.id) === 'string' ? code.get(r.id) : undefined })), mine: rows.findIndex(r => r.id === u.id), capacity: PLOT_COUNT });
   } catch (e) { return serverError(e); }
 }

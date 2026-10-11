@@ -3,37 +3,146 @@ import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { HOUSES, HOUSE_D, HOUSE_W, FRONT, loadHouses, type HouseInfo } from '../lib/houses';
+import { HOUSES, HOUSE_D, HOUSE_W, FRONT, floorsFor, loadHouses, type HouseInfo } from '../lib/houses';
+import { DESIGNS, DOORS, ROOFS, TRIMS, WALLS, type Style } from '../lib/houseStyle';
 import { GAME, NIGHT } from './cityShared';
 import { BL, SOLIDS } from './CityCollision';
 
-/* Every player's house, standing on the street (see lib/houses.ts for where). Drawn as a handful of instanced meshes (house body, roof, door, porch, driveway, windows),
-   so ~100 houses cost 6 draw calls on a phone. Only the nearest few get a name sign (real text), and your own house gets a gold beacon you can see from far away. */
+/* Every player's house, standing on the street (see lib/houses.ts for where, lib/houseStyle.ts for the looks: 4 designs, colours and 6 extras).
+   Drawn as a handful of instanced meshes (one per kind of part: boxes, hip roofs, gables, columns, spheres, windows, glass, glow), so ~100 houses cost ~10 draw calls on a phone.
+   Only the nearest few get a name sign (real text), and your own house gets a gold beacon you can see from far away. */
 type Item = { m: THREE.Matrix4; c?: THREE.Color };
 const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0), _p = new THREE.Vector3(), _s = new THREE.Vector3();
-/** One box placed in a house's own frame (local +z = the front, facing the road). */
+/** One part placed in a house's own frame (local +z = the front, facing the road; ly = the part's centre height, or its base for gables). */
 function mk(h: HouseInfo, lx: number, ly: number, lz: number, sx: number, sy: number, sz: number, col?: string): Item {
   const c = Math.cos(h.rot), s = Math.sin(h.rot);
   _q.setFromAxisAngle(_up, h.rot); _p.set(h.x + lx * c + lz * s, ly, h.z - lx * s + lz * c); _s.set(sx, sy, sz);
   return { m: new THREE.Matrix4().compose(_p, _q, _s), c: col ? new THREE.Color(col) : undefined };
 }
 
-function layout(list: HouseInfo[]) {
-  const bodies: Item[] = [], roofs: Item[] = [], doors: Item[] = [], pads: Item[] = [], drives: Item[] = [], wins: Item[] = [];
+type Buckets = { S: Item[]; R: Item[]; P: Item[]; C: Item[]; B: Item[]; LG: Item[]; GW: Item[]; W: Item[]; GL: Item[] };
+const STONE = '#d9d4c8', PAD = '#a8a59d', DRIVE = '#7b7974', IRON = '#1c1c20', GREEN = '#2f6b3a';
+
+export function layout(list: HouseInfo[]): Buckets {
+  const K: Buckets = { S: [], R: [], P: [], C: [], B: [], LG: [], GW: [], W: [], GL: [] };
+  const hx = HOUSE_W / 2, fz = HOUSE_D / 2, SQ = Math.SQRT2;
   for (const h of list) {
-    const H = h.floors === 2 ? 5.8 : 3, RH = h.floors === 2 ? 2.1 : 1.7, fz = HOUSE_D / 2;
-    bodies.push(mk(h, 0, H / 2, 0, HOUSE_W, H, HOUSE_D, h.wall));
-    roofs.push(mk(h, 0, H + RH / 2, 0, (HOUSE_W / 2) * 1.2 * Math.SQRT2, RH, (HOUSE_D / 2) * 1.2 * Math.SQRT2, h.roof));
-    doors.push(mk(h, 0, 1.05, fz + .04, 1.1, 2.1, .1));
-    pads.push(mk(h, 0, .03, fz + .75, 2.2, .06, 1.5));
-    drives.push(mk(h, h.lat, .035, fz + FRONT / 2, 3.2, .05, FRONT));
-    for (let f = 0; f < h.floors; f++) {
+    const st = h.style, des = DESIGNS[st.d]?.key ?? 'classic', ex = (b: number) => (st.x & b) !== 0, F = h.floors;
+    const wall = WALLS[st.w] ?? WALLS[0], roof = ROOFS[st.r] ?? ROOFS[0], trim = TRIMS[st.t] ?? TRIMS[0], door = DOORS[st.k] ?? DOORS[0];
+    const S = (x: number, y: number, z: number, w: number, hh: number, d: number, c: string) => K.S.push(mk(h, x, y, z, w, hh, d, c));
+    const hip = (y: number, a: number, b: number, rh: number, c: string) => K.R.push(mk(h, 0, y + rh / 2, 0, a * SQ, rh, b * SQ, c));
+    const gable = (x: number, y: number, z: number, w: number, hh: number, d: number, c: string) => K.P.push(mk(h, x, y, z, w, hh, d, c));
+    const col = (x: number, z: number, hh: number, r: number, c: string) => K.C.push(mk(h, x, hh / 2, z, r * 2, hh, r * 2, c));
+    const win = (x: number, y: number, z: number, w: number, hh: number) => K.W.push(mk(h, x, y, z, w, hh, .06));
+    const sideWin = (x: number, y: number, hh: number, d: number) => K.W.push(mk(h, x, y, 0, .06, hh, d));   // a window in a side wall (thin in x, long in z)
+    const H = des === 'classic' ? (F === 2 ? 5.8 : 3) : des === 'modern' ? 5.8 : des === 'villa' ? 3.4 : 6.4;
+    const pad = des === 'mansion' ? 4.4 : 2.2, padD = des === 'mansion' ? 2 : 1.5;
+
+    /* ground: porch pad + driveway */
+    S(0, des === 'mansion' ? .04 : .03, fz + padD / 2, pad, des === 'mansion' ? .08 : .06, padD, des === 'mansion' ? STONE : PAD);
+    S(h.lat, .035, fz + FRONT / 2, 3.2, .05, FRONT, DRIVE);
+
+    /* body */
+    let frontZ = fz + .02;   // the z of the front face windows sit on
+    if (des === 'modern') {
+      S(0, 1.5, 0, HOUSE_W, 3, HOUSE_D, wall);
+      S(0, 4.45, .45, HOUSE_W + .5, 2.9, HOUSE_D + .9, roof);       // the upper floor floats out over the entrance
+      S(0, H + .15, .45, HOUSE_W + 1, .3, HOUSE_D + 1.4, trim);      // flat roof slab
+      S(-hx + .1, 1.5, fz + .05, 1.4, 3, .1, roof);                  // accent wall
+      frontZ = fz + .95;
+    } else {
+      S(0, H / 2, 0, HOUSE_W, H, HOUSE_D, wall);
+      if (des === 'classic') hip(H, hx * 1.2, fz * 1.2, F === 2 ? 2.1 : 1.7, roof);
+      else if (des === 'villa') hip(H, hx * 1.38, fz * 1.38, 1.9, roof);
+      else hip(H + .12, hx * 1.1, fz * 1.1, 1.5, roof);
+    }
+    if (des !== 'modern') S(0, .2, 0, HOUSE_W + .15, .4, HOUSE_D + .15, trim);   // plinth
+    if (des === 'mansion' || des === 'villa') S(0, H - .12, 0, HOUSE_W + .5, .24, HOUSE_D + .5, trim);   // cornice
+    if (des === 'mansion') {
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) S(sx * hx, H / 2, sz * fz, .42, H, .42, trim);   // corner pilasters
+      S(0, 2.95, 0, HOUSE_W + .25, .16, HOUSE_D + .25, trim);                                              // string course
+      for (const sx of [-1, 1]) S(sx * 1.8, H + 1.35, -1.8, .6, 1.5, .6, '#9a8b7a');                       // chimneys
+    }
+
+    /* front door */
+    const dw = des === 'mansion' ? 1.6 : des === 'modern' ? 1.2 : 1.1, dh = des === 'mansion' ? 2.4 : des === 'modern' ? 2.6 : 2.1;
+    S(0, dh / 2, fz + .04, dw, dh, .1, door);
+    S(0, dh / 2 + .12, fz + .02, dw + .4, dh + .25, .08, trim);                                              // door frame
+    if (des === 'mansion') S(0, dh / 2, fz + .1, .04, dh, .04, trim);                                        // double-door line
+
+    /* windows */
+    for (let f = 0; f < F; f++) {
       const y = f * 2.9 + 1.7;
-      for (const x of f === 0 ? [-1.9, 1.9] : [-1.9, 0, 1.9]) wins.push(mk(h, x, y, fz + .02, 1.1, 1.2, .06));
-      for (const sd of [-1, 1]) wins.push(mk(h, sd * (HOUSE_W / 2 + .02), y, 0, .06, 1.2, 1.1));
+      if (des === 'modern') {
+        if (f === 0) { for (const x of [-1.75, 1.75]) win(x, 1.5, fz + .02, 1.9, 2.1); }
+        else win(0, 4.5, frontZ, 5.4, 1.5);
+        for (const sd of [-1, 1]) sideWin(sd * (hx + .03 + (f ? .25 : 0)), y, 1.3, 3.2);
+        continue;
+      }
+      const xs = des === 'mansion' ? (f === 0 ? [-2.1, 2.1] : [-2.1, 0, 2.1]) : f === 0 ? [-1.9, 1.9] : [-1.9, 0, 1.9];
+      for (const x of xs) {
+        win(x, y, fz + .02, des === 'mansion' ? 1 : 1.1, 1.2);
+        S(x, y - .72, fz + .06, 1.4, .1, .16, trim);                                                         // sill
+        if (des === 'mansion') S(x, y, fz + .005, 1.35, 1.55, .05, trim);                                    // frame
+        if (des === 'villa') for (const sd of [-1, 1]) S(x + sd * .78, y, fz + .05, .25, 1.25, .08, trim);   // shutters
+      }
+      for (const sd of [-1, 1]) sideWin(sd * (hx + .02), y, 1.2, 1.1);
+    }
+
+    /* the villa's own gabled porch */
+    if (des === 'villa') {
+      gable(0, 2.95, fz + .95, 3.4, 1.05, 1.9, roof);
+      for (const sd of [-1, 1]) col(sd * 1.45, fz + 1.7, 2.95, .1, trim);
+      if (ex(2)) for (const sd of [-1, 1]) col(sd * 2.7, fz + .95, 3.2, .26, trim);                          // grand columns flank the porch
+    } else if (ex(2)) {
+      /* grand columns + pediment: tall (to the roof) on a mansion, porch height otherwise */
+      const top = des === 'mansion' ? 5.9 : F === 2 ? 3.1 : 2.9, r = des === 'mansion' ? .3 : .22, cz = fz + 1.45;
+      for (const sd of [-1, 1]) col(sd * 1.5, cz, top, r, trim);
+      S(0, top + .12, fz + .9, 4.0, .25, 1.9, trim);                                                          // entablature
+      gable(0, top + .24, fz + 1.7, 4.2, des === 'mansion' ? 1.2 : .9, .4, trim);                             // pediment
+    }
+
+    /* balcony above the entrance (two-storey houses), a flat canopy on one-storey ones */
+    if (ex(4)) {
+      if (F === 2) {
+        S(0, 3.05, fz + .8, 3.9, .18, 1.9, trim);
+        K.GL.push(mk(h, 0, 3.65, fz + 1.74, 3.9, .95, .04)); for (const sd of [-1, 1]) K.GL.push(mk(h, sd * 1.93, 3.65, fz + .8, .04, .95, 1.9));
+        S(0, 4.15, fz + 1.74, 3.96, .07, .07, trim); for (const sd of [-1, 1]) S(sd * 1.93, 4.15, fz + .8, .07, .07, 1.9, trim);
+      } else S(0, 2.95, fz + .8, 3.6, .14, 1.7, trim);
+    }
+
+    /* mansion lamp posts at the steps */
+    if (des === 'mansion') for (const sd of [-1, 1]) { col(sd * 2.45, fz + 2.1, 1.4, .05, IRON); K.LG.push(mk(h, sd * 2.45, 1.5, fz + 2.1, .34, .34, .34)); }
+
+    /* garden: hedges + flower beds along the front */
+    if (ex(16)) {
+      const hz = fz + (des === 'mansion' ? 2.5 : .5);
+      for (const sd of [-1, 1]) { S(sd * (des === 'mansion' ? 3.1 : 1.85), .32, hz, 1.5, .64, .6, GREEN); for (const k of [-1, 1]) S(sd * (des === 'mansion' ? 3.1 : 1.85) + k * .4, .7, hz, .25, .14, .3, k > 0 ? '#e0568a' : '#ffd23f'); }
+    }
+    /* palms: one each side of the front yard, never on the driveway */
+    if (ex(8)) for (const px of [-3.3, 3.3]) if (Math.abs(px - h.lat) > 2.3) {
+      col(px, fz + 2.8, 3.4, .13, '#7a5a3a');
+      K.B.push(mk(h, px, 3.6, fz + 2.8, 2.4, .7, 2.4, '#2f8a45')); K.B.push(mk(h, px + .2, 3.95, fz + 2.9, 1.5, .5, 1.5, '#3aa655'));
+    }
+    /* gate and boundary wall: the driveway stays open (the gate leaves are swung back) so cars still get in */
+    if (ex(1)) {
+      const wz = fz + FRONT - .5, lo = h.lat - 1.95, hi = h.lat + 1.95;
+      if (lo > -3.9) { S((-3.9 + lo) / 2, .45, wz, lo + 3.9, .9, .22, wall); S((-3.9 + lo) / 2, .93, wz, lo + 3.9, .08, .3, trim); }
+      if (hi < 3.9) { S((hi + 3.9) / 2, .45, wz, 3.9 - hi, .9, .22, wall); S((hi + 3.9) / 2, .93, wz, 3.9 - hi, .08, .3, trim); }
+      for (const sd of [-1, 1]) {
+        S(h.lat + sd * 1.85, .8, wz, .5, 1.6, .5, wall); S(h.lat + sd * 1.85, 1.63, wz, .62, .1, .62, trim); K.LG.push(mk(h, h.lat + sd * 1.85, 1.85, wz, .3, .3, .3));
+        S(h.lat + sd * 1.45, .62, wz - .8, .05, 1.1, 1.4, IRON);                                              // open gate leaf
+        S(sd * 3.9, .42, fz + (wz - fz) / 2, .16, .84, wz - fz, wall);                                          // side walls
+      }
+    }
+    /* night glow strips under the roof */
+    if (ex(32)) {
+      const gy = H - (des === 'modern' ? .3 : .34), gz = des === 'modern' ? fz + .96 : fz + .26, gw = des === 'modern' ? HOUSE_W + .5 : HOUSE_W + .3;
+      K.GW.push(mk(h, 0, gy, gz, gw, .07, .07));
+      for (const sd of [-1, 1]) K.GW.push(mk(h, sd * (gw / 2 + .02), gy, des === 'modern' ? .45 : 0, .07, .07, HOUSE_D + (des === 'modern' ? .8 : .3)));
     }
   }
-  return { bodies, roofs, doors, pads, drives, wins };
+  return K;
 }
 
 function Inst({ items, geo, color = '#ffffff', shadow = false, children }: { items: Item[]; geo: React.ReactNode; color?: string; shadow?: boolean; children?: React.ReactNode }) {
@@ -43,9 +152,42 @@ function Inst({ items, geo, color = '#ffffff', shadow = false, children }: { ite
     items.forEach((it, i) => { im.setMatrixAt(i, it.m); if (it.c) im.setColorAt(i, it.c); });
     im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
   }, [items]);
+  if (!items.length) return null;
   return <instancedMesh ref={ref} args={[undefined, undefined, items.length]} frustumCulled={false} castShadow={shadow} receiveShadow>
     {geo}{children ?? <meshStandardMaterial color={color} roughness={.9} />}
   </instancedMesh>;
+}
+
+/** All the parts of the given houses. Used by the city (every house) and by the customiser preview (one house). */
+export function HouseMeshes({ list, ver = 0, forceNight }: { list: HouseInfo[]; ver?: number; forceNight?: number }) {
+  const L = useMemo(() => layout(list), [list, ver]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const hipGeo = useMemo(() => { const g = new THREE.ConeGeometry(1, 1, 4, 1); g.rotateY(Math.PI / 4); return g; }, []);
+  const prismGeo = useMemo(() => { const sh = new THREE.Shape(); sh.moveTo(-.5, 0); sh.lineTo(.5, 0); sh.lineTo(0, 1); sh.closePath(); const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -.5); return g; }, []);
+  const win = useRef<THREE.MeshStandardMaterial>(null!), glow = useRef<THREE.MeshStandardMaterial>(null!), lamp = useRef<THREE.MeshStandardMaterial>(null!);
+  useFrame(() => {
+    const n = forceNight ?? NIGHT.n;
+    if (win.current) win.current.emissiveIntensity = .04 + n * 1.7;
+    if (glow.current) glow.current.emissiveIntensity = .25 + n * 2.4;
+    if (lamp.current) lamp.current.emissiveIntensity = .1 + n * 2.2;
+  });
+  const box = <boxGeometry args={[1, 1, 1]} />, ball = <sphereGeometry args={[.5, 10, 8]} />;
+  return <>
+    <Inst key={'s' + ver + list.length} items={L.S} geo={box} shadow />
+    <Inst key={'r' + ver + list.length} items={L.R} geo={<primitive object={hipGeo} attach="geometry" />} shadow />
+    <Inst key={'p' + ver + list.length} items={L.P} geo={<primitive object={prismGeo} attach="geometry" />} shadow />
+    <Inst key={'c' + ver + list.length} items={L.C} geo={<cylinderGeometry args={[.5, .5, 1, 12]} />} shadow />
+    <Inst key={'b' + ver + list.length} items={L.B} geo={ball} />
+    <Inst key={'l' + ver + list.length} items={L.LG} geo={ball}><meshStandardMaterial ref={lamp} color="#fff6d8" emissive="#ffd98a" emissiveIntensity={.1} roughness={.4} /></Inst>
+    <Inst key={'g' + ver + list.length} items={L.GW} geo={box}><meshStandardMaterial ref={glow} color="#fff3c4" emissive="#ffd98a" emissiveIntensity={.25} roughness={.4} /></Inst>
+    <Inst key={'w' + ver + list.length} items={L.W} geo={box}><meshStandardMaterial ref={win} color="#27384a" emissive="#ffcf6b" emissiveIntensity={.04} roughness={.3} metalness={.2} /></Inst>
+    <Inst key={'q' + ver + list.length} items={L.GL} geo={box}><meshStandardMaterial color="#9fd3e6" transparent opacity={.35} roughness={.1} metalness={.3} depthWrite={false} /></Inst>
+  </>;
+}
+
+/** A free-standing house at the origin (front towards +z) for the customiser's preview. */
+export function previewHouse(style: Style, u: string, nepo: boolean): HouseInfo {
+  return { slot: -1, x: 0, z: 0, rot: 0, nx: 0, nz: 1, lat: 0, door: { x: 0, z: HOUSE_D / 2 }, exit: { x: 0, z: HOUSE_D / 2 + .8, r: 0 }, car: { x: 0, z: HOUSE_D / 2 + 3.9, r: 0 }, solid: { x0: -HOUSE_W / 2, x1: HOUSE_W / 2, z0: -HOUSE_D / 2, z1: HOUSE_D / 2 },
+    u, mine: true, nepo, style, wall: WALLS[style.w] ?? WALLS[0], roof: ROOFS[style.r] ?? ROOFS[0], floors: floorsFor(style, u) };
 }
 
 function Beacon({ h }: { h: HouseInfo }) {
@@ -57,7 +199,7 @@ function Beacon({ h }: { h: HouseInfo }) {
   });
   return <group>
     <mesh ref={col} position={[h.x, 30, h.z]}><cylinderGeometry args={[.5, .5, 60, 12, 1, true]} /><meshBasicMaterial color="#ffd23f" transparent opacity={.15} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} /></mesh>
-    <mesh ref={ring} position={[h.exit.x, .09, h.exit.z]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.9, 1.15, 28]} /><meshBasicMaterial color="#ffd23f" transparent opacity={.85} depthWrite={false} toneMapped={false} /></mesh>
+    <mesh ref={ring} position={[h.exit.x, .1, h.exit.z]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.9, 1.15, 28]} /><meshBasicMaterial color="#ffd23f" transparent opacity={.85} depthWrite={false} toneMapped={false} /></mesh>
   </group>;
 }
 
@@ -73,7 +215,7 @@ function Signs() {
   return <>{ids.map(id => {
     const h = HOUSES.list.find(x => x.slot === id); if (!h) return null;
     return <group key={id} position={[h.x, 0, h.z]} rotation-y={h.rot}>
-      <Text position={[0, 2.7, HOUSE_D / 2 + .06]} fontSize={h.mine ? .34 : .3} maxWidth={HOUSE_W - .4} color={h.mine ? '#ffe28a' : '#ffffff'} outlineWidth={.035} outlineColor="#000000" anchorX="center" anchorY="middle" textAlign="center">{h.mine ? `${h.u} · YOUR HOUSE` : `${h.u}'s house`}</Text>
+      <Text position={[0, h.style.d === 3 ? 3.5 : 2.7, HOUSE_D / 2 + (h.style.d === 1 ? 1 : .06)]} fontSize={h.mine ? .34 : .3} maxWidth={HOUSE_W - .4} color={h.mine ? '#ffe28a' : h.nepo ? '#ffd9a0' : '#ffffff'} outlineWidth={.035} outlineColor="#000000" anchorX="center" anchorY="middle" textAlign="center">{h.mine ? `${h.u} · YOUR HOUSE` : `${h.u}'s house`}</Text>
     </group>;
   })}</>;
 }
@@ -89,10 +231,6 @@ export default function PlayerHouses() {
   }, []);
 
   const list = useMemo(() => HOUSES.list, [ver]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const L = useMemo(() => layout(list), [list]);
-  const roofGeo = useMemo(() => { const g = new THREE.ConeGeometry(1, 1, 4, 1); g.rotateY(Math.PI / 4); return g; }, []);
-  const win = useRef<THREE.MeshStandardMaterial>(null!);
-  useFrame(() => { if (win.current) win.current.emissiveIntensity = .04 + NIGHT.n * 1.7; });
 
   useEffect(() => {   // houses are solid for walking, cars and the route planner
     const solids = list.map(h => ({ ...h.solid })), blks = list.map(h => ({ id: 'house-' + h.slot, x0: h.solid.x0 - .65, x1: h.solid.x1 + .65, z0: h.solid.z0 - .65, z1: h.solid.z1 + .65 }));
@@ -101,14 +239,8 @@ export default function PlayerHouses() {
   }, [list]);
 
   if (!list.length) return null;
-  const box = <boxGeometry args={[1, 1, 1]} />;
   return <>
-    <Inst key={'b' + ver} items={L.bodies} geo={box} shadow />
-    <Inst key={'r' + ver} items={L.roofs} geo={<primitive object={roofGeo} attach="geometry" />} shadow />
-    <Inst key={'d' + ver} items={L.doors} geo={box} color="#3b2a1e" />
-    <Inst key={'p' + ver} items={L.pads} geo={box} color="#a8a59d" />
-    <Inst key={'v' + ver} items={L.drives} geo={box} color="#7b7974" />
-    <Inst key={'w' + ver} items={L.wins} geo={box}><meshStandardMaterial ref={win} color="#27384a" emissive="#ffcf6b" emissiveIntensity={.04} roughness={.3} metalness={.2} /></Inst>
+    <HouseMeshes list={list} ver={ver} />
     {HOUSES.mine && <Beacon h={HOUSES.mine} />}
     <Signs />
   </>;

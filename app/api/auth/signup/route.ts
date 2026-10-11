@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { randomInt } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../../../lib/prisma';
-import { authConfigured, err, publicUser, serverError, startSession, throttled } from '../../../../lib/auth';
+import { authConfigured, err, publicUser, serverError, startSession, throttledShared } from '../../../../lib/auth';
 import { issueCode } from '../../../../lib/verification';
 import { NEPO_CHANCE, type Origin } from '../../../../lib/profile';
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   try {
     if (!authConfigured()) return err('Server is missing AUTH_SECRET (32+ characters).', 500);
     const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || req.headers.get('x-real-ip') || 'unknown';
-    if (throttled('signup:' + ip, 10, 10 * 60_000)) return err('Too many attempts. Try again later.', 429);
+    if (await throttledShared('signup:' + ip, 10, 10 * 60_000)) return err('Too many attempts. Try again later.', 429);
     const b = await req.json().catch(() => ({}));
     const username = String(b.username || '').trim(), password = String(b.password || ''), email = String(b.email || '').trim().toLowerCase();
     const dobText = String(b.dateOfBirth || ''), acceptedAdultContent = b.acceptAdultContent === true;

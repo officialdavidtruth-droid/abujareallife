@@ -51,3 +51,19 @@ export function throttled(key: string, max = 8, windowMs = 10 * 60_000) {
   if (!h || now - h.t > windowMs) { hits.set(key, { n: 1, t: now }); return false; }
   return ++h.n > max;
 }
+
+/* Shared throttle. Uses Upstash Redis (REST) when UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN are set, so limits hold across
+   all serverless instances. Without them it falls back to the per-instance map above. */
+export async function throttledShared(key: string, max = 8, windowMs = 10 * 60_000): Promise<boolean> {
+  const url = process.env.UPSTASH_REDIS_REST_URL, token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return throttled(key, max, windowMs);
+  try {
+    const k = 'rl:' + key, ttl = Math.ceil(windowMs / 1000);
+    const r = await fetch(url.replace(/\/$/, '') + '/pipeline', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['INCR', k], ['EXPIRE', k, ttl, 'NX']]), cache: 'no-store',
+    });
+    const j = await r.json();
+    return Number(j?.[0]?.result) > max;
+  } catch { return throttled(key, max, windowMs); }
+}

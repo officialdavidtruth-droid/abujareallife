@@ -11,6 +11,8 @@ import type { Look } from '../lib/characterModels';
 /* Shared homes (HOME-PRESENCE.md): everyone who is inside the same house sees each other. One realtime room per house (room:home-<plot slot>),
    built on the same channel the shops use (lib/roomNet.ts). Rendered inside the home <Canvas>; it draws the OTHER people, your own avatar stays in Sim.tsx. */
 export type HomeSample = { x: number; z: number; r: number; walking: boolean; pose: 0 | 1 | 2 };
+/* Set by Sim.tsx while you are a guest: the plot slot of the house you are visiting (null = your own home). */
+export const HOME_VIEW = { slot: null as number | null };
 const BED = { x: -4.95, y: .86, z: -2.45 };   // where a sleeping person lies (mirrors Avatar in Sim.tsx)
 
 function Guest({ name }: { name: string }) {
@@ -31,7 +33,7 @@ function Net({ slot, look, sample }: { slot: number; look: Look; sample: () => H
   return <>{net.roster.map(n => ROOM.peers[n] && <Guest key={n + net.ver} name={n} />)}</>;
 }
 export default function HomePeers({ look, sample }: { look: Look; sample: () => HomeSample }) {
-  const [slot, setSlot] = useState<number | null>(HOUSES.mine ? HOUSES.mine.slot : null);
+  const [mine, setSlot] = useState<number | null>(HOUSES.mine ? HOUSES.mine.slot : null), slot = HOME_VIEW.slot ?? mine;
   useEffect(() => { const f = () => setSlot(HOUSES.mine ? HOUSES.mine.slot : null); window.addEventListener('arl-houses', f); f(); return () => window.removeEventListener('arl-houses', f); }, []);
   if (slot == null) return null;
   return <Net key={slot} slot={slot} look={look} sample={sample} />;

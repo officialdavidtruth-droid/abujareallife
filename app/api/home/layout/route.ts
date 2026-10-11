@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../../lib/auth';
 import { defaultHomeLook, packHomeLook, sanitizeHomeLook } from '../../../../lib/homeLook';
-import { resolveHome } from '../../../../lib/housemates';
+import { resolveHome, resolveView } from '../../../../lib/housemates';
 
 /* The player's home layout (where each piece stands) and home look (wall paint, floor, rug, sofa, bedding, bed frame).
    Stored as the metadata of one hidden inventory row, next to the furniture list kept by /api/home/furniture. */
@@ -13,10 +13,10 @@ const KEY = 'home_layout';
 export const dynamic = 'force-dynamic';
 const meta = (m: unknown): Record<string, unknown> => (m && typeof m === 'object' && !Array.isArray(m) ? m as Record<string, unknown> : {});
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const u = await currentUser(); if (!u) return err('Not signed in.', 401);
-    const h = await resolveHome(u.id, u.username);   // housemates share the owner's layout and look
+    const h = await resolveView(u.id, u.username, new URL(req.url).searchParams.get('visit')); if (!h) return err('You are not welcome there.', 403);   // housemates share the owner's layout and look
     const r = await prisma.inventoryItem.findUnique({ where: { userId_itemKey: { userId: h.id, itemKey: KEY } }, select: { metadata: true } });
     const m = meta(r?.metadata), dflt = defaultHomeLook(h.username);
     return NextResponse.json({

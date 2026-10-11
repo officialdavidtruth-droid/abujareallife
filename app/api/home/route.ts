@@ -4,7 +4,7 @@ import { prisma } from '../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
 import { UPGRADES, homeKey, upgradeById } from '../../../lib/homeUpgrades';
-import { resolveHome } from '../../../lib/housemates';
+import { resolveHome, resolveView } from '../../../lib/housemates';
 // Home upgrades (rooms + luxury items). Permanent, bought once, paid on the server.
 export const dynamic = 'force-dynamic';
 class Stop extends Error { constructor(public msg: string, public code = 400) { super(msg); } }
@@ -13,8 +13,8 @@ async function snapshot(userId: string, homeId = userId) {   // rooms belong to 
   const keys = new Set((rows as { itemKey: string }[]).map(r => r.itemKey));
   return { owned: UPGRADES.filter(u => keys.has(homeKey(u.id))).map(u => u.id), cash: save?.cash ?? 0 };
 }
-export async function GET() {
-  try { const u = await currentUser(); if (!u) return err('Not signed in.', 401); const h = await resolveHome(u.id, u.username); return NextResponse.json({ catalog: UPGRADES, shared: h.shared, owner: h.username, ...(await snapshot(u.id, h.id)) }); } catch (e) { return serverError(e); }
+export async function GET(req: Request) {
+  try { const u = await currentUser(); if (!u) return err('Not signed in.', 401); const h = await resolveView(u.id, u.username, new URL(req.url).searchParams.get('visit')); if (!h) return err('You are not welcome there.', 403); return NextResponse.json({ catalog: UPGRADES, shared: h.shared, owner: h.username, ...(await snapshot(u.id, h.id)) }); } catch (e) { return serverError(e); }
 }
 export async function POST(req: Request) {
   try {

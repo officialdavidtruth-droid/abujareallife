@@ -23,7 +23,8 @@ import { setMusicMood, sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import GameLayer from './GameLayer';
 import Interior from './Interior';
-import HomePeers, { type HomeSample } from './HomePresence';
+import HomePeers, { HOME_VIEW, type HomeSample } from './HomePresence';
+import HomeDoor from './HomeDoor';
 import MovieScreen, { type ScreenMode, type JobInfo } from './MovieScreen';
 import { CITY } from '../lib/cityData';
 import { GAME, buildingExitPoint } from './CityWorld';
@@ -1122,10 +1123,13 @@ export default function Sim() {
   useEffect(() => { try { localStorage.setItem('arl-tp', tp ? '1' : '0'); } catch { /* private mode */ } }, [tp]);
   const [famModal, setFamModal] = useState(false), [homeEdit, setHomeEdit] = useState(false), [homeSel, setHomeSel] = useState<string | null>(null), [homeSaving, setHomeSaving] = useState(false), [homeMin, setHomeMin] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [homeSec, setHomeSec] = useState(false), [mates, setMates] = useState(false), [houseLook, setHouseLook] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null), [homeItems, setHomeItems] = useState<typeof HOME_OWNED[number][]>([]), [homePlaceable, setHomePlaceable] = useState<{itemKey:string;name:string;e:string;cat:string;sub?:string;kind?:string;cost:number;quantity:number;fp?:[number,number]}[]>([]);
   useEffect(() => { if (!homeEdit) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { setHomeEdit(false); setHomeSel(null); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [homeEdit]);
+  const [visit, setVisit] = useState<{ u: string; slot: number | null } | null>(null), [doorPanel, setDoorPanel] = useState(false), visitRef = useRef<{ u: string; slot: number | null } | null>(null);
+  visitRef.current = visit;
   lookRef.current = look;
   /** (Re)load the house you live in: rooms, look, layout and furniture. A housemate gets the owner's house. Used at sign-in and when you move in or out. */
-  async function reloadHome(username: string) {
-    try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setHomeLook(defaultHomeLook(username)); try { const l = await fetch('/api/home/layout', { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); setHomeLook(sanitizeHomeLook(ld.look, defaultHomeLook(username))); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture',{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ }
+  async function reloadHome(username: string, visitOwner?: string) {
+    const q = visitOwner ? '?visit=' + encodeURIComponent(visitOwner) : '';
+    try { const h = await fetch('/api/home' + q, { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setHomeLook(defaultHomeLook(username)); try { const l = await fetch('/api/home/layout' + q, { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); setHomeLook(sanitizeHomeLook(ld.look, defaultHomeLook(username))); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture' + q,{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ }
   }
   async function enter(u: AccountUser) {
     const sr = await fetch('/api/save'), r = await sr.json().catch(() => null);
@@ -1135,9 +1139,24 @@ export default function Sim() {
     loadHouses();   // the player houses along the street (and which one is yours)
   }
   // Stepping out of your house puts you at YOUR front door on the street (GTA style), not on a random pavement.
-  function goOutside() { const m = HOUSES.mine; if (m && !GAME.jailed && !GAME.ride) GAME.tp = { x: m.exit.x, z: m.exit.z, r: m.exit.r }; setOutside(true); }
+  /** Walk into a house you were let into (components/HomeDoor.tsx): you see its rooms and furniture, and everyone inside sees you. */
+  async function enterVisit(owner: string, slot: number | null) {
+    GAME.nav = null; setInside(null); setSel(null); setHomeEdit(false); setDoorPanel(false); HOME_VIEW.slot = slot; setVisit({ u: owner, slot }); visitRef.current = { u: owner, slot };
+    await reloadHome(user?.username || '', owner); S.pos = [0, .5]; S.q = []; S.cur = null; S.prog = 0; S.pose = 'stand'; setOutside(false); setUi(snap());
+  }
+  /** Back to the street (out the visited door) and to your own home's rooms. */
+  async function leaveVisit(why = '') {
+    const v = visitRef.current; if (!v) return;
+    const h = HOUSES.list.find(x => x.slot === v.slot); if (h && !GAME.jailed && !GAME.ride) GAME.tp = { x: h.exit.x, z: h.exit.z, r: h.exit.r };
+    visitRef.current = null; HOME_VIEW.slot = null; setVisit(null); setSel(null); setOutside(true); if (why) { say(why); GAME.notice = why; }
+    fetch('/api/visit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'leave', name: v.u }) }).catch(() => {});
+    if (user) await reloadHome(user.username); setUi(snap());
+  }
+  /** Teleports (death, E at your own door...) end a visit without walking out. */
+  function dropVisit() { if (!visitRef.current) return; visitRef.current = null; HOME_VIEW.slot = null; setVisit(null); const n = live.current.user?.username; if (n) reloadHome(n); }
+  function goOutside() { if (visitRef.current) { leaveVisit(); return; } const m = HOUSES.mine; if (m && !GAME.jailed && !GAME.ride) GAME.tp = { x: m.exit.x, z: m.exit.z, r: m.exit.r }; setOutside(true); }
   async function logout() {
-    setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); F.reset(); setLook(null); setEditing(false); setUser(null); }
+    visitRef.current = null; HOME_VIEW.slot = null; setVisit(null); setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); F.reset(); setLook(null); setEditing(false); setUser(null); }
 
   /* ───────── free will: go to work on your own, and keep working while the browser is closed ─────────
    * Online: when Free will is ON and the player has been idle, the character leaves home for their workplace (the business of their last shift),
@@ -1200,12 +1219,12 @@ export default function Sim() {
     const a = setInterval(() => { S.min = worldMinute(); setUi(snap()); }, 200), b = setInterval(() => { if (lookRef.current) saveNow(lookRef.current); }, 5000);
     return () => { clearInterval(a); clearInterval(b); };
   }, []);
-  useEffect(() => { const f = () => { GAME.nav = null; setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-enter-home', f); return () => window.removeEventListener('arl-enter-home', f); }, []);   // E at your front door
+  useEffect(() => { const f = () => { dropVisit(); GAME.nav = null; setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-enter-home', f); return () => window.removeEventListener('arl-enter-home', f); }, []);   // E at your front door
   useEffect(() => { setMusicMood(outside && !inside ? 'city' : 'chill'); }, [outside, inside]); // lively amapiano-style loop on the streets, calm lo-fi indoors and at home
   useEffect(() => { if (ui.toast) sfx('pop'); }, [ui.toast]);
   useEffect(() => { const f = (e: Event) => { const fx = (e as CustomEvent).detail as Record<string, number> | undefined; if (fx) for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }; window.addEventListener('arl-apply-fx', f); return () => window.removeEventListener('arl-apply-fx', f); }, []); // street NPC scenes change your needs
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.cash === 'number') S.cash = d.cash; }; window.addEventListener('arl-mission-paid', f); window.addEventListener('arl-cash-update', f); return () => { window.removeEventListener('arl-mission-paid', f); window.removeEventListener('arl-cash-update', f); }; }, []);
-  useEffect(() => { const f = () => { S.pos = [0, .5]; S.q = []; S.cur = null; S.prog = 0; S.pose = 'stand'; S.cash = 0; say('💀 You woke up at home. You lost all your cash.'); setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f); }, []); // killed: wake up in your house
+  useEffect(() => { const f = () => { dropVisit(); S.pos = [0, .5]; S.q = []; S.cur = null; S.prog = 0; S.pose = 'stand'; S.cash = 0; say('💀 You woke up at home. You lost all your cash.'); setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f); }, []); // killed: wake up in your house
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d === 'object') for (const k of Object.keys(d)) if (k in S.needs && Number.isFinite(d[k])) S.needs[k as N] = cl(S.needs[k as N] + d[k]); }; window.addEventListener('arl-need-fx', f); return () => window.removeEventListener('arl-need-fx', f); }, []); // parties and other panels change needs through this event
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.meals === 'number') { S.meals = d.meals; S.supplies = d.supplies; } }; window.addEventListener('arl-pantry', f); return () => window.removeEventListener('arl-pantry', f); }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
@@ -1223,6 +1242,7 @@ export default function Sim() {
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {houseLook && user && look && <HouseStyle user={user.username} onClose={() => setHouseLook(false)} onCash={c => { S.cash = c; }} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
+    {user && look && <HomeDoor outside={outside} visiting={visit?.u ?? null} panel={doorPanel} onClosePanel={() => setDoorPanel(false)} onVisit={enterVisit} onLeaveVisit={leaveVisit} say={m => { say(m); GAME.notice = m; }} />}
     {mates && user && look && <Housemates onClose={() => setMates(false)} onChanged={async () => { await reloadHome(user.username); loadHouses(); setUi(snap()); }} />}
     {homeSec && user && look && <HomeSecurity onClose={() => setHomeSec(false)} onChange={cash => { S.cash = cash; }} />}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
@@ -1233,7 +1253,7 @@ export default function Sim() {
       <div className="topMore"><div className="pill">{worldCalendar(ui.min).season.e} {worldCalendar(ui.min).season.label} · {weatherAt().e} {weatherAt().label}</div>
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
-        {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && <button className="pill" onClick={() => { setHomeSec(true); setMenu(false); }}>🛡️ Home security</button>} {user && look && <button className="pill" onClick={() => { setMates(true); setMenu(false); }}>🏠 Housemates</button>} {user && look && <button className="pill" onClick={() => { setHouseLook(true); setMenu(false); }}>🎨 House look</button>} {user && look && !outside && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
+        {user && look && !visit && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !visit && <button className="pill" onClick={() => { setHomeSec(true); setMenu(false); }}>🛡️ Home security</button>} {user && look && !visit && <button className="pill" onClick={() => { setMates(true); setMenu(false); }}>🏠 Housemates</button>} {user && look && !visit && <button className="pill" onClick={() => { setHouseLook(true); setMenu(false); }}>🎨 House look</button>} {user && look && !outside && !visit && <button className="pill" onClick={() => { setDoorPanel(true); setMenu(false); }}>🚪 Front door</button>} {user && look && !outside && !visit && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { setTp(v => !v); setSel(null); setMenu(false); }}>🎥 {tp ? 'Overview camera' : 'Third-person camera'}</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>

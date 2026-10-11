@@ -656,3 +656,21 @@ model HouseMate {
   @@index([mateId, status])
   @@index([ownerId, status])
 }
+
+// Home visits: a guest knocks (pending) and a host lets them in (allowed) or turns them away (denied); a host can also invite (kind invite).
+// kind: knock | invite | used (the guest has walked in). One row per house + guest. See HOME-DOOR.md.
+model HomeVisit {
+  id        String   @id @default(cuid())
+  ownerId   String
+  ownerName String
+  guestId   String
+  guestName String
+  status    String   @default("pending") // pending | allowed | denied
+  kind      String   @default("knock")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([ownerId, guestId])
+  @@index([guestId, status])
+  @@index([ownerId, status])
+}

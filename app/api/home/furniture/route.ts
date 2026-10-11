@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../../lib/auth';
 import { itemById } from '../../../../lib/catalog';
-import { resolveHome } from '../../../../lib/housemates';
+import { resolveHome, resolveView } from '../../../../lib/housemates';
 
 export const dynamic = 'force-dynamic';
 type T = { x:number; z:number; r:number };
@@ -16,10 +16,11 @@ const rid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(3
 async function getMeta(userId:string) { const r = await prisma.inventoryItem.findUnique({ where:{userId_itemKey:{userId,itemKey:KEY}}, select:{metadata:true} }); return meta(r?.metadata); }
 async function putMeta(userId:string, m:M) { await prisma.inventoryItem.upsert({ where:{userId_itemKey:{userId,itemKey:KEY}}, create:{userId,itemKey:KEY,name:'Home layout',quantity:1,metadata:m}, update:{metadata:m} }); }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const u = await currentUser(); if (!u) return err('Not signed in.',401);
-    const hm = await resolveHome(u.id, u.username), m = await getMeta(hm.id);   // the furniture belongs to the house; what you can place comes from YOUR inventory
+    const hm = await resolveView(u.id, u.username, new URL(req.url).searchParams.get('visit')); if (!hm) return err('You are not welcome there.',403);
+    const m = await getMeta(hm.id);   // the furniture belongs to the house; what you can place comes from YOUR inventory
     const rows = await prisma.inventoryItem.findMany({ where:{userId:u.id,quantity:{gt:0}} });
     const placeable = rows.map(r => { const i=itemById(r.itemKey); return i && !i.use && !['food','grocery','toiletry'].includes(i.cat) ? {itemKey:i.id,name:i.name,e:i.e,cat:i.cat,sub:i.sub,kind:i.kind,cost:i.cost,quantity:r.quantity,fp:i.fp} : null; }).filter(Boolean);
     return NextResponse.json({items:m.owned||[],placeable,soldStatic:m.soldStatic||[]});

@@ -24,7 +24,7 @@ import MovieScreen, { type ScreenMode, type JobInfo } from './MovieScreen';
 import { CITY } from '../lib/cityData';
 import { GAME, buildingExitPoint } from './CityWorld';
 import { HOUSES, loadHouses } from '../lib/houses';
-import Guide from './Guide';
+import Tutorial from './Tutorial';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
@@ -1156,7 +1156,7 @@ export default function Sim() {
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const ex = buildingExitPoint(inside); if (ex) GAME.tp = ex; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && <Wallet />}
-    {user && look && !editing && <Guide user={user.username} canOpen={ready} />}
+    {user && look && !editing && !wardrobe && !homeUp && <Tutorial user={user.username} canStart={ready} outside={outside} inside={!!inside} hud={hud} menu={menu} probe={() => ({ x: S.pos[0], z: S.pos[1], act: S.cur?.t === 'act' ? S.cur.a.k : null, minNeed: Math.min(...Object.values(S.needs)), power: S.power })} />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World tpOn={tp && !homeEdit} kbd={!(editing || wardrobe || homeUp || famModal || homeEdit)} ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
@@ -1171,7 +1171,6 @@ export default function Sim() {
         {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !outside && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { setTp(v => !v); setSel(null); setMenu(false); }}>🎥 {tp ? 'Overview camera' : 'Third-person camera'}</button>
-        <button className="pill" onClick={() => { window.dispatchEvent(new CustomEvent('arl-open-guide')); setMenu(false); }}>📖 Game guide</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; AUTO.free = S.free; fetch('/api/autowork', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ freeWill: S.free }) }).catch(() => {}); }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
       </div></div>

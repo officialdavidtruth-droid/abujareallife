@@ -30,7 +30,9 @@ export async function PUT(req: Request) {
     look.acc = (look.acc || []).filter(a => okAcc.has(a));
   }
   const state = { needs: Object.fromEntries(['hunger', 'energy', 'hygiene', 'bladder', 'fun', 'social'].map(k => [k, num(n[k], 0, 100, 60)])), min: num(st.min, 0, 1e7, 480), bonds: Object.fromEntries(['spouse', 'chidi', 'amara'].map(k => [k, num((st.bonds || {})[k], 0, 100, 30)])), family: false }; // cash is server-owned: see /api/economy
-  if (!(await prisma.save.findUnique({ where: { userId: u.id } }))) return err('Create your character through /api/profile first.', 409);
-  await prisma.save.update({ where: { userId: u.id }, data: { look, state } });
+  const cur = await prisma.save.findUnique({ where: { userId: u.id } });
+  if (!cur) return err('Create your character through /api/profile first.', 409);
+  const tut = ((cur.state || {}) as { tut?: boolean }).tut === true; // the tutorial-finished flag lives in the save and must survive autosaves
+  await prisma.save.update({ where: { userId: u.id }, data: { look, state: tut ? { ...state, tut: true } : state } });
   return NextResponse.json({ ok: true });
 }

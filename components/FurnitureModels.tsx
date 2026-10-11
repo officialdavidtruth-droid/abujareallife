@@ -1,6 +1,8 @@
 'use client';
 /* 3D models for the furniture varieties in lib/catalog.ts (beds, sofas, chairs, wardrobes, TVs, tables, kitchen).
    Front of every piece faces +z, back/headboard at -z; the group origin is the floor centre of the footprint. */
+import { useRef, type ReactNode } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import { itemById } from '../lib/catalog';
@@ -49,6 +51,17 @@ function Bed({ w, l, st, c }: { w: number; l: number; st: string; c: string }) {
     {st === 'sleigh' && <><B p={[0, .62, hz + .08]} s={[w + .1, 1.0, .1]} c={c} r={.12} /><B p={[0, 1.12, hz + .08]} s={[w + .12, .12, .14]} c={shade(c, .08)} r={.06} /><B p={[0, .5, l / 2 - .06]} s={[w + .1, .64, .1]} c={c} r={.12} /><B p={[0, .84, l / 2 - .06]} s={[w + .12, .1, .14]} c={shade(c, .08)} r={.05} /></>}
     {st === 'wingback' && <><B p={[0, .72, hz + .07]} s={[w - .1, 1.44, .14]} c={c} ro={.95} r={.06} />{[-1, 1].map(x => <B key={x} p={[x * (w / 2 - .02), .62, hz + .22]} s={[.16, 1.04, .34]} c={shade(c, -.08)} ro={.95} r={.07} />)}<B p={[0, top + .02, l / 2 - .03]} s={[w, .26, .08]} c={frame} ro={.95} /></>}
     {st === 'led' && <><B p={[0, .55, hz + .05]} s={[w + .1, 1.0, .1]} c={c} ro={.95} r={.05} /><B p={[0, .55, hz + .115]} s={[w - .1, .06, .02]} c="#69d2ff" e="#69d2ff" ei={1.4} /></>}
+    {st === 'canopy' && <>{([[-1, -1], [1, -1], [-1, 1], [1, 1]] as const).map(([x, z]) => <B key={x + '' + z} p={[x * (w / 2 - .03), 1.1, z * (l / 2 - .04)]} s={[.05, 2.2, .05]} c={frame} r={.02} />)}
+      <B p={[0, .62, hz + .05]} s={[w + .06, 1.1, .08]} c={c} ro={.95} r={.05} />
+      <B p={[0, 2.18, 0]} s={[w + .02, .02, l]} c={shade(c, .35)} ro={1} op={.55} />
+      {[-1, 1].map(x => <B key={x} p={[x * (w / 2 - .02), 1.2, 0]} s={[.015, 1.9, l - .1]} c={shade(c, .35)} ro={1} op={.5} />)}</>}
+    {st === 'bunk' && <>{([[-1, -1], [1, -1], [-1, 1], [1, 1]] as const).map(([x, z]) => <B key={x + '' + z} p={[x * (w / 2 - .03), .95, z * (l / 2 - .04)]} s={[.07, 1.9, .07]} c={frame} r={.02} />)}
+      <B p={[0, 1.3, 0]} s={[w, .08, l]} c={frame} /><B p={[0, 1.42, .02]} s={[w - .06, .14, l - .08]} c="#f2eee6" ro={.95} r={.05} /><B p={[0, 1.5, .25]} s={[w - .04, .06, l - .5]} c={duv} ro={.98} r={.04} />
+      <B p={[0, 1.62, hz + .3]} s={[Math.min(.62, w * .6), .12, .34]} c={pil} ro={.98} r={.07} />
+      <B p={[0, 1.75, l / 2 - .03]} s={[w, .3, .04]} c={frame} />
+      {[.45, .75, 1.05].map(y => <B key={y} p={[w / 2 + .01, y, l / 2 - .5]} s={[.04, .05, .34]} c={frame} />)}</>}
+    {st === 'daybed' && <><B p={[0, .62, hz + .05]} s={[w, .7, .08]} c={c} /><B p={[-w / 2 + .03, .5, 0]} s={[.06, .55, l]} c={c} /><B p={[w / 2 - .03, .5, 0]} s={[.06, .55, l]} c={c} />
+      {Array.from({ length: 6 }, (_, i) => <B key={i} p={[-w / 2 + .03, .55, hz + .25 + i * ((l - .5) / 5)]} s={[.05, .38, .035]} c={shade(c, .1)} r={.01} />)}</>}
   </group>;
 }
 
@@ -71,13 +84,15 @@ function Sofa({ w, d, st, c }: { w: number; d: number; st: string; c: string }) 
   }
   const arm = st === 'chester' || st === 'tuxedo' ? .72 : st === 'cloud' ? .6 : .6, aw = st === 'cloud' ? .26 : st === 'mid' ? .1 : .17;
   return <group>
-    {Array.from({ length: n }, (_, i) => <Seat key={i} x={-w / 2 + .15 + sw * (i + .5)} w={sw - .01} d={d} c={c} pad={st === 'rattan' ? '#ece3d0' : undefined} soft={st === 'cloud' ? .2 : st === 'mid' ? .04 : .12} h={st === 'mid' ? .5 : .45} />)}
+    {Array.from({ length: n }, (_, i) => <Seat key={i} x={-w / 2 + .15 + sw * (i + .5)} w={sw - .01} d={d} c={c} pad={st === 'rattan' ? '#ece3d0' : undefined} soft={st === 'cloud' ? .2 : st === 'mid' ? .04 : .12} h={st === 'mid' ? .5 : st === 'futon' ? .28 : .45} />)}
     {[-1, 1].map(x => <B key={x} p={[x * (w / 2 - aw / 2), arm / 2 + .08, 0]} s={[aw, arm, d]} c={dk} ro={.9} r={st === 'chester' ? .1 : st === 'cloud' ? .12 : .04} />)}
     {(st === 'chester' || st === 'tuxedo') && <B p={[0, .85, -d / 2 + .1]} s={[w - .1, .56, .2]} c={dk} ro={.7} r={.06} />}
     {st === 'chester' && Array.from({ length: n * 3 }, (_, i) => <Sp key={i} p={[-w / 2 + .3 + i * ((w - .6) / (n * 3 - 1)), .92, -d / 2 + .21]} r={.018} c="#000" />)}
     {st === 'rattan' && <><B p={[0, .13, 0]} s={[w, .22, d]} c="#a8814f" ro={.95} />{Array.from({ length: 6 }, (_, i) => <B key={i} p={[0, .06 + i * .03, d / 2 + .003]} s={[w, .008, .005]} c="#7c5c34" />)}</>}
     {st === 'recsofa' && <B p={[0, .5, d / 2 - .02]} s={[.03, .1, .04]} c={GOLD} />}
     {st === 'recsofa' && Array.from({ length: n - 1 }, (_, i) => <B key={i} p={[-w / 2 + .15 + sw * (i + 1), .58, .1]} s={[.14, .3, d - .3]} c={dk} r={.04} />)}
+    {st === 'camel' && <B p={[0, 1.0, -d / 2 + .12]} s={[w * .55, .3, .2]} c={dk} ro={.8} r={.1} />}
+    {st === 'lawson' && [-1, 1].map(x => <B key={x} p={[x * (w / 2 - .35), .78, -d / 2 + .34]} s={[.5, .4, .2]} c={shade(c, .15)} ro={.95} r={.1} rot={[-.2, 0, 0]} />)}
     {st === 'love' && <B p={[0, .3, d / 2 - .01]} s={[w - .5, .02, .02]} c={GOLD} />}
     {legs4(w, d, .1, leg, st === 'mid' ? .04 : .05, .08)}
   </group>;
@@ -146,13 +161,19 @@ function Wardrobe({ w, d, st, c }: { w: number; d: number; st: string; c: string
 
 /* ───────── TVs & TV furniture ───────── */
 function TV({ w, st, c }: { w: number; st: string; c: string }) {
-  const [type, size] = st.split(':'), h = w * .5625, oled = type === 'oled', curved = type === 'curved', bz = oled || type === 'mini' ? .008 : .018, th = oled ? .025 : .06, y0 = .12 + (size && +size >= 75 ? .06 : 0);
+  const [type, size] = st.split(':'), wall = type === 'wall' || type === 'frame', h = w * .5625, oled = type === 'oled', curved = type === 'curved', bz = oled || type === 'mini' || wall ? .008 : .018, th = oled || wall ? .03 : .06, y0 = wall ? 1.15 - h / 2 : .12 + (size && +size >= 75 ? .06 : 0);
+  if (type === 'retro') return <group>
+    <B p={[0, .55, 0]} s={[w * 1.25, w * .95, w * .9]} c="#6a4a30" ro={.55} r={.06} /><B p={[-w * .14, .55, w * .46]} s={[w * .84, w * .68, .02]} c="#0a1410" e="#10281c" ei={.7} ro={.2} r={.05} />
+    {[0, 1].map(i => <Cy key={i} p={[w * .56, .66 - i * .13, w * .46]} r={.035} h={.03} c={GOLD} rot={[Math.PI / 2, 0, 0]} />)}{[-1, 1].map(x => <B key={x} p={[x * w * .5, .08, 0]} s={[.07, .16, w * .6]} c="#2a1b10" r={.02} />)}
+    <B p={[0, 1.1, -.05]} s={[.02, .2, .02]} c={STEEL} rot={[0, 0, .6]} /></group>;
   const scr = '#06101c', glow = type === 'mini' ? '#10284a' : oled ? '#0b1626' : '#0a1b30';
   const panel = (x: number, ry: number, ww: number) => <group position={[x, y0 + h / 2 + .06, 0]} rotation-y={ry}><B p={[0, 0, 0]} s={[ww, h + bz * 2, th]} c={c} m={.5} ro={.35} r={.01} /><mesh position={[0, 0, th / 2 + .001]}><planeGeometry args={[ww - bz * 2, h]} /><meshStandardMaterial color={scr} emissive={glow} emissiveIntensity={.9} roughness={.15} metalness={.2} /></mesh></group>;
   return <group>
     {curved ? <>{panel(-w / 3, .22, w / 3 + .02)}{panel(0, 0, w / 3 + .02)}{panel(w / 3, -.22, w / 3 + .02)}</> : panel(0, 0, w)}
-    <B p={[0, y0 + .04, -.04]} s={[w * .22, .08, .1]} c={shade(c, -.2)} r={.02} />
-    {oled || type === 'mini' ? <B p={[0, .05, -.02]} s={[w * .5, .03, .22]} c={c} m={.6} r={.01} /> : [-1, 1].map(x => <B key={x} p={[x * w * .38, .05, 0]} s={[.07, .08, .24]} c={c} m={.5} ro={.3} r={.02} />)}
+    {type === 'frame' && <><B p={[0, y0 + h / 2 + .06, .02]} s={[w + .06, h + .06, .03]} c="#6a4a30" ro={.5} r={.01} /><B p={[0, y0 + h / 2 + .06, .04]} s={[w * .92, h * .9, .004]} c="#c9a24a" e="#7a5a20" ei={.35} ro={.5} /><B p={[-w * .2, y0 + h / 2 + .1, .045]} s={[w * .3, h * .45, .004]} c="#2f6b50" ro={.9} /><Sp p={[w * .22, y0 + h / 2 + .2, .05]} r={Math.min(.09, h * .1)} c="#e8c15a" sc={[1, 1, .05]} /></>}
+    {wall && <B p={[0, y0 + h / 2 + .06, -.05]} s={[w * .3, h * .3, .05]} c={DARK} r={.01} />}
+    {!wall && <B p={[0, y0 + .04, -.04]} s={[w * .22, .08, .1]} c={shade(c, -.2)} r={.02} />}
+    {wall ? null : oled || type === 'mini' ? <B p={[0, .05, -.02]} s={[w * .5, .03, .22]} c={c} m={.6} r={.01} /> : [-1, 1].map(x => <B key={x} p={[x * w * .38, .05, 0]} s={[.07, .08, .24]} c={c} m={.5} ro={.3} r={.02} />)}
     {w > 1 && <B p={[0, y0 + .02 + .06, th / 2 + .01]} s={[.001, .001, .001]} c={c} />}
   </group>;
 }
@@ -238,6 +259,54 @@ function Gadget({ st, c }: { st: string; c: string }) {
   }
 }
 
+/* ───────── Cooling: standing fans, ceiling fans and air conditioners ───────── */
+function Spin({ speed = 9, axis = 'y', children, pos = [0, 0, 0] as V3 }: { speed?: number; axis?: 'y' | 'z'; children: ReactNode; pos?: V3 }) {
+  const g = useRef<THREE.Group>(null);
+  useFrame((_, dt) => { if (g.current) g.current.rotation[axis] += dt * speed; });
+  return <group ref={g} position={pos}>{children}</group>;
+}
+const blades = (n: number, len: number, wd: number, c: string, y = 0, tilt = .12) =>
+  Array.from({ length: n }, (_, i) => <group key={i} rotation-y={(i / n) * Math.PI * 2}><B p={[len / 2 + .08, y, 0]} s={[len, .012, wd]} c={c} ro={.6} r={.006} rot={[tilt, 0, 0]} /></group>);
+function Fan({ st, c }: { st: string; c: string }) {
+  const dk = shade(c, -.35), cage = (r: number, y: number, z = 0) => <group position={[0, y, z]} rotation-x={Math.PI / 2}><mesh><torusGeometry args={[r, .008, 6, 24]} /><meshStandardMaterial color={STEEL} metalness={.7} roughness={.35} /></mesh><mesh position={[0, 0, .04]}><torusGeometry args={[r * .55, .005, 6, 20]} /><meshStandardMaterial color={STEEL} metalness={.7} roughness={.35} /></mesh></group>;
+  if (st === 'tower') return <group><Cy p={[0, .03, 0]} r={.17} h={.06} c={dk} /><B p={[0, .55, 0]} s={[.2, 1.0, .2]} c={c} ro={.45} r={.06} />{Array.from({ length: 12 }, (_, i) => <B key={i} p={[0, .15 + i * .075, .102]} s={[.14, .012, .004]} c={DARK} />)}<B p={[0, 1.04, .102]} s={[.1, .03, .004]} c="#69d2ff" e="#69d2ff" ei={1.2} /></group>;
+  if (st === 'desk') return <group><Cy p={[0, .02, 0]} r={.12} h={.04} c={dk} /><Cy p={[0, .12, 0]} r={.025} h={.2} c={dk} /><group position={[0, .26, 0]}>{cage(.15, 0, .02)}<Spin axis="z" speed={14} pos={[0, 0, .03]}><group rotation-x={Math.PI / 2}>{blades(4, .12, .05, c, 0, .3)}</group></Spin><Cy p={[0, 0, -.04]} r={.045} h={.08} c={c} rot={[Math.PI / 2, 0, 0]} /></group></group>;
+  const ind = st === 'industrial', tall = st === 'pedestal_tall' || ind || st === 'misting', ph = tall ? 1.35 : 1.05, r = ind ? .3 : st === 'retro' ? .22 : .2;
+  return <group>
+    <Cy p={[0, .03, 0]} r={ind ? .28 : .22} h={.06} c={ind ? DARK : dk} />{ind && [-1, 1].map(x => <B key={x} p={[x * .22, .02, 0]} s={[.06, .04, .5]} c={DARK} />)}
+    <Cy p={[0, ph / 2, 0]} r={.022} h={ph} c={st === 'retro' ? GOLD : STEEL} m={.7} ro={.35} />
+    <group position={[0, ph + .1, 0]}><B p={[0, 0, -.1]} s={[.14, .14, .2]} c={c} ro={.5} r={.04} />{cage(r, 0, .05)}
+      <Spin axis="z" speed={ind ? 16 : 12} pos={[0, 0, .06]}><group rotation-x={Math.PI / 2}>{blades(ind ? 3 : 4, r * .8, ind ? .14 : .08, st === 'retro' ? GOLD : shade(c, .2), 0, .3)}</group></Spin></group>
+    {st === 'misting' && <><B p={[0, .55, .06]} s={[.24, .3, .12]} c={GLASS} op={.5} /><Sp p={[0, ph + .1, .22]} r={.015} c="#cfeaff" /></>}
+  </group>;
+}
+function CeilFan({ st, c }: { st: string; c: string }) {
+  const H = 2.6, flush = st === 'flush', rod = flush ? .06 : st === 'ind' ? .5 : .3, wood = st === 'b5w' || st === 'rattan', bl = st === 'rattan' ? '#c9a46a' : st === 'b5w' ? '#8a5a35' : shade(c, .25), n = st === 'b5w' || st === 'rattan' ? 5 : st === 'b4l' ? 4 : st === 'ind' ? 3 : st === 'smart' ? 3 : 3;
+  const y = H - rod - .08;
+  return <group>
+    <Cy p={[0, H - .015, 0]} r={.07} h={.03} c={c} m={.5} />{!flush && <Cy p={[0, H - rod / 2, 0]} r={.012} h={rod} c={c} m={.6} />}
+    <Cy p={[0, y, 0]} r={.11} rt={.09} h={.1} c={c} m={.5} ro={.4} />
+    {(st === 'b4l' || st === 'smart' || st === 'flush') && <><Cy p={[0, y - .07, 0]} r={.09} rt={.1} h={.05} c="#fff6dc" e="#ffe9b0" /></>}
+    <Spin speed={st === 'ind' ? 8 : 6.5} pos={[0, y - .02, 0]}>{blades(n, st === 'ind' ? .7 : st === 'flush' ? .45 : .55, st === 'ind' ? .16 : .13, bl, 0, .1)}{wood && null}</Spin>
+  </group>;
+}
+function AC({ st, c }: { st: string; c: string }) {
+  const dk = shade(c, -.3), vent = <B p={[0, -.04, .106]} s={[.82, .035, .01]} c={DARK} r={.005} />;
+  if (st === 'cassette') return <group><B p={[0, 2.57, 0]} s={[.62, .06, .62]} c={c} ro={.4} r={.03} /><B p={[0, 2.535, 0]} s={[.5, .01, .5]} c={DARK} />{[[0, .27], [0, -.27], [.27, 0], [-.27, 0]].map(([x, z], i) => <B key={i} p={[x, 2.54, z]} s={[x ? .03 : .46, .012, z ? .03 : .46]} c={dk} />)}<B p={[.22, 2.545, .22]} s={[.03, .01, .03]} c="#4ade80" e="#4ade80" /></group>;
+  if (st === 'portable') return <group><B p={[0, .38, 0]} s={[.4, .76, .35]} c={c} ro={.45} r={.06} />{Array.from({ length: 5 }, (_, i) => <B key={i} p={[0, .6 + i * .025, .178]} s={[.3, .008, .004]} c={DARK} />)}<B p={[0, .38, .178]} s={[.14, .05, .004]} c="#69d2ff" e="#69d2ff" ei={1.2} />{[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => <Cy key={x + '' + z} p={[x * .15, .025, z * .12]} r={.025} h={.03} c={DARK} />)}<Cy p={[.16, .5, -.2]} r={.04} h={.5} c={dk} rot={[Math.PI / 2.4, 0, 0]} /></group>;
+  if (st === 'tower') return <group><B p={[0, .85, 0]} s={[.5, 1.7, .32]} c={c} ro={.4} r={.05} /><B p={[0, 1.5, .165]} s={[.4, .1, .004]} c={DARK} />{Array.from({ length: 5 }, (_, i) => <B key={i} p={[0, 1.38 - i * .03, .166]} s={[.4, .008, .004]} c={dk} />)}<B p={[0, 1.1, .165]} s={[.16, .06, .004]} c={DARK} e="#69d2ff" ei={.8} /></group>;
+  if (st === 'window') return <group><B p={[0, 1.6, 0]} s={[.62, .4, .5]} c={c} ro={.45} r={.03} /><B p={[0, 1.6, .26]} s={[.56, .34, .01]} c={shade(c, -.12)} />{Array.from({ length: 6 }, (_, i) => <B key={i} p={[0, 1.7 - i * .045, .268]} s={[.46, .012, .004]} c={DARK} />)}<B p={[.2, 1.5, .268]} s={[.06, .03, .004]} c="#4ade80" e="#4ade80" /></group>;
+  const mini = st === 'mini', big = st === 'split2', mirror = st === 'mirror', wd = mini ? .72 : big ? 1.05 : .9, ht = mini ? .24 : big ? .3 : .27;
+  return <group position={[0, 2.12, 0]}>
+    <B p={[0, 0, 0]} s={[wd, ht, .21]} c={mirror ? '#c8d6dc' : c} ro={mirror ? .1 : .35} m={mirror ? .6 : 0} r={.07} />
+    <B p={[0, -ht * .38, .105]} s={[wd - .08, .035, .012]} c={DARK} r={.005} />
+    <B p={[0, -ht * .5 - .005, .06]} s={[wd - .1, .012, .1]} c={shade(c, -.15)} r={.004} rot={[.3, 0, 0]} />
+    <B p={[wd / 2 - .09, ht * .25, .108]} s={[.05, .015, .004]} c={DARK} e="#4ade80" ei={.9} />
+    {mirror && <B p={[0, .02, .109]} s={[wd - .12, ht - .1, .004]} c="#9fb6c2" m={.7} ro={.08} />}
+    <Cy p={[wd / 2 - .06, -ht / 2 - .12, -.08]} r={.02} h={.3} c={shade(c, -.2)} rot={[0, 0, 0]} />
+  </group>;
+}
+
 /** Does this catalog item have a 3D model? */
 export const hasFurnitureModel = (itemKey: string) => !!itemById(itemKey)?.kind;
 
@@ -258,6 +327,9 @@ export default function FurnitureModel({ itemKey, fp }: { itemKey: string; fp?: 
     case 'laundry': return <Laundry w={w} d={d} st={st} c={c} />;
     case 'cabinet': return <Cabinet w={w} d={d} st={st} c={c} />;
     case 'gadget': return <Gadget st={st} c={c} />;
+    case 'fan': return <Fan st={st} c={c} />;
+    case 'ceilfan': return <CeilFan st={st} c={c} />;
+    case 'ac': return <AC st={st} c={c} />;
     default: return null;
   }
 }

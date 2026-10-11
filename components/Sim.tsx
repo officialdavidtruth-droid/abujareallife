@@ -37,6 +37,7 @@ import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, se
 import { USES } from '../lib/pantry';
 import { itemById } from '../lib/catalog';
 import FurnitureModel, { hasFurnitureModel } from './FurnitureModels';
+import { defaultHomeLook, sanitizeHomeLook, resolveHomeLook, packHomeLook, HOME_LOOK_GROUPS, type HomeLook } from '../lib/homeLook';
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
 type Pose = 'stand' | 'sit' | 'sleep';
@@ -149,6 +150,12 @@ const WALLS: Blk[] = [{ id: 'wall', b: [6.1, 6.3, -4.6, 1.0] }, { id: 'wall', b:
 const HOME = { own: new Set<string>() };
 type HomeLayout = Record<string, { x: number; z: number; r: number }>;
 const HOME_LAYOUT: HomeLayout = {};
+// This player's home look (wall paint, floor, rug, sofa, bedding, bed frame). Every account starts with its own (lib/homeLook.ts); HL holds the concrete colours the room reads.
+let HLOOK: HomeLook = defaultHomeLook('guest');
+const HL = resolveHomeLook(HLOOK);
+const setHomeLook = (l: HomeLook) => { HLOOK = l; Object.assign(HL, resolveHomeLook(l)); };
+// Home editor settings: how far one tap moves a piece, how far one tap turns it, which tab is open and which shelf of the inventory is showing.
+const HEDIT = { step: .25, rot: Math.PI / 12, tab: 'move' as 'move' | 'add' | 'style', cat: 'All' };
 const HOME_OWNED: { id:string; itemKey:string; name:string; e:string; cat:string; cost:number; condition:number; x:number; z:number; r:number; fp?:[number,number] }[] = [];
 const HOME_SOLD = new Set<string>();
 // Pieces of a bigger object that can be moved on their own (key = '<object>.<part>', value = pivot in the object's local frame).
@@ -165,6 +172,32 @@ const movedDecor = (d: typeof DECOR[number]) => { const t = homeT(d.id); return 
 const movedOwned = (i: typeof HOME_OWNED[number]) => { const t=homeT(i.id); return { ...i, x:i.x+t.x, z:i.z+t.z, r:i.r+t.r }; };
 const ownedBox = (i: typeof HOME_OWNED[number]): Box => { const m=movedOwned(i), w=i.fp?.[0]||.8, d=i.fp?.[1]||.6; return [m.x-w/2,m.x+w/2,m.z-d/2,m.z+d/2]; };
 const resetHomeLayout = () => { for (const k of Object.keys(HOME_LAYOUT)) delete HOME_LAYOUT[k]; };
+// Move/turn one piece of the home by a delta (kept inside the walls). Works for fixtures, extras and pieces you bought.
+function nudgeHome(id: string, dx: number, dz: number, dr = 0) {
+  const t = HOME_LAYOUT[id] || { x: 0, z: 0, r: 0 }, cur = homePos(id);
+  let nx = t.x + dx, nz = t.z + dz;
+  if (cur && !id.includes('.')) { const ax = cur[0] + dx, az = cur[1] + dz, lx = Math.min(Math.max(ax, -5.8), wingOn() ? 10.9 : 5.7), lz = Math.min(Math.max(az, -4.3), southOn() ? 8.9 : 4.3); nx += lx - ax; nz += lz - az; }
+  HOME_LAYOUT[id] = { x: Math.round(nx * 1000) / 1000, z: Math.round(nz * 1000) / 1000, r: t.r + dr }; blKey = '\0';
+}
+const MOUNTED = new Set(['ceilfan', 'ac', 'tv']);
+// Push a piece flat against the nearest wall, back to the wall (air conditioners and wall TVs sit right on it).
+function snapToWall(id: string): boolean {
+  if (id.includes('.')) return false;
+  const owned = HOME_OWNED.find(i => i.id === id), obj = OBJ.find(o => o.id === id), dec = DECOR.find(d => d.id === id);
+  const base = owned ? { x: owned.x, z: owned.z, r: owned.r } : obj ? { x: obj.p[0], z: obj.p[1], r: obj.rot } : dec ? { x: dec.p[0], z: dec.p[1], r: dec.rot } : null; if (!base) return false;
+  const cur = homePos(id); if (!cur) return false;
+  const kind = owned ? itemById(owned.itemKey)?.kind : '', sty = owned ? itemById(owned.itemKey)?.style || '' : '';
+  const flush = !!kind && (kind === 'ceilfan' || (kind === 'ac' && !['portable', 'tower'].includes(sty)) || (kind === 'tv' && /^(wall|frame)/.test(sty)));
+  const half = flush ? .12 : Math.max(.15, ((owned?.fp?.[1] ?? .8)) / 2);
+  const walls = [
+    { d: Math.abs(cur[1] + 4.58), x: cur[0], z: -4.58 + half + .02, r: 0 },
+    { d: Math.abs(cur[0] + 6.18), x: -6.18 + half + .02, z: cur[1], r: Math.PI / 2 },
+    { d: Math.abs(cur[0] - (wingOn() ? 11.3 : 6.1)), x: (wingOn() ? 11.3 : 6.1) - half - .02, z: cur[1], r: -Math.PI / 2 },
+    { d: Math.abs(cur[1] - (southOn() ? 9.2 : 4.6)), x: cur[0], z: (southOn() ? 9.2 : 4.6) - half - .02, r: Math.PI },
+  ].sort((a, b) => a.d - b.d)[0];
+  HOME_LAYOUT[id] = { x: Math.round((walls.x - base.x) * 1000) / 1000, z: Math.round((walls.z - base.z) * 1000) / 1000, r: walls.r - base.r }; blKey = '\0';
+  return true;
+}
 
 // Drag-and-drop bridge: World fills this in every render so pieces rendered inside VIS (see Part) can start a drag.
 const EDIT: { on: boolean; down: (id: string, e: any) => void; pick: (id: string) => void } = { on: false, down: () => {}, pick: () => {} };
@@ -486,7 +519,7 @@ const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { '
 const mood = () => Object.values(S.needs).reduce((a, b) => a + b, 0) / 6;
 const moodFace = (m: number) => m > 75 ? '😄' : m > 55 ? '🙂' : m > 35 ? '😐' : '😫';
 const snap = () => ({ homeOwned: [...HOME_OWNED], homeSold: [...HOME_SOLD], needs: { ...S.needs }, min: S.min, cash: S.cash, power: S.power, speed: S.speed, free: S.free, q: S.q.flatMap(t => t.t === 'act' ? [t.a.e] : []),
-  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on, wing: wingOn(), south: southOn(), meals: S.meals, supplies: S.supplies, home: [...HOME.own] });
+  cur: S.cur?.t === 'act' ? S.cur.a : null, prog: S.cur?.t === 'act' ? S.prog / S.cur.a.dur : 0, toast: Date.now() - S.toastT < 3500 ? S.toast : '', mood: mood(), fam: famSnap(), famOn: F.on, wing: wingOn(), south: southOn(), meals: S.meals, supplies: S.supplies, home: [...HOME.own], hl: packHomeLook(HLOOK) });
 type UI = ReturnType<typeof snap>;
 
 type V3 = [number, number, number];
@@ -544,6 +577,11 @@ function mkTex(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d')!);
   const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
+const floorTileTex = (rx: number, ry: number) => mkTex(256, 256, g => { // plain square tiles with grout, tinted by the floor colour
+  const r = rng(5); g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { const v = 238 + Math.floor(r() * 17); g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(i * 128 + 3, j * 128 + 3, 122, 122); }
+  g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(0, 0, 256, 3); g.fillRect(0, 126, 256, 4); g.fillRect(0, 0, 3, 256); g.fillRect(126, 0, 4, 256);
+}, rx, ry);
 const woodTex = (rx: number, ry: number) => mkTex(512, 512, g => { // oak planks, 20cm wide, joints staggered row by row
   const r = rng(11), rows = 10, h = 512 / rows;
   for (let i = 0; i < rows; i++) {
@@ -600,17 +638,17 @@ const books = (seed: number, levels: number[]) => { const r = rng(seed), cols = 
 
 const VIS: Record<string, (ui: UI) => ReactNode> = {
   bed: ui => <>
-    <B p={[0, .2, 0]} s={[1.8, .26, 2.45]} c="#4a2f1d" ro={.55} /><B p={[0, .66, -1.22]} s={[1.88, 1.32, .12]} c="#4a2f1d" ro={.5} />
-    <B p={[-.45, .72, -1.15]} s={[.7, .8, .05]} c="#5d3b25" ro={.6} /><B p={[.45, .72, -1.15]} s={[.7, .8, .05]} c="#5d3b25" ro={.6} />
-    <B p={[0, .36, 1.22]} s={[1.88, .52, .1]} c="#4a2f1d" ro={.5} />
+    <B p={[0, .2, 0]} s={[1.8, .26, 2.45]} c={HL.wood} ro={.55} /><B p={[0, .66, -1.22]} s={[1.88, 1.32, .12]} c={HL.wood} ro={.5} />
+    <B p={[-.45, .72, -1.15]} s={[.7, .8, .05]} c={HL.wood2} ro={.6} /><B p={[.45, .72, -1.15]} s={[.7, .8, .05]} c={HL.wood2} ro={.6} />
+    <B p={[0, .36, 1.22]} s={[1.88, .52, .1]} c={HL.wood} ro={.5} />
     {[[-.88, -1.22], [.88, -1.22], [-.88, 1.22], [.88, 1.22]].map(([x, z]) => <B key={x + '' + z} p={[x, .04, z]} s={[.1, .08, .1]} c="#2a1a10" />)}
     <B p={[0, .48, .02]} s={[1.68, .27, 2.3]} c="#f4f0e6" ro={.95} r={.07} />
-    <B p={[0, .66, .56]} s={[1.74, .12, 1.4]} c="#0f5c45" ro={1} r={.05} /><B p={[0, .67, -.18]} s={[1.74, .14, .3]} c="#ece6d6" ro={1} r={.05} />
-    {[-.5, .5, 1.1].map(z => <B key={z} p={[0, .735, z + .08]} s={[1.5, .01, .02]} c="#0c4d3a" />)}
+    <B p={[0, .66, .56]} s={[1.74, .12, 1.4]} c={HL.bed} ro={1} r={.05} /><B p={[0, .67, -.18]} s={[1.74, .14, .3]} c="#ece6d6" ro={1} r={.05} />
+    {[-.5, .5, 1.1].map(z => <B key={z} p={[0, .735, z + .08]} s={[1.5, .01, .02]} c={HL.bed2} />)}
     <B p={[0, .72, -.84]} s={[.95, .17, .44]} c="#fbfaf6" ro={1} r={.08} rot={[-.08, 0, 0]} /><B p={[0, .84, -1.0]} s={[.85, .19, .34]} c="#f1eee6" ro={1} r={.08} rot={[-.35, 0, 0]} />
     <B p={[.54, .76, .1]} s={[.34, .13, .3]} c="#d99a42" ro={1} r={.05} rot={[0, .3, 0]} />
     <Part id="bed.stand">
-    <B p={[1.15, .26, -1.0]} s={[.5, .52, .5]} c="#5d3b25" ro={.55} /><B p={[1.15, .38, -.74]} s={[.42, .2, .02]} c="#4a2f1d" /><B p={[1.15, .14, -.74]} s={[.42, .2, .02]} c="#4a2f1d" />
+    <B p={[1.15, .26, -1.0]} s={[.5, .52, .5]} c={HL.wood2} ro={.55} /><B p={[1.15, .38, -.74]} s={[.42, .2, .02]} c={HL.wood} /><B p={[1.15, .14, -.74]} s={[.42, .2, .02]} c={HL.wood} />
     <C p={[1.15, .38, -.73]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} /><C p={[1.15, .14, -.73]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} />
     <C p={[1.15, .55, -1.0]} r={.08} h={.03} c="#333" /><C p={[1.15, .67, -1.0]} r={.014} h={.22} c="#333" /><C p={[1.15, .86, -1.0]} r={.15} rt={.1} h={.2} c="#f2e6c9" ro={1} e={ui.power ? '#ffd9a0' : undefined} ei={.45} /></Part></>,
   fridge: ui => <>
@@ -661,13 +699,13 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[.85, 1.5, -.49]} s={[.52, .66, .02]} c="#444" ro={.4} /><mesh position={[.85, 1.5, -.478]}><planeGeometry args={[.46, .6]} /><meshStandardMaterial color="#cfe4ee" metalness={.9} roughness={.04} /></mesh>
     <B p={[1.25, 1.2, -.48]} s={[.26, .5, .02]} c="#2f6bb0" ro={1} /><C p={[1.25, 1.5, -.47]} r={.012} h={.32} c="#c9ced1" m={.9} rot={[0, 0, Math.PI / 2]} /></Part></>,
   tv: ui => <>
-    <B p={[0, .19, 0]} s={[2.2, .26, .9]} c="#243a5e" ro={.95} r={.05} />
-    {[-.44, .44].map(x => <B key={x} p={[x, .395, .1]} s={[.86, .15, .62]} c="#2d4263" ro={.95} r={.06} />)}
-    <B p={[0, .55, -.34]} s={[2.2, .62, .22]} c="#243a5e" ro={.95} r={.07} />
-    {[-.44, .44].map(x => <B key={x} p={[x, .64, -.17]} s={[.84, .44, .2]} c="#2d4263" ro={.95} r={.07} rot={[-.12, 0, 0]} />)}
-    {[-1, 1].map(s => <B key={s} p={[s * .99, .36, 0]} s={[.22, .6, .9]} c="#243a5e" ro={.95} r={.08} />)}
+    <B p={[0, .19, 0]} s={[2.2, .26, .9]} c={HL.sofa} ro={.95} r={.05} />
+    {[-.44, .44].map(x => <B key={x} p={[x, .395, .1]} s={[.86, .15, .62]} c={HL.sofa2} ro={.95} r={.06} />)}
+    <B p={[0, .55, -.34]} s={[2.2, .62, .22]} c={HL.sofa} ro={.95} r={.07} />
+    {[-.44, .44].map(x => <B key={x} p={[x, .64, -.17]} s={[.84, .44, .2]} c={HL.sofa2} ro={.95} r={.07} rot={[-.12, 0, 0]} />)}
+    {[-1, 1].map(s => <B key={s} p={[s * .99, .36, 0]} s={[.22, .6, .9]} c={HL.sofa} ro={.95} r={.08} />)}
     {[[-1, -.38], [1, -.38], [-1, .38], [1, .38]].map(([x, z]) => <C key={x + '' + z} p={[x * .98, .04, z]} r={.04} rt={.03} h={.08} c="#3b2616" />)}
-    <B p={[-.72, .63, .0]} s={[.36, .34, .12]} c="#d99a42" ro={1} r={.06} rot={[-.2, .3, .15]} /><B p={[.72, .63, .0]} s={[.36, .34, .12]} c="#b43c35" ro={1} r={.06} rot={[-.2, -.3, -.15]} />
+    <B p={[-.72, .63, .0]} s={[.36, .34, .12]} c={HL.pil1} ro={1} r={.06} rot={[-.2, .3, .15]} /><B p={[.72, .63, .0]} s={[.36, .34, .12]} c={HL.pil2} ro={1} r={.06} rot={[-.2, -.3, -.15]} />
     <Part id="tv.side"><B p={[1.5, .3, 0]} s={[.5, .6, .5]} c="#6b4a30" ro={.5} r={.02} /><B p={[1.5, .6, 0]} s={[.58, .03, .58]} c="#8a6240" ro={.4} /><B p={[1.5, .5, .26]} s={[.4, .22, .02]} c="#5a3b25" /><C p={[1.5, .64, 0]} r={.08} h={.02} c="#333" /><C p={[1.5, .78, 0]} r={.014} h={.28} c="#333" /><C p={[1.5, .98, 0]} r={.14} rt={.1} h={.2} c="#f2e6c9" ro={1} e={ui.power ? '#ffd9a0' : undefined} ei={.45} /></Part>
     <Part id="tv.cab">
     <B p={[0, .3, 2.6]} s={[1.6, .6, .5]} c="#3a2a1e" ro={.5} /><B p={[-.4, .3, 2.34]} s={[.76, .5, .02]} c="#4a3626" /><B p={[.4, .3, 2.34]} s={[.76, .5, .02]} c="#4a3626" />
@@ -818,8 +856,8 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
 function Room() {
   return <>
     <Tiles x={-.05} z={-3.55} w={2.9} d={2.1} a="#ebe5d6" b="#a9b4b8" /><Tiles x={4.2} z={-3.5} w={3.6} d={2.2} a="#e9f0f2" b="#cfdde2" />
-    <Rug x={-4.2} z={-2.6} w={3.4} d={3.6} c1="#6d3f66" c2="#8d5a86" /><Rug x={-4} z={1.2} w={3.4} d={3.2} c1="#a67c4a" c2="#c9a56b" />
-    <B p={[0, 1.3, -4.7]} s={[12.6, 2.6, .2]} c="#e6dccb" ro={.95} r={.01} /><B p={[-6.3, 1.3, 0]} s={[.2, 2.6, 9.4]} c="#ddd2bf" ro={.95} r={.01} />
+    <Rug x={-4.2} z={-2.6} w={3.4} d={3.6} c1={HL.rug1a} c2={HL.rug1b} /><Rug x={-4} z={1.2} w={3.4} d={3.2} c1={HL.rug2a} c2={HL.rug2b} />
+    <B p={[0, 1.3, -4.7]} s={[12.6, 2.6, .2]} c={HL.w1} ro={.95} r={.01} /><B p={[-6.3, 1.3, 0]} s={[.2, 2.6, 9.4]} c={HL.w2} ro={.95} r={.01} />
     <B p={[0, .07, -4.58]} s={[12.4, .14, .04]} c="#f4f0e6" ro={.5} r={.01} /><B p={[-6.18, .07, 0]} s={[.04, .14, 9.2]} c="#f4f0e6" ro={.5} r={.01} />
     <B p={[0, 2.57, -4.58]} s={[12.4, .06, .05]} c="#f4f0e6" ro={.5} r={.01} /><B p={[-6.18, 2.57, 0]} s={[.05, .06, 9.2]} c="#f4f0e6" ro={.5} r={.01} />
     <Win p={[.75, 1.6, -4.59]} w={1.4} h={1.2} /><Win p={[-6.19, 1.6, -2.9]} ry={Math.PI / 2} w={1.8} h={1.2} />
@@ -847,7 +885,7 @@ const Frame = ({ p, ry = 0, w = .4, h = .5 }: { p: V3; ry?: number; w?: number; 
 
 // Closed east wall of the flat, used until a family is started (then the Wing replaces it, with its doorway).
 function EastWall() {
-  return <><B p={[6.2, .65, 0]} s={[.2, 1.3, 9.4]} c="#ddd2bf" ro={.95} r={.01} /><B p={[6.2, 1.32, 0]} s={[.26, .04, 9.46]} c="#f4f0e6" ro={.5} r={.01} /></>;
+  return <><B p={[6.2, .65, 0]} s={[.2, 1.3, 9.4]} c={HL.w2} ro={.95} r={.01} /><B p={[6.2, 1.32, 0]} s={[.26, .04, 9.46]} c="#f4f0e6" ro={.5} r={.01} /></>;
 }
 
 // The south wing extension: stone floor, half-height side walls (cutaway like the rest of the house), a skirting edge along the front and zone rugs.
@@ -857,9 +895,9 @@ function SouthWing({ ui }: { ui: UI }) {
     <mesh rotation-x={-Math.PI / 2} position={[0, .012, 6.9]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); walk(e.point.x, e.point.z); }}>
       <planeGeometry args={[12.4, 4.7]} /><meshStandardMaterial color="#d9d1c0" roughness={.35} metalness={.05} /></mesh>
     {Array.from({ length: 5 }, (_, i) => <B key={i} p={[-5 + i * 2.5, .016, 6.9]} s={[.03, .004, 4.7]} c="#b9b09c" ro={.6} r={.002} />)}
-    <B p={[-6.2, .65, 6.95]} s={[.2, 1.3, 4.8]} c="#ddd2bf" ro={.95} r={.01} /><B p={[-6.2, 1.32, 6.95]} s={[.26, .04, 4.86]} c="#f4f0e6" ro={.5} r={.01} />
-    <B p={[6.2, .65, 6.95]} s={[.2, 1.3, 4.8]} c="#ddd2bf" ro={.95} r={.01} /><B p={[6.2, 1.32, 6.95]} s={[.26, .04, 4.86]} c="#f4f0e6" ro={.5} r={.01} />
-    <B p={[0, .06, 9.3]} s={[12.6, .12, .12]} c="#ddd2bf" ro={.8} r={.01} />
+    <B p={[-6.2, .65, 6.95]} s={[.2, 1.3, 4.8]} c={HL.w2} ro={.95} r={.01} /><B p={[-6.2, 1.32, 6.95]} s={[.26, .04, 4.86]} c="#f4f0e6" ro={.5} r={.01} />
+    <B p={[6.2, .65, 6.95]} s={[.2, 1.3, 4.8]} c={HL.w2} ro={.95} r={.01} /><B p={[6.2, 1.32, 6.95]} s={[.26, .04, 4.86]} c="#f4f0e6" ro={.5} r={.01} />
+    <B p={[0, .06, 9.3]} s={[12.6, .12, .12]} c={HL.w2} ro={.8} r={.01} />
     <Win p={[-6.09, 1.55, 6.9]} ry={Math.PI / 2} w={1.4} h={1.1} />
     {own('gym_room') && <><Rug x={-4.1} z={7.0} w={3.8} d={3.6} c1="#1e2226" c2="#2a3036" y={.02} /><B p={[-5.95, 1.6, 7.0]} s={[.05, 1.2, 2.4]} c="#9bb0c4" op={.55} ro={.1} /></>}
     {own('office_room') && <Rug x={4.2} z={6.6} w={3.4} d={3.4} c1="#2a3a52" c2="#3f5a80" y={.02} />}
@@ -872,7 +910,7 @@ function Wing() {
     <B p={[8.9, 1.3, -4.7]} s={[5.2, 2.6, .2]} c="#dce6f0" ro={.95} r={.01} />
     <B p={[8.9, .07, -4.58]} s={[5, .14, .04]} c="#f4f0e6" ro={.5} r={.01} /><B p={[8.9, 2.57, -4.58]} s={[5, .06, .05]} c="#f4f0e6" ro={.5} r={.01} />
     <B p={[11.4, .5, 0]} s={[.2, 1, 9.4]} c="#d3dde8" ro={.95} r={.01} /><B p={[11.4, 1.02, 0]} s={[.26, .04, 9.46]} c="#f4f0e6" ro={.5} r={.01} />
-    <B p={[6.2, .65, -1.8]} s={[.2, 1.3, 5.6]} c="#ddd2bf" ro={.95} r={.01} /><B p={[6.2, .65, 3.6]} s={[.2, 1.3, 2]} c="#ddd2bf" ro={.95} r={.01} />
+    <B p={[6.2, .65, -1.8]} s={[.2, 1.3, 5.6]} c={HL.w2} ro={.95} r={.01} /><B p={[6.2, .65, 3.6]} s={[.2, 1.3, 2]} c={HL.w2} ro={.95} r={.01} />
     <B p={[6.2, 1.32, -1.8]} s={[.26, .04, 5.66]} c="#f4f0e6" ro={.5} r={.01} /><B p={[6.2, 1.32, 3.6]} s={[.26, .04, 2.06]} c="#f4f0e6" ro={.5} r={.01} />
     <Win p={[8.9, 1.6, -4.59]} w={1.4} h={1.2} />
     <Rug x={8.9} z={1.5} w={3.6} d={2.4} c1="#2f6bb0" c2="#6fb4e8" />
@@ -947,7 +985,7 @@ function OwnedFurniture({ item, editing, onSelect }: { item: typeof HOME_OWNED[n
 }
 
 // Third-person mode closes the house in: the half-height cutaway walls are raised to full height and the missing front walls are added.
-const FW = ({ p, s, c = '#ddd2bf' }: { p: V3; s: V3; c?: string }) => <mesh position={p} receiveShadow><boxGeometry args={s} /><meshStandardMaterial color={c} roughness={.95} /></mesh>;
+const FW = ({ p, s, c = HL.w2 }: { p: V3; s: V3; c?: string }) => <mesh position={p} receiveShadow><boxGeometry args={s} /><meshStandardMaterial color={c} roughness={.95} /></mesh>;
 function TPWalls({ ui }: { ui: UI }) {
   const south = !!ui.south, wing = !!ui.wing, zf = south ? 9.35 : 4.65;
   return <>
@@ -973,7 +1011,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
   }, [camera, gl, plane]);
-  const [hov, setHov] = useState<string | null>(null), floorTex = useMemo(() => woodTex(8.8, 4.6), []), flooks = useMemo(() => famLooks(look), [look.gender, look.skin]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [hov, setHov] = useState<string | null>(null), floorTex = useMemo(() => woodTex(8.8, 4.6), []), tileFloor = useMemo(() => floorTileTex(20, 15), []), flooks = useMemo(() => famLooks(look), [look.gender, look.skin]); // eslint-disable-line react-hooks/exhaustive-deps
   const [near, setNear] = useState<Obj | null>(null), R = useRef({ near: null as Obj | null, sel: null as Obj | null, ui, kbd, setSel }), cam = useRef({ p: new THREE.Vector3(), t: new THREE.Vector3(), init: false }), nearAt = useRef(0);
   R.current = { near, sel, ui, kbd, setSel };
   TP.on = tpOn; TP.nearName = near && !sel && !S.cur ? near.name : '';
@@ -1050,7 +1088,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: coarse ? 'auto' : 'none' }}><div className="tpPrompt" onClick={() => TP.interact?.()}>{coarse ? <b>👆</b> : <b>E</b>} {near.name}</div></Html>}
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
     <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
-      <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial map={floorTex} roughness={.7} /></mesh>
+      <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial key={HL.floorKind} map={HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null} color={HL.floorTint} roughness={HL.floorKind === 'marble' ? .22 : .7} metalness={HL.floorKind === 'marble' ? .12 : 0} /></mesh>
     <Room />
     {ui.south && <SouthWing ui={ui} />}
     {ui.wing ? <Wing /> : <EastWall />}
@@ -1075,13 +1113,13 @@ export default function Sim() {
   const [tp, setTp] = useState(true);
   useEffect(() => { try { if (localStorage.getItem('arl-tp') === '0') setTp(false); } catch { /* private mode */ } }, []);
   useEffect(() => { try { localStorage.setItem('arl-tp', tp ? '1' : '0'); } catch { /* private mode */ } }, [tp]);
-  const [famModal, setFamModal] = useState(false), [homeEdit, setHomeEdit] = useState(false), [homeSel, setHomeSel] = useState<string | null>(null), [homeSaving, setHomeSaving] = useState(false), [homeMin, setHomeMin] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [homeSec, setHomeSec] = useState(false), [houseLook, setHouseLook] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null), [homeItems, setHomeItems] = useState<typeof HOME_OWNED[number][]>([]), [homePlaceable, setHomePlaceable] = useState<{itemKey:string;name:string;e:string;cat:string;cost:number;quantity:number;fp?:[number,number]}[]>([]);
+  const [famModal, setFamModal] = useState(false), [homeEdit, setHomeEdit] = useState(false), [homeSel, setHomeSel] = useState<string | null>(null), [homeSaving, setHomeSaving] = useState(false), [homeMin, setHomeMin] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [homeSec, setHomeSec] = useState(false), [houseLook, setHouseLook] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null), [homeItems, setHomeItems] = useState<typeof HOME_OWNED[number][]>([]), [homePlaceable, setHomePlaceable] = useState<{itemKey:string;name:string;e:string;cat:string;sub?:string;kind?:string;cost:number;quantity:number;fp?:[number,number]}[]>([]);
   useEffect(() => { if (!homeEdit) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { setHomeEdit(false); setHomeSel(null); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [homeEdit]);
   lookRef.current = look;
   async function enter(u: AccountUser) {
     const sr = await fetch('/api/save'), r = await sr.json().catch(() => null);
     if (!sr.ok || !r) throw new Error(r?.error || `Could not load your save (${sr.status}). If you just updated the game, the database may be out of date: run prisma/fix-database.sql in the Supabase SQL Editor (safe to re-run).`);
-    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); loadPantry(); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } try { const l = await fetch('/api/home/layout', { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture',{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
+    if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); loadPantry(); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setHomeLook(defaultHomeLook(u.username)); try { const l = await fetch('/api/home/layout', { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); setHomeLook(sanitizeHomeLook(ld.look, defaultHomeLook(u.username))); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture',{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
     loadHouses();   // the player houses along the street (and which one is yours)
   }
@@ -1198,10 +1236,49 @@ export default function Sim() {
     {!outside && <div className="hint">{tp && !homeEdit ? 'WASD walk · Shift run · Drag or ←/→ turn camera · Scroll zoom · E use · 1-9 pick · or tap the floor' : 'Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom'}</div>}
     {user && look && !outside && tp && !homeEdit && <><TPStick /><TPButtons /></>}
     {homeEdit && !outside && user && look && <div className="homeEditor">
-      <div className="homeHead"><b>🏠 Home design</b><div className="homeHeadBtns"><button onClick={() => setHomeMin(v => !v)} aria-label="Minimise">{homeMin ? '▴' : '▾'}</button><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT }) }); setHomeSaving(false); say(r.ok ? '🏠 Home layout saved.' : 'Could not save home layout.'); }}>{homeSaving ? 'Saving…' : 'Save layout'}</button><button className="homeDone" onClick={() => { setHomeEdit(false); setHomeSel(null); setHomeMin(false); }}>✓ Done</button></div></div>
-      {!homeMin && <>{homeSel ? <><strong>{homeName(homeSel)}</strong><div className="homeBtns"><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z - .25 }; blKey = '\0'; setUi(snap()); }}>↑</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x - .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>←</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x + .25, z: t.z }; blKey = '\0'; setUi(snap()); }}>→</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, x: t.x, z: t.z + .25 }; blKey = '\0'; setUi(snap()); }}>↓</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r - Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↺</button><button onClick={() => { const t = HOME_LAYOUT[homeSel] || { x: 0, z: 0, r: 0 }; HOME_LAYOUT[homeSel] = { ...t, r: t.r + Math.PI / 12 }; blKey = '\0'; setUi(snap()); }}>↻</button></div><div className="homeSelectedMeta">{(() => { const owned=HOME_OWNED.find(i=>i.id===homeSel); const name=homeName(homeSel); const price=owned?Math.round(owned.cost*.62*Math.max(.2,owned.condition/100)):({bed:260000,wardrobe:190000,fridge:780000,dining:220000,shower:90000,toilet:80000,tv:650000,desk:90000,mat:25000,radio:38000,shelf:85000,plant:5500,gen:190000,toybox:35000,kbedA:120000,kbedB:120000,nstand:38000,kwar:190000,gbench:140000,gbag:90000,cinema:950000,odesk:480000,oshelf:380000} as Record<string,number>)[homeSel]||0; return <span>Estimated resale: <b>{naira(price)}</b></span>; })()}{!homeSel.includes('.') && <button className="sellHome" onClick={async()=>{ if(!homeSel)return; const owned=HOME_OWNED.some(i=>i.id===homeSel); if(!confirm('Sell this item from your house?'))return; const r=await fetch('/api/home/furniture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'sell',kind:owned?'owned':'static',id:homeSel})}); const d=await r.json().catch(()=>({})); if(r.ok){ HOME_OWNED.splice(0,HOME_OWNED.length,...HOME_OWNED.filter(i=>i.id!==homeSel)); blKey='\0'; HOME_SOLD.add(homeSel); delete HOME_LAYOUT[homeSel]; setHomeItems([...HOME_OWNED]); setHomeSel(null); setUi(snap()); say(`Sold for ${naira(d.gained||0)}.`); } else say(d.error||'Could not sell item.'); }}>💰 Sell item</button>}</div></> : <span>Drag an item to move it, or tap it to nudge/rotate.</span>}
-      {homePlaceable.length>0 && <div className="homeInventory"><b>🛒 Your furniture inventory</b><div className="homeInventoryList">{homePlaceable.slice(0,12).map(i=><button key={i.itemKey} onClick={async()=>{const r=await fetch('/api/home/furniture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'place',itemKey:i.itemKey})});const d=await r.json().catch(()=>({}));if(r.ok){HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[]));setHomeItems([...HOME_OWNED]);const f=await fetch('/api/home/furniture',{cache:'no-store'});if(f.ok){const x=await f.json();setHomePlaceable(x.placeable||[]);}setUi(snap());say(`${i.name} placed in your home.`);}else say(d.error||'Could not place item.');}}>{i.e} {i.name} <small>×{i.quantity}</small></button>)}</div></div>}</>}
+      <div className="homeHead"><b>🏠 Home design</b><div className="homeHeadBtns"><button onClick={() => setHomeMin(v => !v)} aria-label="Minimise">{homeMin ? '▴' : '▾'}</button><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT, look: packHomeLook(HLOOK) }) }); setHomeSaving(false); say(r.ok ? '🏠 Home saved.' : 'Could not save your home.'); }}>{homeSaving ? 'Saving…' : 'Save'}</button><button className="homeDone" onClick={() => { setHomeEdit(false); setHomeSel(null); setHomeMin(false); }}>✓ Done</button></div></div>
+      {!homeMin && <>
+        <div className="homeTabs">{([['move', '✋ Arrange'], ['add', '➕ Add items'], ['style', '🎨 Style']] as const).map(([k, t]) => <button key={k} className={HEDIT.tab === k ? 'on' : ''} onClick={() => { HEDIT.tab = k; setUi(snap()); }}>{t}</button>)}</div>
+        {HEDIT.tab === 'move' && (homeSel ? (() => {
+          const sel = homeSel, owned = HOME_OWNED.find(i => i.id === sel), go = (dx: number, dz: number, dr = 0) => { nudgeHome(sel, dx, dz, dr); setUi(snap()); }, st = HEDIT.step, price = owned ? Math.round(owned.cost * .62 * Math.max(.2, owned.condition / 100)) : ({ bed: 260000, wardrobe: 190000, fridge: 780000, dining: 220000, shower: 90000, toilet: 80000, tv: 650000, desk: 90000, mat: 25000, radio: 38000, shelf: 85000, plant: 5500, gen: 190000, toybox: 35000, kbedA: 120000, kbedB: 120000, nstand: 38000, kwar: 190000, gbench: 140000, gbag: 90000, cinema: 950000, odesk: 480000, oshelf: 380000 } as Record<string, number>)[sel] || 0;
+          return <>
+            <strong>{homeName(sel)}</strong>
+            <div className="homeSeg"><i>Move by</i>{([[.05, 'Fine'], [.25, 'Normal'], [1, 'Far']] as const).map(([v, t]) => <button key={v} className={HEDIT.step === v ? 'on' : ''} onClick={() => { HEDIT.step = v; setUi(snap()); }}>{t}</button>)}</div>
+            <div className="homeSeg"><i>Turn by</i>{([[Math.PI / 12, '15°'], [Math.PI / 4, '45°'], [Math.PI / 2, '90°']] as const).map(([v, t]) => <button key={t} className={Math.abs(HEDIT.rot - v) < .001 ? 'on' : ''} onClick={() => { HEDIT.rot = v; setUi(snap()); }}>{t}</button>)}</div>
+            <div className="homeBtns"><button onClick={() => go(0, -st)}>↑</button><button onClick={() => go(-st, 0)}>←</button><button onClick={() => go(st, 0)}>→</button><button onClick={() => go(0, st)}>↓</button><button onClick={() => go(0, 0, -HEDIT.rot)}>↺</button><button onClick={() => go(0, 0, HEDIT.rot)}>↻</button></div>
+            <div className="homeActs">
+              {!sel.includes('.') && <button onClick={() => { if (snapToWall(sel)) setUi(snap()); }}>🧱 Snap to wall</button>}
+              {!!owned && <button onClick={async () => { const r = await fetch('/api/home/furniture', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'store', id: sel }) }), d = await r.json().catch(() => ({})); if (r.ok) { HOME_OWNED.splice(0, HOME_OWNED.length, ...(d.items || [])); delete HOME_LAYOUT[sel]; blKey = '\0'; setHomeItems([...HOME_OWNED]); setHomeSel(null); try { const f = await fetch('/api/home/furniture', { cache: 'no-store' }); if (f.ok) setHomePlaceable((await f.json()).placeable || []); } catch { /* keep list */ } setUi(snap()); say('📦 Put away. Find it under Add items.'); } else say(d.error || 'Could not put it away.'); }}>📦 Put away</button>}
+              <button onClick={() => { delete HOME_LAYOUT[sel]; blKey = '\0'; setUi(snap()); }}>↩ Original spot</button>
+            </div>
+            <div className="homeSelectedMeta"><span>Estimated resale: <b>{naira(price)}</b></span>{!sel.includes('.') && <button className="sellHome" onClick={async () => { if (!confirm('Sell this item from your house?')) return; const r = await fetch('/api/home/furniture', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'sell', kind: owned ? 'owned' : 'static', id: sel }) }); const d = await r.json().catch(() => ({})); if (r.ok) { HOME_OWNED.splice(0, HOME_OWNED.length, ...HOME_OWNED.filter(i => i.id !== sel)); blKey = '\0'; HOME_SOLD.add(sel); delete HOME_LAYOUT[sel]; setHomeItems([...HOME_OWNED]); setHomeSel(null); setUi(snap()); say(`Sold for ${naira(d.gained || 0)}.`); } else say(d.error || 'Could not sell item.'); }}>💰 Sell</button>}</div>
+          </>;
+        })() : <span>Tap any piece (or drag it) to arrange it. You can turn it, push it against a wall, or put it away.</span>)}
+        {HEDIT.tab === 'add' && (() => {
+          const shelves = ['All', ...Array.from(new Set(homePlaceable.map(i => i.sub || i.cat)))], cat = shelves.includes(HEDIT.cat) ? HEDIT.cat : 'All', list = homePlaceable.filter(i => cat === 'All' || (i.sub || i.cat) === cat);
+          return <div className="homeInventory">
+            {homePlaceable.length === 0 ? <span>Nothing to place yet. Buy furniture, fans, air conditioners and TVs from the Online Mall or the shops, then place them here.</span> : <>
+              <div className="homeShelves">{shelves.map(c => <button key={c} className={cat === c ? 'on' : ''} onClick={() => { HEDIT.cat = c; setUi(snap()); }}>{c}</button>)}</div>
+              <div className="homeInvGrid">{list.map(i => <button key={i.itemKey} onClick={async () => { const r = await fetch('/api/home/furniture', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'place', itemKey: i.itemKey, x: S.pos[0], z: S.pos[1] }) }); const d = await r.json().catch(() => ({})); if (r.ok) { HOME_OWNED.splice(0, HOME_OWNED.length, ...(d.items || [])); blKey = '\0'; setHomeItems([...HOME_OWNED]); const last = HOME_OWNED[HOME_OWNED.length - 1]; try { const f = await fetch('/api/home/furniture', { cache: 'no-store' }); if (f.ok) setHomePlaceable((await f.json()).placeable || []); } catch { /* keep list */ } if (last) { HEDIT.tab = 'move'; setHomeSel(last.id); } setUi(snap()); say(`${i.name} placed next to you. Move it where you like.`); } else say(d.error || 'Could not place item.'); }}>{i.e} {i.name} <small>×{i.quantity}</small></button>)}</div></>}
+          </div>;
+        })()}
+        {HEDIT.tab === 'style' && <div className="homeStyle">
+          {HOME_LOOK_GROUPS.map(g => <div key={g.key} className="homeSw"><b>{g.e} {g.label}</b><div>{g.list.map((o, i) => <button key={o.name} title={o.name} aria-label={`${g.label}: ${o.name}`} className={HLOOK[g.key] === i ? 'on' : ''} style={{ background: o.sw }} onClick={() => { setHomeLook({ ...HLOOK, [g.key]: i }); setUi(snap()); }} />)}</div></div>)}
+          <div className="homeActs"><button onClick={() => { const r = (n: number) => Math.floor(Math.random() * n); setHomeLook({ w: r(HOME_LOOK_GROUPS[0].list.length), f: r(HOME_LOOK_GROUPS[1].list.length), r: r(HOME_LOOK_GROUPS[2].list.length), s: r(HOME_LOOK_GROUPS[3].list.length), b: r(HOME_LOOK_GROUPS[4].list.length), k: r(HOME_LOOK_GROUPS[5].list.length) }); setUi(snap()); }}>🎲 Surprise me</button><button onClick={() => { setHomeLook(defaultHomeLook(user.username)); setUi(snap()); }}>↩ My original look</button></div>
+          <span>Tap Save to keep your new look.</span>
+        </div>}
+      </>}
     </div>}
+    <RuntimeStyle id="arl-homeeditor2" css={`.homeEditor{max-height:calc(100dvh - 70px);overflow-y:auto;overscroll-behavior:contain;width:min(400px,calc(100vw - 16px))}
+.homeTabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.homeTabs button,.homeSeg button,.homeShelves button,.homeActs button{border:1px solid #2f5143;background:#172b23;color:#fff;border-radius:8px;padding:6px 4px;font-weight:800;font-size:11px;cursor:pointer}
+.homeTabs button.on,.homeSeg button.on,.homeShelves button.on{background:#d99a42;border-color:#d99a42;color:#171108}
+.homeSeg{display:grid;grid-template-columns:62px repeat(3,1fr);gap:4px;align-items:center}.homeSeg i{font-style:normal;font-size:10px;color:#9fb5aa}
+.homeActs{display:flex;flex-wrap:wrap;gap:4px}.homeActs button{flex:1;min-width:92px}
+.homeShelves{display:flex;gap:4px;overflow-x:auto;padding-bottom:3px}.homeShelves button{flex:none;padding:5px 9px;font-size:10px;white-space:nowrap}
+.homeInvGrid{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:34dvh;overflow-y:auto;padding-top:3px}.homeInvGrid button{text-align:left;background:#172b23;border:1px solid #2b493b;color:#fff;border-radius:8px;padding:6px;font-size:10px;line-height:1.25}.homeInvGrid small{color:#9fb5aa}
+.homeStyle{display:flex;flex-direction:column;gap:6px}.homeSw{display:flex;flex-direction:column;gap:3px}.homeSw b{font-size:11px}.homeSw>div{display:flex;flex-wrap:wrap;gap:5px}
+.homeSw button{width:28px;height:28px;border-radius:50%;border:2px solid #ffffff33;cursor:pointer;padding:0}.homeSw button.on{border-color:#fff;box-shadow:0 0 0 2px #d99a42}
+`} />
     <RuntimeStyle css={CSS} />
   </div>;
 }

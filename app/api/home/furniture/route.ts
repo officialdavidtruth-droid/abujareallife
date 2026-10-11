@@ -20,7 +20,7 @@ export async function GET() {
     const u = await currentUser(); if (!u) return err('Not signed in.',401);
     const m = await getMeta(u.id);
     const rows = await prisma.inventoryItem.findMany({ where:{userId:u.id,quantity:{gt:0}} });
-    const placeable = rows.map(r => { const i=itemById(r.itemKey); return i && !i.use && !['food','grocery','toiletry'].includes(i.cat) ? {itemKey:i.id,name:i.name,e:i.e,cat:i.cat,cost:i.cost,quantity:r.quantity,fp:i.fp} : null; }).filter(Boolean);
+    const placeable = rows.map(r => { const i=itemById(r.itemKey); return i && !i.use && !['food','grocery','toiletry'].includes(i.cat) ? {itemKey:i.id,name:i.name,e:i.e,cat:i.cat,sub:i.sub,kind:i.kind,cost:i.cost,quantity:r.quantity,fp:i.fp} : null; }).filter(Boolean);
     return NextResponse.json({items:m.owned||[],placeable,soldStatic:m.soldStatic||[]});
   } catch(e) { return serverError(e); }
 }
@@ -38,8 +38,19 @@ export async function POST(req:Request) {
       if (!i || i.use || ['food','grocery','toiletry'].includes(i.cat)) return err('That item cannot be placed in the house.',400);
       const dec = await prisma.inventoryItem.updateMany({ where:{userId:u.id,itemKey:key,quantity:{gte:1}}, data:{quantity:{decrement:1}} });
       if (!dec.count) return err("You don't own that item.",409);
-      const items = [...(m.owned||[]), {id:rid(),itemKey:key,name:i.name,e:i.e,cat:i.cat,cost:i.cost,condition:100,x:0,z:0,r:0,fp:i.fp}];
+      const px = Number(b.x), pz = Number(b.z), cl = (v:number, lim:number) => Number.isFinite(v) ? Math.max(-lim, Math.min(lim, Math.round(v*100)/100)) : 0;
+      const items = [...(m.owned||[]), {id:rid(),itemKey:key,name:i.name,e:i.e,cat:i.cat,cost:i.cost,condition:100,x:cl(px,16),z:cl(pz,12),r:0,fp:i.fp}];
       await putMeta(u.id,{...m,owned:items});
+      return NextResponse.json({ok:true,items});
+    }
+
+    if (action === 'store') {   // put a placed piece back in your inventory (nothing is sold, it can be placed again)
+      const id = String(b.id || ''), items = [...(m.owned||[])], idx = items.findIndex(x => x.id === id);
+      if (idx < 0) return err('Furniture not found.',404);
+      const it = items[idx]; items.splice(idx,1);
+      const layout = {...(m.layout||{})}; delete layout[id];
+      await prisma.inventoryItem.upsert({ where:{userId_itemKey:{userId:u.id,itemKey:it.itemKey}}, update:{quantity:{increment:1}}, create:{userId:u.id,itemKey:it.itemKey,name:it.name,quantity:1} });
+      await putMeta(u.id,{...m,owned:items,layout});
       return NextResponse.json({ok:true,items});
     }
 

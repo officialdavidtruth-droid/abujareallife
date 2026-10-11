@@ -199,13 +199,15 @@ function addV(cat: CatId, sub: string, kind: string, e: string, pal: Pal, rows: 
 /* Beds: 4 sizes × 10 designs × 6-8 colours */
 const BED_SIZES: [string, number, number, number][] = [['Single', 1, 2, .7], ['Double', 1.5, 2, 1], ['Queen', 1.8, 2.05, 1.25], ['King', 2, 2.1, 1.6]];
 const BED_DESIGNS: [string, number, string, Pal][] = [['Classic Panel Bed', 150000, 'panel', WOOD], ['Tufted Headboard Bed', 260000, 'tufted', FABRIC], ['Slatted Wood Bed', 170000, 'slat', WOOD], ['Metal Frame Bed', 110000, 'metal', METAL], ['Storage Ottoman Bed', 320000, 'storage', FABRIC],
-  ['Low Platform Bed', 210000, 'platform', WOOD], ['Four-Poster Bed', 420000, 'poster', WOOD], ['Sleigh Bed', 380000, 'sleigh', WOOD], ['Wingback Upholstered Bed', 360000, 'wingback', FABRIC], ['Floating LED Bed', 480000, 'led', FABRIC]];
+  ['Low Platform Bed', 210000, 'platform', WOOD], ['Four-Poster Bed', 420000, 'poster', WOOD], ['Sleigh Bed', 380000, 'sleigh', WOOD], ['Wingback Upholstered Bed', 360000, 'wingback', FABRIC], ['Floating LED Bed', 480000, 'led', FABRIC],
+  ['Canopy Drape Bed', 520000, 'canopy', FABRIC], ['Bunk Bed', 300000, 'bunk', WOOD], ['Daybed with Rails', 280000, 'daybed', WOOD]];
 BED_DESIGNS.forEach(([n, c, st, p]) => BED_SIZES.forEach(([s, w, l, m]) => addV('furniture', 'Beds', 'bed', '🛏️', p, [[`${s} ${n}`, Math.round(c * m / 1000) * 1000, [w, l], st]])));
 
 /* Couches & sofas */
 addV('furniture', 'Sofas', 'sofa', '🛋️', FABRIC, [
   ['2-Seater Modern Sofa', 210000, [1.6, .9], 'modern'], ['3-Seater Modern Sofa', 330000, [2.2, .9], 'modern'], ['Velvet Loveseat', 240000, [1.4, .85], 'love'], ['Mid-Century Sofa', 410000, [2, .85], 'mid'], ['Convertible Sofa Bed', 360000, [1.9, .95], 'modern'],
   ['Rattan Garden Sofa', 280000, [2, .9], 'rattan'], ['Modular Cloud Sofa', 720000, [2.6, 1.1], 'cloud'], ['L-Shaped Sectional Sofa', 780000, [3, 2], 'sectional'], ['U-Shaped Corner Sofa', 980000, [3.2, 2.4], 'ushape'],
+  ['Camelback Sofa', 560000, [2.1, .95], 'camel'], ['Lawson Cushion Sofa', 380000, [2.2, .95], 'lawson'], ['Japanese Low Futon Sofa', 230000, [1.8, .9], 'futon'],
   ['3-Seater Chesterfield Sofa', 640000, [2.2, .95], 'chester', LEATHER], ['Tuxedo Leather Sofa', 520000, [2.2, .95], 'tuxedo', LEATHER], ['Power Recliner Sofa', 560000, [2.3, .95], 'recsofa', LEATHER],
 ]);
 
@@ -227,10 +229,28 @@ addV('furniture', 'Wardrobes', 'wardrobe', '🚪', WOOD, [
   ['Gold-Trim Luxury Wardrobe', 720000, [2.4, .65], 'gold'], ['Kids Wardrobe', 120000, [.9, .5], 'kids'], ['Classic Armoire', 450000, [1.2, .65], 'armoire'],
 ]);
 
+/* Cooling: standing fans, ceiling fans (hang from the ceiling) and air conditioners (mount on a wall or the ceiling). Ceiling/wall units have a tiny floor footprint on purpose: they never block walking. */
+const ACC: Pal = [['Pure White', '#f4f4f2'], ['Silver', '#c5cacf'], ['Graphite', '#3b3f45'], ['Champagne Gold', '#c9b48a'], ['Rose Blush', '#d9b8b2']];
+const FANC: Pal = [['White', '#f2f2f0'], ['Black', '#1c1d20'], ['Brushed Silver', '#b9bec4'], ['Sky Blue', '#79b4d8'], ['Retro Red', '#b3262e'], ['Mint Green', '#8ec8ae']];
+addV('household', 'Standing Fans', 'fan', '🌀', FANC, [
+  ['Pedestal Standing Fan (16\")', 28000, [.5, .5], 'pedestal'], ['Adjustable Tall Pedestal Fan', 42000, [.5, .5], 'pedestal_tall'], ['Tower Fan', 65000, [.35, .35], 'tower'],
+  ['Industrial Standing Fan (24\")', 55000, [.6, .6], 'industrial'], ['Misting Fan', 90000, [.5, .5], 'misting'], ['Rechargeable Desk Fan', 15000, [.3, .25], 'desk'], ['Retro Metal Standing Fan', 75000, [.5, .5], 'retro'],
+]);
+addV('household', 'Ceiling Fans', 'ceilfan', '🪭', METAL, [
+  ['3-Blade Ceiling Fan', 32000, [.04, .04], 'b3'], ['4-Blade Ceiling Fan with Light', 48000, [.04, .04], 'b4l'], ['5-Blade Wooden Ceiling Fan', 65000, [.04, .04], 'b5w'], ['Industrial Ceiling Fan (56\")', 85000, [.04, .04], 'ind'],
+  ['Smart Remote DC Ceiling Fan', 120000, [.04, .04], 'smart'], ['Rattan Blade Ceiling Fan', 70000, [.04, .04], 'rattan'], ['Low-Profile Flush Ceiling Fan', 45000, [.04, .04], 'flush'],
+]);
+addV('household', 'Air Conditioners', 'ac', '❄️', ACC, [
+  ['1HP Split Air Conditioner', 420000, [.04, .04], 'split'], ['1.5HP Split Air Conditioner', 520000, [.04, .04], 'split'], ['2HP Split Air Conditioner', 680000, [.04, .04], 'split2'], ['2.5HP Inverter Split Air Conditioner', 850000, [.04, .04], 'split2'],
+  ['Slim Wall Mini Split AC', 380000, [.04, .04], 'mini'], ['Designer Mirror-Panel Split AC', 900000, [.04, .04], 'mirror'], ['4-Way Ceiling Cassette AC', 1100000, [.04, .04], 'cassette'], ['Window AC Unit', 300000, [.04, .04], 'window'],
+  ['Portable AC (movable)', 450000, [.5, .45], 'portable'], ['Floor-Standing Tower AC', 980000, [.5, .35], 'tower'],
+]);
+
 /* Televisions: type × screen size × bezel colour */
 const TV_SIZES: [number, number, number][] = [[24, .55, 60000], [32, .75, 140000], [43, 1, 250000], [50, 1.15, 340000], [55, 1.28, 420000], [65, 1.5, 700000], [75, 1.7, 1100000], [85, 1.95, 1900000], [98, 2.25, 3400000]];
 const TV_TYPES: [string, string, number, number[], string][] = [['LED Smart TV', 'led', 1, [24, 32, 43, 50, 55, 65, 75], '📺'], ['QLED 4K TV', 'qled', 1.5, [43, 50, 55, 65, 75, 85], '📺'], ['OLED TV', 'oled', 2.2, [55, 65, 75, 85, 98], '📺'],
-  ['Curved Gaming TV', 'curved', 1.4, [43, 55, 65], '🖥️'], ['Mini-LED 8K TV', 'mini', 1.9, [65, 75, 85, 98], '📺']];
+  ['Curved Gaming TV', 'curved', 1.4, [43, 55, 65], '🖥️'], ['Mini-LED 8K TV', 'mini', 1.9, [65, 75, 85, 98], '📺'],
+  ['Wall-Mounted Slim TV', 'wall', 1.2, [32, 43, 50, 55, 65, 75, 85], '📺'], ['Frame Art TV', 'frame', 1.8, [43, 55, 65, 75], '🖼️'], ['Retro CRT TV', 'retro', .6, [24, 32], '📺']];
 TV_TYPES.forEach(([n, st, m, sizes]) => sizes.forEach(sz => { const r = TV_SIZES.find(x => x[0] === sz)!; addV('tech', 'Televisions', 'tv', '📺', TVC, [[`${sz}" ${n}`, Math.round(r[2] * m / 1000) * 1000, [r[1], .1], `${st}:${sz}`]]); }));
 
 /* TV stands, tables, desks & storage */

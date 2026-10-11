@@ -40,7 +40,7 @@ export function syncDown(downLeft: number, safeLeft: number, kind: string) {
 
 export const MAX_ROOM = 40;   // players per city instance; the 41st player is moved to instance #2, etc.
 const MAX_ROOMS = 50;
-const LIM = 150;
+const LIM = 210;   // the walkable world is +-202 m (player houses stand outside the ring road, beyond 150 m)
 const SEND_MS = 200;          // 5 position updates / second, only while someone else is in your instance
 const clampN = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(-LIM, Math.min(LIM, v)) : d);
 const angle = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);

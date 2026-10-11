@@ -8,6 +8,7 @@ import { shiftJobs } from '../lib/work';
 import type { Look } from '../lib/characterModels';
 import type { Business, Job } from '../lib/cityTypes';
 import { businessStatus } from '../lib/businessHours';
+import { HOUSES } from '../lib/houses';
 
 type Tab = 'map' | 'jobs' | 'businesses' | null;
 const MAP_W = 120;
@@ -104,6 +105,7 @@ function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSele
       </svg>
       <div className="mapLegend"><span><i className="youDot" />You</span><span><i className="bizDot" />Business</span><span><i style={{ background: '#ff5b52' }} />Gun Shop</span><span><i style={{ background: '#ff3b30' }} />Route</span>{fin && <span><i style={{ background: '#ffd23f' }} />Final destination</span>}</div>
     </div>
+    {HOUSES.mine && !selected && <div className="mapPlace"><div><b>🏠 Your house</b><small>On the street outside the ring road · {HOUSES.mine.u}</small></div><button onClick={() => { const m = HOUSES.mine!; GAME.nav = { x: m.exit.x, z: m.exit.z, name: 'Your house' }; }}>📍 Route home</button></div>}
     {selected && <div className="mapPlace"><div><b>{ICON[selected.type] || '🏢'} {selected.name}</b><small>{selected.type} · {selected.district} · {businessStatus(selected.type, getMinute ? getMinute() : 0).label}</small></div><button onClick={() => navigate(selected)}>📍 Show route</button></div>}
     {nav && dir && <div className="mapRoute" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}><span>📍 <b>{nav.name}</b> · {metres(dir.total)} · about {Math.max(1, Math.round(dir.total / WALK_MPS / 60))} min on foot</span><button onClick={() => { GAME.nav = null; }}>Clear</button></div>

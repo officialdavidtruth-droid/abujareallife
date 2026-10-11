@@ -23,6 +23,8 @@ import Interior from './Interior';
 import MovieScreen, { type ScreenMode, type JobInfo } from './MovieScreen';
 import { CITY } from '../lib/cityData';
 import { GAME, buildingExitPoint } from './CityWorld';
+import { HOUSES, loadHouses } from '../lib/houses';
+import Guide from './Guide';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
@@ -1069,7 +1071,10 @@ export default function Sim() {
     if (!sr.ok || !r) throw new Error(r?.error || `Could not load your save (${sr.status}). If you just updated the game, the database may be out of date: run prisma/fix-database.sql in the Supabase SQL Editor (safe to re-run).`);
     if (r.save) { Object.assign(S, { needs: r.save.state.needs, min: worldMinute(), cash: r.save.cash }); F.load(r.save.state.bonds, false); loadPantry(); try { const h = await fetch('/api/home', { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } try { const l = await fetch('/api/home/layout', { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture',{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ } setLook({ ...r.save.look, name: u.username }); setProfile(r.save.profile ?? DEFAULT_PROFILE); } else { setLook(null); setProfile(null); setEditing(true); }
     setUser(u);
+    loadHouses();   // the player houses along the street (and which one is yours)
   }
+  // Stepping out of your house puts you at YOUR front door on the street (GTA style), not on a random pavement.
+  function goOutside() { const m = HOUSES.mine; if (m && !GAME.jailed && !GAME.ride) GAME.tp = { x: m.exit.x, z: m.exit.z, r: m.exit.r }; setOutside(true); }
   async function logout() {
     setOutside(false); await fetch('/api/auth/logout', { method: 'POST' }); Object.assign(S, NEW()); F.reset(); setLook(null); setEditing(false); setUser(null); }
 
@@ -1107,7 +1112,7 @@ export default function Sim() {
       const open = businessStatus(biz.type, worldMinute()).open;
       if (!L.outside) { // at home: go to work once the needs are tended and the player is not busy
         if (S.cur || S.q.length || idleFor() < 8000) return;
-        if (open && AUTO.minNeed() > 25) { say(`💼 Heading to work at ${biz.name}`); setSel(null); setOutside(true); tries = 0; }
+        if (open && AUTO.minNeed() > 25) { say(`💼 Heading to work at ${biz.name}`); setSel(null); goOutside(); tries = 0; }
         return;
       }
       if (idleFor() < 20000 || GAME.nav) return; // in the city: only act when the player has let go of the controls
@@ -1124,7 +1129,7 @@ export default function Sim() {
     return () => clearInterval(iv);
   }, []);
   useEffect(() => {
-    H.door = () => { setSel(null); setOutside(true); };
+    H.door = () => { setSel(null); goOutside(); };
     H.outfit = () => setWardrobe(true);
     return () => { H.door = undefined; H.outfit = undefined; };
   }, []);
@@ -1134,6 +1139,7 @@ export default function Sim() {
     const a = setInterval(() => { S.min = worldMinute(); setUi(snap()); }, 200), b = setInterval(() => { if (lookRef.current) saveNow(lookRef.current); }, 5000);
     return () => { clearInterval(a); clearInterval(b); };
   }, []);
+  useEffect(() => { const f = () => { GAME.nav = null; setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-enter-home', f); return () => window.removeEventListener('arl-enter-home', f); }, []);   // E at your front door
   useEffect(() => { setMusicMood(outside && !inside ? 'city' : 'chill'); }, [outside, inside]); // lively amapiano-style loop on the streets, calm lo-fi indoors and at home
   useEffect(() => { if (ui.toast) sfx('pop'); }, [ui.toast]);
   useEffect(() => { const f = (e: Event) => { const fx = (e as CustomEvent).detail as Record<string, number> | undefined; if (fx) for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }; window.addEventListener('arl-apply-fx', f); return () => window.removeEventListener('arl-apply-fx', f); }, []); // street NPC scenes change your needs
@@ -1150,13 +1156,14 @@ export default function Sim() {
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const ex = buildingExitPoint(inside); if (ex) GAME.tp = ex; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
     {user && look && <Wallet />}
+    {user && look && !editing && <Guide user={user.username} canOpen={ready} />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World tpOn={tp && !homeEdit} kbd={!(editing || wardrobe || homeUp || famModal || homeEdit)} ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
     <div className={'top' + (menu ? ' open' : '')}><div className="pill">{worldCalendar(ui.min).weekday} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
       <div className="pill gold">{naira(ui.cash)}</div>
-      {user && look && <button className="pill" onClick={() => { setSel(null); setOutside(o => !o); setMenu(false); }}>{outside ? '🏠' : '🏙️'}<em> {outside ? 'Go home' : 'Neighborhood'}</em></button>}
+      {user && look && <button className="pill" onClick={() => { setSel(null); if (outside) setOutside(false); else goOutside(); setMenu(false); }}>{outside ? '🏠' : '🏙️'}<em> {outside ? 'Go home' : 'Neighborhood'}</em></button>}
       <button className="pill menuBtn" aria-label="Menu" onClick={() => setMenu(v => !v)}>{menu ? '✕' : '☰'}</button>
       <div className="topMore"><div className="pill">{worldCalendar(ui.min).season.e} {worldCalendar(ui.min).season.label} · {weatherAt().e} {weatherAt().label}</div>
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
@@ -1164,6 +1171,7 @@ export default function Sim() {
         {user && look && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !outside && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { setTp(v => !v); setSel(null); setMenu(false); }}>🎥 {tp ? 'Overview camera' : 'Third-person camera'}</button>
+        <button className="pill" onClick={() => { window.dispatchEvent(new CustomEvent('arl-open-guide')); setMenu(false); }}>📖 Game guide</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; AUTO.free = S.free; fetch('/api/autowork', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ freeWill: S.free }) }).catch(() => {}); }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
       </div></div>

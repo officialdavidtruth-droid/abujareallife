@@ -19,6 +19,8 @@ import RuntimeStyle from './RuntimeStyle';
 import { worldMinute, weatherAt, lightningAt } from '../lib/worldClock';
 import { BUILDING_DESTS } from '../lib/destinations';
 import ChopYards from './ChopYards';
+import PlayerHouses from './PlayerHouses';
+import { HOUSES, nearDoor } from '../lib/houses';
 import { Graffiti, LookDriver, PowerLines, Puddles, ShopGlow, StreetClutter } from './CityLook';
 import { pushCrime } from '../lib/witness';
 import { sidewalkSpawn } from '../lib/roadRoute';
@@ -230,12 +232,18 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       }
     }
 
-    if (GAME.hasCar && !VEH.homed && !VEH.placed && !VEH.drv && !GAME.jailed && !GAME.ride) parkNear(p.x, p.z);   // delivered to the kerb beside you once, then it stays put
+    if (GAME.hasCar && !VEH.homed && !VEH.placed && !VEH.drv && !GAME.jailed && !GAME.ride) {   // delivered once, then it stays put: onto your driveway when you step out of your house, else the kerb beside you
+      const hm = HOUSES.mine;
+      if (hm && Math.hypot(p.x - hm.exit.x, p.z - hm.exit.z) < 12) { JACK.release(); VEH.x = hm.car.x; VEH.z = hm.car.z; VEH.r = hm.car.r; VEH.v = 0; VEH.placed = true; VEH.drv = false; VEH.homed = true; }
+      else parkNear(p.x, p.z);
+    }
     /* ── E: get in / get out, H: horn ── */
     if (c.interact) {
       c.interact = false;
+      const doorH = (!VEH.drv && !GAME.ride) ? nearDoor(p.x, p.z) : null;   // GTA style: walk up to your front door and press E
       const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
       if (taxiI >= 0) ROAM.openSheet(taxiI);
+      else if (doorH) { if (doorH.mine) window.dispatchEvent(new CustomEvent('arl-enter-home')); else GAME.notice = `🔒 ${doorH.u}'s house is locked.`; }
       else if (VEH.drv) {
         VEH.drv = false; VEH.v = 0; engineStop();
         const lx = -Math.sin(VEH.r), lz = -Math.cos(VEH.r);
@@ -366,7 +374,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
     (window as any).__arlPos = { x: p.x, z: p.z };
-    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : VEH.placed && dCar < 9 ? 'E — Get in your car' : '' };
+    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : (() => { const dh = nearDoor(p.x, p.z); return dh ? (dh.mine ? 'E — Enter your house' : `🔒 ${dh.u}'s house`) : VEH.placed && dCar < 9 ? 'E — Get in your car' : ''; })() };
     if (!VEH.drv) {
       let best: CityBuilding | null = null, bd = 2.6;
       for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }
@@ -402,6 +410,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Puddles />
       <Signals />
       {BUILDS.map(b => <Building key={b.id} b={b} />)}
+      <PlayerHouses />
       <Traffic />
       <JackNpc />
       <JackGhost />
@@ -453,7 +462,7 @@ const CSS = `
 
 export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void; onOpenMap?: () => void }) {
   useState(() => { // stepping out of the house: appear on a sidewalk, somewhere different each time and not on top of another player (building exits set GAME.tp instead)
-    if (GAME.tp) { START.x = GAME.tp.x; START.z = GAME.tp.z; START.r = 0; GAME.player.x = GAME.tp.x; GAME.player.z = GAME.tp.z; } // arriving from a building / jail / ride: start the camera right there, not at the old default
+    if (GAME.tp) { START.x = GAME.tp.x; START.z = GAME.tp.z; START.r = GAME.tp.r ?? 0; GAME.player.x = GAME.tp.x; GAME.player.z = GAME.tp.z; } // arriving from a building / jail / ride: start the camera right there, not at the old default
     else { const s = sidewalkSpawn(Math.random, (x, z) => Object.values(NET.peers).some(q => Math.hypot(q.x - x, q.z - z) < 3)); START.x = s.x; START.z = s.z; START.r = s.r; GAME.player.x = s.x; GAME.player.z = s.z; }
     return 0;
   });

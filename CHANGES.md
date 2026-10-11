@@ -47,3 +47,9 @@
 - **Home upgrades: 6 rooms (new South wing + Home gym, Home cinema, Executive office), 3 luxury items, 7 comfort upgrades** (solar = no outages, AC, smart home, hot water, surround sound, orthopaedic mattress, chef kitchen).
 
 - **Voice chat removed completely** (LiveKit + peer-to-peer engines, mic buttons, voice status panel, /api/livekit, /api/turn, voice volume slider, RTC signalling, livekit packages and TURN/LiveKit env vars). Community chat and private messages are unchanged. You can delete LIVEKIT_*, METERED_*, CF_TURN_*, TURN_* and NEXT_PUBLIC_VOICE from Vercel.
+
+
+## 2026-10-10 — Mature-content age gate and club nightlife
+- New sign-ups must enter a valid date of birth proving they are 18+ and acknowledge the mature-content notice; the server independently validates both requirements.
+- Stores date of birth and mature-content acknowledgement timestamps on the User record. Database migration `0022_adult_access` added; the one-shot database setup and fix SQL were updated too.
+- Added a Nightclub lounge panel with five varied fictional hostess NPC profiles and fictional in-game contraband rumours. Sexual activity is not depicted; rumours are narrative flavour and do not imply real-world sourcing. The existing weed trade remains the only implemented drug-trade mechanic.

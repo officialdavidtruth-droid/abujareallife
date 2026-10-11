@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
-import { addSkillXp, loadState } from '../../../lib/game';
+import { clampHeat, loadState, lockedSkillXp } from '../../../lib/game';
 import { downState } from '../../../lib/downed';
 import { checkNear } from '../../../lib/proximity';
 import { DEALS, DEAL_TTL_MS, STING_HEAT, STREET } from '../../../lib/nightlife';
@@ -56,11 +56,13 @@ export async function POST(req: Request) {
   const near = await checkNear(u.id, d.fromName, pos(b, 'sx', 'sz'), pos(b, 'tx', 'tz'), STREET.range);
   if (!near.ok) return err('Step closer to them first.', 409);
   const seller = await loadState(d.fromId), ss = seller?.save;
-  if (!ss || (ss.jailUntil && ss.jailUntil.getTime() > now)) return err('They are gone.', 409);
+  if (!ss || (ss.jailUntil && ss.jailUntil.getTime() > now) || downState(ss.downUntil).down) return err('They are gone.', 409);
+  if (seller!.profile.profession !== 'escort') return err('They are no longer offering that.', 409);
 
   if (me.profile.profession === 'police') {   // sting: nothing changes hands, the escort is busted
-    const r = await prisma.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'accepted' } }); if (!r.count) return err('That offer is gone.', 409);
+    const r = await prisma.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'sting' } }); if (!r.count) return err('That offer is gone.', 409);
     await prisma.save.update({ where: { userId: d.fromId }, data: { heat: { increment: STING_HEAT }, heatAt: new Date() } });
+    await clampHeat(prisma, [d.fromId]);
     return NextResponse.json({ ok: true, sting: true, cash: me.save.cash });
   }
   const def = DEALS.company;
@@ -68,7 +70,9 @@ export async function POST(req: Request) {
     const claim = await tx.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'accepted' } }); if (!claim.count) return false;
     const pay = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: d.price } }, data: { cash: { decrement: d.price }, heat: { increment: STREET.buyerHeat }, heatAt: new Date() } });
     if (!pay.count) throw new Error('broke');
-    await tx.save.update({ where: { userId: d.fromId }, data: { cash: { increment: d.price }, heat: { increment: STREET.sellerHeat }, heatAt: new Date(), profile: addSkillXp(seller!.profile, def.skill, STREET.xp) as unknown as Prisma.InputJsonValue } });
+    const profile = await lockedSkillXp(tx, d.fromId, def.skill, STREET.xp);
+    await tx.save.update({ where: { userId: d.fromId }, data: { cash: { increment: d.price }, heat: { increment: STREET.sellerHeat }, heatAt: new Date(), profile } });
+    await clampHeat(tx, [u.id, d.fromId]);
     await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -d.price, description: `street:company:${d.fromName}` } });
     await tx.transaction.create({ data: { userId: d.fromId, type: 'EARN', amount: d.price, description: `street:company:${u.username}` } });
     return true;

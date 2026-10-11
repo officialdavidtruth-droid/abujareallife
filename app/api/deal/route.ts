@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
-import { addSkillXp, insideBiz, loadState } from '../../../lib/game';
+import { clampHeat, insideBiz, loadState, lockedSkillXp } from '../../../lib/game';
 import { BRIBE_MAX, BRIBE_MIN, BRIBE_NAIRA_PER_HEAT, BRIBE_TAKER_HEAT, DEALS, DEAL_OFFERS_PER_MIN, DEAL_TTL_MS, NIGHTCLUB, NPC_BRIBE_FAIL_HEAT, NPC_COPS, STING_HEAT, dealFor, npcCop, npcTakesBribe, type DealKind } from '../../../lib/nightlife';
 import { JAIL_SECS_PER_HEAT, PROFESSIONS, WANTED_AT, type Profile } from '../../../lib/profile';
 
@@ -45,8 +45,9 @@ export async function POST(req: Request) {
     if (cop) { // ── NPC officer: instant decision
       if (npcTakesBribe(cop, price, me.save.heat, Math.random())) {
         const cut = Math.min(me.save.heat, Math.floor(price / (cop.greed))); // NPCs cool you by the same rate they demand
-        const r = await prisma.save.updateMany({ where: { userId: u.id, cash: { gte: price } }, data: { cash: { decrement: price }, heat: Math.max(0, me.save.heat - cut), heatAt: new Date() } });
+        const r = await prisma.save.updateMany({ where: { userId: u.id, cash: { gte: price } }, data: { cash: { decrement: price }, heat: { decrement: cut }, heatAt: new Date() } });
         if (!r.count) return err("You can't afford that.", 402);
+        await clampHeat(prisma, [u.id]);
         await prisma.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -price, description: `bribe:${cop.id}` } });
         const n = await loadState(u.id); return NextResponse.json({ ok: true, taken: true, who: cop.name, cash: n!.save.cash, heat: n!.save.heat, msg: `${cop.name} pockets it and looks the other way.` });
       }
@@ -90,12 +91,13 @@ export async function POST(req: Request) {
   if (d.kind === 'bribe') { // a real officer takes (or refuses) a bribe
     if (me.profile.profession !== 'police') return err('Only officers take bribes.', 403);
     if (now - d.createdAt.getTime() > DEAL_TTL_MS) { await prisma.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'expired' } }); return err('That offer expired.', 410); }
-    const br = await loadState(d.fromId); if (!br || br.save.inside !== biz.id) return err('They have left the club.', 409);
+    const br = await loadState(d.fromId); if (!br || br.save.inside !== biz.id || !br.save.insideAt || br.save.insideAt < FRESH() || (br.save.jailUntil && br.save.jailUntil.getTime() > now)) return err('They have left the club.', 409);
     const cut = Math.min(br.save.heat, Math.floor(d.price / BRIBE_NAIRA_PER_HEAT));
     const ok = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const claim = await tx.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'accepted' } }); if (!claim.count) return false;
-      const pay = await tx.save.updateMany({ where: { userId: d.fromId, cash: { gte: d.price } }, data: { cash: { decrement: d.price }, heat: Math.max(0, br.save.heat - cut), heatAt: new Date() } }); if (!pay.count) throw new Error('broke');
+      const pay = await tx.save.updateMany({ where: { userId: d.fromId, cash: { gte: d.price } }, data: { cash: { decrement: d.price }, heat: { decrement: cut }, heatAt: new Date() } }); if (!pay.count) throw new Error('broke');
       await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: d.price }, heat: { increment: BRIBE_TAKER_HEAT }, heatAt: new Date() } });
+      await clampHeat(tx, [d.fromId, u.id]);
       await tx.transaction.create({ data: { userId: d.fromId, type: 'SPEND', amount: -d.price, description: `bribe:${u.username}` } });
       await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: d.price, description: `bribe:${d.fromName}` } });
       return true;
@@ -108,11 +110,13 @@ export async function POST(req: Request) {
   if (now - d.createdAt.getTime() > DEAL_TTL_MS) { await prisma.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'expired' } }); return err('That offer expired.', 410); }
   const seller = await loadState(d.fromId), ss = seller?.save;
   if (!ss || ss.inside !== biz.id || !ss.insideAt || ss.insideAt < FRESH() || (ss.jailUntil && ss.jailUntil.getTime() > now)) return err('The seller has left the club.', 409);
+  if (dealFor(seller!.profile.profession)?.kind !== d.kind) return err('The seller is no longer offering that.', 409);
 
   // A real officer accepting a dealer/escort offer is a sting: nothing changes hands, the seller is busted.
   if (me.profile.profession === 'police' && def.sting) {
-    const r = await prisma.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'accepted' } }); if (!r.count) return err('That offer is gone.', 409);
+    const r = await prisma.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'sting' } }); if (!r.count) return err('That offer is gone.', 409);
     await prisma.save.update({ where: { userId: d.fromId }, data: { heat: { increment: STING_HEAT }, heatAt: new Date() } });
+    await clampHeat(prisma, [d.fromId]);
     return NextResponse.json({ ok: true, sting: true, cash: me.save.cash, fx: {} });
   }
   if (me.profile.profession === 'police') return err('Officers cannot pay protection.', 403);
@@ -121,7 +125,9 @@ export async function POST(req: Request) {
     const claim = await tx.deal.updateMany({ where: { id, status: 'pending' }, data: { status: 'accepted' } }); if (!claim.count) return false; // double-accept guard
     const pay = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: d.price } }, data: { cash: { decrement: d.price }, ...(def.buyerHeat ? { heat: { increment: def.buyerHeat }, heatAt: new Date() } : {}) } });
     if (!pay.count) throw new Error('broke');
-    await tx.save.update({ where: { userId: d.fromId }, data: { cash: { increment: d.price }, heat: { increment: def.sellerHeat }, heatAt: new Date(), profile: addSkillXp(seller!.profile, def.skill, def.xp) as unknown as Prisma.InputJsonValue } });
+    const profile = await lockedSkillXp(tx, d.fromId, def.skill, def.xp);
+    await tx.save.update({ where: { userId: d.fromId }, data: { cash: { increment: d.price }, heat: { increment: def.sellerHeat }, heatAt: new Date(), profile } });
+    await clampHeat(tx, [u.id, d.fromId]);
     await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -d.price, description: `club:${def.kind}:${d.fromName}` } });
     await tx.transaction.create({ data: { userId: d.fromId, type: 'EARN', amount: d.price, description: `club:${def.kind}:${u.username}` } });
     return true;

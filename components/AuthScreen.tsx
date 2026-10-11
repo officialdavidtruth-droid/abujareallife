@@ -5,7 +5,7 @@ import OriginWheel from './OriginWheel';
 import type { Origin } from '../lib/profile';
 
 export default function AuthScreen({ onAuth }: { onAuth: (u: AccountUser) => void | Promise<void> }) {
-  const [mode, setMode] = useState<'login' | 'signup'>('signup'), [username, setU] = useState(''), [password, setP] = useState(''), [email, setE] = useState('');
+  const [mode, setMode] = useState<'login' | 'signup'>('signup'), [username, setU] = useState(''), [password, setP] = useState(''), [email, setE] = useState(''), [dateOfBirth, setDateOfBirth] = useState(''), [acceptAdultContent, setAcceptAdultContent] = useState(false);
   const [msg, setMsg] = useState(''), [busy, setBusy] = useState(false), [pending, setPending] = useState<AccountUser | null>(null), [spin, setSpin] = useState<{ origin: Origin; user: AccountUser; verify: boolean } | null>(null);
   const [avail, setAvail] = useState<'' | 'checking' | 'free' | 'taken'>('');
   useEffect(() => { // while signing up, tell the player right away if the name is already used
@@ -17,7 +17,7 @@ export default function AuthScreen({ onAuth }: { onAuth: (u: AccountUser) => voi
   const submit = async () => {
     setBusy(true); setMsg('');
     try {
-      const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password, email: mode === 'signup' ? email : undefined }) });
+      const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password, email: mode === 'signup' ? email : undefined, dateOfBirth: mode === 'signup' ? dateOfBirth : undefined, acceptAdultContent: mode === 'signup' ? acceptAdultContent : undefined }) });
       const d = await r.json().catch(() => ({} as { error?: string; user?: AccountUser; verifyEmail?: boolean; origin?: Origin }));
       if (!r.ok) setMsg(d.error || `Server error (${r.status}). Please try again.`);
       else if (mode === 'signup' && d.origin && d.user) setSpin({ origin: d.origin, user: d.user, verify: !!d.verifyEmail });
@@ -32,8 +32,8 @@ export default function AuthScreen({ onAuth }: { onAuth: (u: AccountUser) => voi
       <div className="tabs"><button className={mode === 'signup' ? 'on' : ''} onClick={() => setMode('signup')}>Sign up</button><button className={mode === 'login' ? 'on' : ''} onClick={() => setMode('login')}>Log in</button></div>
       <label>{mode === 'signup' ? 'Choose your character name (username)' : 'Username'}<input autoComplete="username" value={username} maxLength={18} onChange={e => setU(e.target.value)} />{mode === 'signup' && avail === 'taken' && <small className="bad">⛔ “{username.trim()}” is already taken. Please choose another name.</small>}{mode === 'signup' && avail === 'free' && <small style={{ color: '#2fc66b' }}>✅ “{username.trim()}” is available</small>}</label>
       <label>Password<input type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setP(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} /></label>
-      {mode === 'signup' && <label>Email <i>(optional)</i><input type="email" autoComplete="email" value={email} onChange={e => setE(e.target.value)} /></label>}
+      {mode === 'signup' && <><label>Date of birth <input type="date" autoComplete="bday" max={new Date().toISOString().slice(0,10)} value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)} required /></label><div className="adultNotice"><b>🔞 Adults only — 18+</b><p>Abuja Real Life contains mature fictional themes, including nightlife, simulated drug/crime activity, strong language and non-graphic adult relationship content. Sexual activity is not explicitly depicted. You must be at least 18 to create an account.</p><label className="adultCheck"><input type="checkbox" checked={acceptAdultContent} onChange={e => setAcceptAdultContent(e.target.checked)} /> I confirm I am 18 or older and understand this game contains mature content.</label></div><label>Email <i>(optional)</i><input type="email" autoComplete="email" value={email} onChange={e => setE(e.target.value)} /></label></>}
       {msg && <p key={msg} className="bad shake">{msg}</p>}
-      <button className="pri" disabled={busy || !username || !password || (mode === 'signup' && avail === 'taken')} onClick={submit}>{busy ? <><span className="spin" />{mode === 'signup' ? 'Creating account…' : 'Signing in…'}</> : mode === 'signup' ? 'Create account' : 'Log in'}</button></>}
-  </div></div>;
+      <button className="pri" disabled={busy || !username || !password || (mode === 'signup' && (avail === 'taken' || !dateOfBirth || !acceptAdultContent))} onClick={submit}>{busy ? <><span className="spin" />{mode === 'signup' ? 'Creating account…' : 'Signing in…'}</> : mode === 'signup' ? 'Create account' : 'Log in'}</button></>}
+  <style jsx>{`.adultNotice{margin:12px 0;padding:12px;border:1px solid #a855f766;border-radius:12px;background:#7e22ce12;font-size:12px}.adultNotice p{line-height:1.45;margin:6px 0 10px}.adultCheck{display:flex;gap:8px;align-items:flex-start;font-weight:600}.adultCheck input{margin-top:3px;flex-shrink:0}`}</style></div></div>;
 }

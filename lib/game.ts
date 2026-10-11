@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { downState } from './downed';
 import { prisma } from './prisma';
 import { CITY } from './cityData';
@@ -26,6 +27,18 @@ export async function loadState(userId: string) {
 }
 const downPublic = (until: Date | null, kind: string | null) => { const d = downState(until); return { downLeft: Math.ceil(d.downLeft / 1000), safeLeft: Math.ceil(d.safeLeft / 1000), downKind: d.down ? (kind || 'ko') : '' }; };
 export const addSkillXp = (p: Profile, skill: SkillId, xp: number): Profile => ({ ...p, skills: { ...p.skills, [skill]: (p.skills[skill] || 0) + xp } });
+// Heat is always kept inside 0..200, even after atomic increments/decrements (the DB cannot cap an increment by itself).
+export async function clampHeat(db: Pick<typeof prisma, 'save'>, userIds: string[]) {
+  await db.save.updateMany({ where: { userId: { in: userIds }, heat: { gt: 200 } }, data: { heat: 200 } });
+  await db.save.updateMany({ where: { userId: { in: userIds }, heat: { lt: 0 } }, data: { heat: 0 } });
+}
+// Lock the player's Save row, re-read the profile INSIDE the transaction, add skill xp. Avoids overwriting a concurrent profile change.
+export async function lockedSkillXp(tx: Prisma.TransactionClient, userId: string, skill: SkillId, xp: number) {
+  await tx.$queryRaw`SELECT 1 FROM "Save" WHERE "userId" = ${userId} FOR UPDATE`;
+  const row = await tx.save.findUnique({ where: { userId }, select: { profile: true } });
+  const p = sanitizeProfile((row?.profile as Partial<Profile>) || DEFAULT_PROFILE, (row?.profile as Profile) || DEFAULT_PROFILE);
+  return addSkillXp(p, skill, xp) as unknown as Prisma.InputJsonValue;
+}
 export const lvl = (p: Profile, s: SkillId) => skillLevel(p.skills[s] || 0);
 export const publicState = (st: NonNullable<Awaited<ReturnType<typeof loadState>>>) => ({
   cash: st.save.cash, heat: st.save.heat, wanted: st.save.heat >= 40, jailLeft: st.jailLeft, profile: st.profile, rank: st.rank,

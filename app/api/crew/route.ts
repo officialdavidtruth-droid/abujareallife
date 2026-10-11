@@ -117,8 +117,10 @@ export async function POST(req: Request) {
           if (await prisma.crewMember.findUnique({ where: { userId: t.id } })) return err(`${t.username} is already in a crew.`, 409);
           if ((await prisma.crewMember.count({ where: { crewId: me.crewId } })) >= CREW.maxMembers) return err('Your crew is full.', 409);
           if (m!.crew.kind === 'gang' && await isPolice(t.id)) return err('Officers cannot join a gang.', 403);
+          const prev = await prisma.crewInvite.findUnique({ where: { crewId_toName: { crewId: me.crewId, toName: t.username } }, select: { createdAt: true } });
+          const notify = !prev || Date.now() - prev.createdAt.getTime() > 10 * 60_000;   // re-inviting the same player does not send another message for 10 min (stops invite spam)
           await prisma.crewInvite.upsert({ where: { crewId_toName: { crewId: me.crewId, toName: t.username } }, create: { crewId: me.crewId, toName: t.username, fromName: u.username }, update: { fromName: u.username, createdAt: new Date() } });
-          await prisma.message.create({ data: { fromId: u.id, fromName: u.username, toName: t.username, kind: 'text', body: `${kindOf(m!.crew.kind).e} I invited you to ${m!.crew.name} [${m!.crew.tag}]. Open Crew in the menu to join.` } }).catch(() => {});
+          if (notify) await prisma.message.create({ data: { fromId: u.id, fromName: u.username, toName: t.username, kind: 'text', body: `${kindOf(m!.crew.kind).e} I invited you to ${m!.crew.name} [${m!.crew.tag}]. Open Crew in the menu to join.` } }).catch(() => {});
           return NextResponse.json({ ok: true, to: t.username });
         }
         case 'leave': {

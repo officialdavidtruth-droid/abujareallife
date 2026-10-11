@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
-import { insideBiz, loadState } from '../../../lib/game';
+import { clampHeat, insideBiz, loadState } from '../../../lib/game';
 import { MAX_STACK } from '../../../lib/catalog';
 import { BUST_HEAT, HEAT_BUY, HEAT_SELL, ITEM, ITEM_NAME, MAX_PER_DEAL, SAT_WINDOW_MS, bustChance, buyPrice, dealerAt, sellPrice } from '../../../lib/dealers';
 export const dynamic = 'force-dynamic';
@@ -37,11 +37,12 @@ export async function POST(req: Request) {
     if (action === 'buy') {
       if (dealer.role !== 'supplier') return err(`${dealer.name} does not sell. He only buys.`, 409);
       const have = await owned(u.id); if (have + qty > MAX_STACK) return err(`You can carry at most ${MAX_STACK}.`, 409);
-      const cost = buyPrice() * qty, heat = Math.min(200, st.save.heat + HEAT_BUY * qty);
+      const cost = buyPrice() * qty, addHeat = HEAT_BUY * qty;
       try {
         await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-          const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: cost } }, data: { cash: { decrement: cost }, heat, heatAt: new Date() } });
+          const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: cost } }, data: { cash: { decrement: cost }, heat: { increment: addHeat }, heatAt: new Date() } });
           if (!r.count) throw new Stop("You can't afford that.", 402);
+          await clampHeat(tx, [u.id]);
           await tx.inventoryItem.upsert({ where: { userId_itemKey: { userId: u.id, itemKey: ITEM } }, create: { userId: u.id, itemKey: ITEM, name: ITEM_NAME, quantity: qty }, update: { quantity: { increment: qty } } });
           await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -cost, description: `dealer:buy:${qty}` } });
           await tx.crime.create({ data: { userId: u.id, kind: 'drug_buy', caught: false, loot: 0 } });
@@ -54,12 +55,13 @@ export async function POST(req: Request) {
     if (action === 'sell') {
       if (dealer.role !== 'buyer') return err(`${dealer.name} does not buy. Find your buyer.`, 409);
       const sold = await soldRecently(u.id), price = sellPrice(sold), pay = price * qty;
-      const busted = Math.random() < bustChance(st.save.heat, qty), heat = Math.min(200, st.save.heat + (busted ? BUST_HEAT : HEAT_SELL * qty));
+      const busted = Math.random() < bustChance(st.save.heat, qty), addHeat = busted ? BUST_HEAT : HEAT_SELL * qty;
       try {
         await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           const t = await tx.inventoryItem.updateMany({ where: { userId: u.id, itemKey: ITEM, quantity: { gte: qty } }, data: { quantity: { decrement: qty } } });
           if (!t.count) throw new Stop("You don't have that much weed.", 409);
-          await tx.save.update({ where: { userId: u.id }, data: { heat, heatAt: new Date(), ...(busted ? {} : { cash: { increment: pay } }) } });
+          await tx.save.update({ where: { userId: u.id }, data: { heat: { increment: addHeat }, heatAt: new Date(), ...(busted ? {} : { cash: { increment: pay } }) } });
+          await clampHeat(tx, [u.id]);
           if (!busted) await tx.transaction.create({ data: { userId: u.id, type: 'CRIME', amount: pay, description: `dealer:sell:${qty}` } });
           await tx.crime.create({ data: { userId: u.id, kind: 'drug_sell', caught: busted, loot: busted ? 0 : pay } });
         });

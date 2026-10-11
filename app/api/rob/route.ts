@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
-import { loadState } from '../../../lib/game';
-import { OFFICER_HEAT, ROB_HEAT, ROB_MAX, ROB_MIN, ROB_PCT, ROB_RANGE } from '../../../lib/profile';
+import { clampHeat, loadState } from '../../../lib/game';
+import { OFFICER_HEAT, ROB_ANY_COOLDOWN_MS, ROB_HEAT, ROB_MAX, ROB_MIN, ROB_PCT, ROB_RANGE, ROB_VICTIM_SHIELD_MS } from '../../../lib/profile';
 import { DOWN_ROB_MAX, DOWN_ROB_PCT, downState } from '../../../lib/downed';
 import { checkNear } from '../../../lib/proximity';
-import { robCooldownLeft, secs, victimShieldLeft } from '../../../lib/robbery';
+import { ROBBERY_KINDS, robCooldownLeft, secs, victimShieldLeft } from '../../../lib/robbery';
 export const dynamic = 'force-dynamic';
 
 /* Mug a real player standing next to you. Server checks: you are signed in, free, not an officer on duty; the victim is
@@ -30,19 +30,25 @@ export async function POST(req: Request) {
   const shield = await victimShieldLeft(near.him.username);   // someone just robbed them: leave them alone for a bit
   if (shield > 0) return NextResponse.json({ error: 'They were just robbed. Give them a break.', retryIn: shield }, { status: 429 });
   const amount = ds.down ? Math.min(DOWN_ROB_MAX, Math.floor(vs.save.cash * DOWN_ROB_PCT)) : Math.min(ROB_MAX, Math.floor(vs.save.cash * ROB_PCT));
-  const heat = Math.min(200, me.save.heat + ROB_HEAT + (vs.profile.profession === 'police' ? OFFICER_HEAT : 0));
+  const addHeat = ROB_HEAT + (vs.profile.profession === 'police' ? OFFICER_HEAT : 0), heat = Math.min(200, me.save.heat + addHeat);   // heat is shown to the client; the DB gets an atomic increment
   if (amount < ROB_MIN) {   // nothing worth taking: still a crime attempt
     await prisma.$transaction([
-      prisma.save.update({ where: { userId: u.id }, data: { heat, heatAt: new Date() } }),
+      prisma.save.update({ where: { userId: u.id }, data: { heat: { increment: addHeat }, heatAt: new Date() } }),
       prisma.crime.create({ data: { userId: u.id, kind: 'rob_player', caught: false, loot: 0 } }),   // counts toward the cooldown
     ]);
+    await clampHeat(prisma, [u.id]);
     return NextResponse.json({ ok: true, amount: 0, heat, wanted: heat >= 40, cash: me.save.cash, victim: near.him.username });
   }
   try {
     await prisma.$transaction(async tx => {
+      // Re-check the cooldown and the victim's shield under a lock on the robber's row, so parallel requests cannot all pass the checks above.
+      await tx.$queryRaw`SELECT 1 FROM "Save" WHERE "userId" = ${u.id} FOR UPDATE`;
+      if (await tx.crime.findFirst({ where: { userId: u.id, kind: { in: ROBBERY_KINDS }, createdAt: { gt: new Date(Date.now() - ROB_ANY_COOLDOWN_MS) } }, select: { id: true } })) throw new Error('cooldown');
+      if (await tx.message.findFirst({ where: { toName: near.him.username, kind: 'robbed', createdAt: { gt: new Date(Date.now() - ROB_VICTIM_SHIELD_MS) } }, select: { id: true } })) throw new Error('cooldown');
       const took = await tx.save.updateMany({ where: { userId: near.him.userId, cash: { gte: amount } }, data: { cash: { decrement: amount } } });
       if (took.count !== 1) throw new Error('moved');
-      await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: amount }, heat, heatAt: new Date() } });
+      await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: amount }, heat: { increment: addHeat }, heatAt: new Date() } });
+      await clampHeat(tx, [u.id]);
       await tx.transaction.createMany({ data: [
         { userId: u.id, type: 'CRIME', amount, description: 'rob:' + near.him.username },
         { userId: near.him.userId, type: 'SPEND', amount: -amount, description: 'robbed:' + u.username },
@@ -51,7 +57,7 @@ export async function POST(req: Request) {
       // victim notification: stored server-side, so they see it even if they were not looking (it pops up through the phone message ping)
       await tx.message.create({ data: { fromId: u.id, fromName: u.username, toName: near.him.username, kind: 'robbed', body: `💸 ${u.username} robbed you of ₦${amount.toLocaleString('en-US')}${ds.down ? ' while you were out cold' : ''}!`, data: { amount, down: ds.down } } });
     });
-  } catch { return err('They slipped away. Try again.', 409); }
+  } catch (e) { return (e as Error)?.message === 'cooldown' ? err('Slow down.', 429) : err('They slipped away. Try again.', 409); }
   const n = await loadState(u.id);
   return NextResponse.json({ ok: true, amount, heat: n!.save.heat, wanted: n!.save.heat >= 40, cash: n!.save.cash, victim: near.him.username, down: ds.down });
 }

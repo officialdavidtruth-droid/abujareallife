@@ -1,0 +1,33 @@
+'use client';
+import { useEffect, useState } from 'react';
+import RuntimeStyle from './RuntimeStyle';
+
+const HOSTESSES = [
+  { name: 'Zara', role: 'VIP Hostess', style: 'Confident, polished, and always knows the guest list.', line: 'VIP tables are busiest after midnight. Dress sharp and treat people with respect.' },
+  { name: 'Mimi', role: 'Dance-floor Regular', style: 'Lively, playful, and a serious Afrobeats fan.', line: 'The dance floor is where you meet people. Start with a dance or buy the crew a soft drink.' },
+  { name: 'Naya', role: 'Private-table Hostess', style: 'Calm, discreet, and selective about who she talks to.', line: 'Ask the bouncer about the lounge rules before you approach the private tables.' },
+  { name: 'Tee', role: 'Nightlife Promoter', style: 'Outgoing, stylish, and plugged into the city scene.', line: 'Follow the club event board for themed nights, parties, and new faces.' },
+  { name: 'Amara', role: 'Lounge Companion', style: 'Warm, witty, and happy to chat over a drink.', line: 'Keep it respectful. Everyone here can say no, and boundaries are part of the night.' },
+];
+const RUMOURS = [
+  { name: 'Green Leaf', hint: 'The Market supplier is the known in-game source for the existing 🌿 trade. Check the market stalls.' },
+  { name: 'Midnight Dust', hint: 'A fictional contraband rumour linked to back-room chatter around Wuse nightlife. It is flavour text only; no real-world sourcing instructions.' },
+  { name: 'Blue Comet', hint: 'A fictional party-drug rumour mentioned around Jabi after late events. Treat it as an in-game lead, not a real substance guide.' },
+  { name: 'Ember Tabs', hint: 'A fictional street rumour that changes by the night. Ask around the city in-game; the current implemented trade remains 🌿 only.' },
+];
+
+export default function ClubNightlife() {
+  const [open, setOpen] = useState(false), [tab, setTab] = useState<'hostesses'|'rumours'>('hostesses'), [selected, setSelected] = useState(0);
+  useEffect(() => { const onGuest = (event: Event) => { const detail = (event as CustomEvent<{ index: number }>).detail; setSelected(Math.max(0, Math.min(HOSTESSES.length - 1, detail?.index ?? 0))); setTab('hostesses'); setOpen(true); }; window.addEventListener('arl-club-npc', onGuest); return () => window.removeEventListener('arl-club-npc', onGuest); }, []);
+  const person = HOSTESSES[selected];
+  return <>
+    <button className="cnTrigger" onClick={() => setOpen(v => !v)}>💃 Nightlife & player roles</button>
+    {open && <section className="cnPanel" role="dialog" aria-label="Club nightlife">
+      <button className="cnClose" onClick={() => setOpen(false)} aria-label="Close">✕</button>
+      <div className="cnEyebrow">AFTER DARK · 18+</div><h3>Nightlife Lounge · 18+</h3>
+      <div className="cnTabs"><button className={tab==='hostesses'?'active':''} onClick={()=>setTab('hostesses')}>💃 Meet the hostesses</button><button className={tab==='rumours'?'active':''} onClick={()=>setTab('rumours')}>🕶️ Street rumours</button></div>
+      {tab==='hostesses' ? <div className="cnPeople"><div className="cnList">{HOSTESSES.map((p,i)=><button key={p.name} className={selected===i?'chosen':''} onClick={()=>setSelected(i)}><span className="cnAvatar">{['💋','💃','🪩','✨','🥂'][i]}</span><span><b>{p.name}</b><small>{p.role}</small></span></button>)}</div><article className="cnBio"><div className="cnPortrait">{['💋','💃','🪩','✨','🥂'][selected]}</div><b>{person.name} · {person.role}</b><p>{person.style}</p><blockquote>“{person.line}”</blockquote><small>NPC interaction · real players can also choose Hooker / Club Escort or Drug Dealer in Character · consent-respecting</small></article></div> : <div className="cnRumours">{RUMOURS.map(r=><article key={r.name}><b>{r.name}</b><p>{r.hint}</p></article>)}<p className="cnDisclaimer">These are fictional game-world rumours. Only the existing 🌿 dealer system is currently implemented as a trade mechanic.</p></div>}
+    </section>}
+    <RuntimeStyle id="arl-club-nightlife" css={`.clubGuestTag{background:#180e28ed;color:#fff;border:1px solid #e879f9aa;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:900;white-space:nowrap;box-shadow:0 3px 10px #0009;cursor:pointer}.cnTrigger{position:absolute;left:12px;bottom:calc(155px + env(safe-area-inset-bottom,0px));z-index:35;background:#341044f5;color:#fff;border:1px solid #e879f966;border-radius:999px;padding:10px 13px;font-size:12px;font-weight:900;box-shadow:0 6px 18px #0007;max-width:calc(100vw - 24px)}.cnPanel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:55;width:min(520px,calc(100vw - 22px));max-height:min(76vh,620px);overflow:auto;background:#100b1cf7;color:#f8fafc;border:1px solid #c084fc77;border-radius:18px;padding:17px;box-shadow:0 18px 55px #000b;display:flex;flex-direction:column;gap:12px}.cnClose{position:absolute;right:12px;top:12px;background:#ffffff14;color:white;border:1px solid #ffffff20;border-radius:9px;width:34px;height:34px}.cnEyebrow{font-size:10px;letter-spacing:2px;color:#e879f9;font-weight:900}.cnPanel h3{margin:0;font-size:21px}.cnTabs{display:flex;gap:7px}.cnTabs button{flex:1;padding:9px 7px;background:#ffffff0b;border:1px solid #ffffff1a;border-radius:9px;color:#ddd6fe;font-size:11px;font-weight:800}.cnTabs button.active{background:#7e22ce55;border-color:#d8b4fe}.cnPeople{display:grid;grid-template-columns:minmax(130px,.85fr) minmax(0,1.15fr);gap:10px}.cnList{display:flex;flex-direction:column;gap:6px}.cnList button{display:flex;align-items:center;text-align:left;gap:8px;padding:8px;border:1px solid #ffffff15;border-radius:10px;background:#ffffff08;color:#fff}.cnList button.chosen{border-color:#e879f9;background:#86198f40}.cnAvatar{font-size:22px}.cnList b,.cnList small{display:block}.cnList b{font-size:12px}.cnList small{font-size:10px;color:#c4b5fd;margin-top:2px}.cnBio{padding:12px;background:#ffffff08;border:1px solid #ffffff15;border-radius:12px;font-size:12px}.cnPortrait{font-size:42px;text-align:center;padding:8px}.cnBio p{color:#d4d4d8;line-height:1.4}.cnBio blockquote{margin:8px 0;padding-left:10px;border-left:2px solid #d946ef;color:#f5d0fe;line-height:1.5}.cnBio small{color:#a1a1aa;font-size:10px}.cnRumours{display:flex;flex-direction:column;gap:8px}.cnRumours article{padding:10px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff13}.cnRumours b{color:#f0abfc;font-size:12px}.cnRumours p{margin:5px 0 0;color:#d4d4d8;font-size:11px;line-height:1.45}.cnDisclaimer{font-size:10px;color:#a1a1aa;line-height:1.45}@media(max-width:430px){.cnPeople{grid-template-columns:1fr}.cnList{display:grid;grid-template-columns:1fr 1fr}.cnList button{min-width:0}.cnPanel{padding:13px}}`} />
+  </>;
+}

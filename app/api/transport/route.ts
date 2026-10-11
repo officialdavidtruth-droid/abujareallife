@@ -35,30 +35,38 @@ async function postImpl(req: Request) {
   if (b.action === 'drive_fare') {
     const st = await loadState(u.id); if (!st) return err('Create your character first.', 409);
     if (st.profile.profession !== 'driver') return err('Only the Driver profession can take passengers.', 403);
-    const last = await prisma.transaction.findFirst({ where: { userId: u.id, description: { startsWith: 'driver-fare' } }, orderBy: { createdAt: 'desc' } });
-    if (last && Date.now() - last.createdAt.getTime() < 30_000) return err('No passenger waiting yet. Try again shortly.', 429);
+    if (st.jailLeft) return err('You are in jail.', 403);
     const kind: Kind = b.kind === 'bike' ? 'bike' : 'taxi';
     const fare = await fareFor(kind, ch?.district);
     const earn = Math.round(fare * 1.6);
-    await prisma.$transaction([
-      prisma.save.update({ where: { userId: u.id }, data: { cash: { increment: earn }, fame: { increment: 1 } } }),
-      prisma.transaction.create({ data: { userId: u.id, type: 'EARN', amount: earn, description: `driver-fare:${kind}` } }),
-      prisma.reputation.upsert({ where: { userId: u.id }, update: { trust: { increment: 1 }, score: { increment: 1 } }, create: { userId: u.id, score: 51, trust: 51 } }),
-    ]);
+    // The 30 s cooldown is checked and the fare paid under a lock on the player's row, so parallel requests cannot each collect a fare.
+    const paid = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT 1 FROM "Save" WHERE "userId" = ${u.id} FOR UPDATE`;
+      const last = await tx.transaction.findFirst({ where: { userId: u.id, description: { startsWith: 'driver-fare' } }, orderBy: { createdAt: 'desc' } });
+      if (last && Date.now() - last.createdAt.getTime() < 30_000) return false;
+      await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: earn }, fame: { increment: 1 } } });
+      await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: earn, description: `driver-fare:${kind}` } });
+      await tx.reputation.upsert({ where: { userId: u.id }, update: { trust: { increment: 1 }, score: { increment: 1 } }, create: { userId: u.id, score: 51, trust: 51 } });
+      return true;
+    });
+    if (!paid) return err('No passenger waiting yet. Try again shortly.', 429);
     return NextResponse.json({ ok: true, earned: earn });
   }
 
   const kind = String(b.kind || '') as Kind;
   if (!(kind in PRICE)) return err('Transport unavailable.', 400);
   const price = await fareFor(kind, ch?.district);
-  const save = await prisma.save.findUnique({ where: { userId: u.id } });
-  if (!save) return err('Create your character first.', 409);
-  if (save.cash < price) return err(`You need ₦${price.toLocaleString()} for this ride.`, 402);
-  await prisma.$transaction([
-    prisma.save.update({ where: { userId: u.id }, data: { cash: { decrement: price } } }),
-    prisma.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -price, description: `${kind}:city transport` } }),
-  ]);
-  return NextResponse.json({ ok: true, price, cash: save.cash - price });
+  const st = await loadState(u.id); if (!st) return err('Create your character first.', 409);
+  if (st.jailLeft) return err('You are in jail.', 403);
+  const paid = await prisma.$transaction(async tx => {
+    const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: price } }, data: { cash: { decrement: price } } });   // the guard makes it impossible to go below zero
+    if (!r.count) return false;
+    await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -price, description: `${kind}:city transport` } });
+    return true;
+  });
+  if (!paid) return err(`You need ₦${price.toLocaleString()} for this ride.`, 402);
+  const n = await loadState(u.id);
+  return NextResponse.json({ ok: true, price, cash: n!.save.cash });
 }
 
 export async function GET() { try { return await getImpl(); } catch (e) { return serverError(e); } }

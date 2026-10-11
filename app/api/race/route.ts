@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err } from '../../../lib/auth';
-import { addSkillXp, lvl, loadState } from '../../../lib/game';
+import { clampHeat, lockedSkillXp, lvl, loadState } from '../../../lib/game';
 import { dayKey } from '../../../lib/goals';
 import { vehicleByName, VEHICLE_CATALOG } from '../../../lib/vehicles';
 import {
@@ -102,7 +102,8 @@ export async function POST(req: Request) {
     const t = await readRow<Ticket>(u.id, TICKET);
     if (!t.at || !t.ai || !t.vid || !t.tier) return err('No race in progress.', 409);
     const tier = tierById(t.tier), car = await prisma.vehicle.findFirst({ where: { userId: u.id, id: t.vid } });
-    await prisma.inventoryItem.deleteMany({ where: { userId: u.id, itemKey: TICKET } }); // a ticket pays at most once
+    const claimed = await prisma.inventoryItem.deleteMany({ where: { userId: u.id, itemKey: TICKET } });   // a ticket pays at most once: only the request that actually deletes the row may continue
+    if (claimed.count !== 1) return err('No race in progress.', 409);
     if (!tier || !car) return err('That race is gone.', 409);
     const el = (Date.now() - t.at) / 1000;
     if (el < MIN_RACE_SECS) return err('That was too fast to be a real race. Entry lost.', 429);
@@ -115,9 +116,10 @@ export async function POST(req: Request) {
     if (profit > 0) { const room = Math.max(0, DAILY_NET_CAP - day.net); if (profit > room) { prize = tier.fee + room; capped = true; } }
     const net = prize - tier.fee, won = place === 1;
     const fuel = Math.max(0, car.fuel - WEAR.fuel), condition = Math.max(0, car.condition - (place === 4 ? WEAR.lastPlaceCondition : WEAR.condition));
-    const heat = Math.min(200, st.save.heat + tier.heat);
     await prisma.$transaction(async tx => {
-      await tx.save.update({ where: { userId: u.id }, data: { ...(prize > 0 ? { cash: { increment: prize } } : {}), heat, heatAt: new Date(), profile: addSkillXp(st.profile, 'driving', DRIVING_XP.run + (won ? DRIVING_XP.win : 0)) } });
+      const profile = await lockedSkillXp(tx, u.id, 'driving', DRIVING_XP.run + (won ? DRIVING_XP.win : 0));
+      await tx.save.update({ where: { userId: u.id }, data: { ...(prize > 0 ? { cash: { increment: prize } } : {}), heat: { increment: tier.heat }, heatAt: new Date(), profile } });
+      await clampHeat(tx, [u.id]);
       if (prize > 0) await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: prize, description: `race:${tier.id}:${place}` } });
       await tx.vehicle.update({ where: { id: car.id }, data: { fuel, condition, mileage: { increment: 1 } } });
     });

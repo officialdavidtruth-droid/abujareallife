@@ -12,6 +12,7 @@ import StoreModal from './StoreModal';
 import Underworld from './Underworld';
 import { DrinksMenu } from './Intoxication';
 import Dealers from './Dealers';
+import ClubNightlife from './ClubNightlife';
 import { dealerAt } from '../lib/dealers';
 import { BAR_TYPES } from '../lib/intoxication';
 import { sfx } from '../lib/audio';
@@ -96,6 +97,38 @@ function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: n
     <Human look={look} getState={() => (s.current.mv ? 'walk' : 'idle')} getAnim={post.patrol ? undefined : anim} />
     <Html position={[0, 2.75, 0]} center zIndexRange={[5, 0]}><div className="inTag" ref={tag}><button className="glPlate" onClick={() => onTalk(post.idx)}><b>{look.name}</b><em>{post.title}</em><i>💬</i></button></div></Html></group>;
 }
+
+const CLUB_GUESTS: Look[] = [
+  { name: 'Zara · VIP Hostess', model: 'citizen', gender: 'f', hair: 'knotless', hairColor: '#0d0907', skin: '#8b552f', outfit: '#a21caf', pants: '#222831', height: 1.02, outfitModel: 'gown' },
+  { name: 'Mimi · Dancer', model: 'citizen', gender: 'f', hair: 'puffs', hairColor: '#0d0907', skin: '#b87a4b', outfit: '#e07aa1', pants: '#222831', height: .98, outfitModel: 'crop' },
+  { name: 'Naya · Lounge Hostess', model: 'citizen', gender: 'f', hair: 'long', hairColor: '#2b1a12', skin: '#5e3a22', outfit: '#6b4a8a', pants: '#222831', height: 1.04, outfitModel: 'dress' },
+  { name: 'Tee · Promoter', model: 'citizen', gender: 'f', hair: 'braids', hairColor: '#0d0907', skin: '#d9a577', outfit: '#d18a22', pants: '#222831', height: 1, outfitModel: 'ankara' },
+  { name: 'Amara · Lounge Companion', model: 'citizen', gender: 'f', hair: 'ponytail', hairColor: '#0d0907', skin: '#3b2416', outfit: '#b43c35', pants: '#222831', height: 1.01, outfitModel: 'gown' },
+];
+function ClubGuest({ index, room }: { index: number; room: Room }) {
+  const group = useRef<THREE.Group>(null!);
+  const state = useRef({ x: [-5.3, -2.6, 2.6, 5.1, 0][index], z: [-2.8, 2.5, -3.2, 2.2, 0.4][index], tx: [-2.5, 1.5, 4, -3.6, 2.8][index], tz: [2.8, -2.7, 2.5, -2.8, 3.2][index], wait: index * .65, dance: index % 2 === 0, rot: 0 });
+  const look = CLUB_GUESTS[index];
+  useFrame((_, dtRaw) => {
+    if (!group.current) return;
+    const q = state.current, dt = Math.min(dtRaw, .05);
+    q.wait -= dt;
+    if (q.wait <= 0) {
+      const dx = q.tx - q.x, dz = q.tz - q.z, d = Math.hypot(dx, dz);
+      if (d < .22) { q.tx = (Math.sin((index + 1) * (performance.now() / 2600 + 1.7)) * (room.w * .28)); q.tz = Math.cos((index + 2) * (performance.now() / 3100 + 1.2)) * (room.d * .27); q.wait = 1.4 + index * .25; q.dance = Math.random() > .35; }
+      else { const step = Math.min(d, (q.dance ? .42 : .72) * dt); q.x += dx / d * step; q.z += dz / d * step; let a = Math.atan2(dx, dz) - q.rot; a = Math.atan2(Math.sin(a), Math.cos(a)); q.rot += a * Math.min(1, dt * 5); }
+    }
+    q.x = THREE.MathUtils.clamp(q.x, -room.w / 2 + 1.2, room.w / 2 - 1.2); q.z = THREE.MathUtils.clamp(q.z, -room.d / 2 + 1.2, room.d / 2 - 1.2);
+    group.current.position.set(q.x, 0, q.z); group.current.rotation.y = q.rot;
+  });
+  return <group ref={group} position={[state.current.x, 0, state.current.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-npc', { detail: { index, name: look.name } })); }}>
+    <mesh position={[0, 1, 0]}><cylinderGeometry args={[.48, .48, 2, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
+    <Human look={look} getState={() => state.current.dance ? 'idle' : 'walk'} getAnim={() => state.current.dance ? 'dance' : undefined} />
+    <Html position={[0, 2.5, 0]} center distanceFactor={11} zIndexRange={[5, 0]}><button className="clubGuestTag" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-npc', { detail: { index, name: look.name } })); }}>💬 {look.name.split(' · ')[0]}</button></Html>
+  </group>;
+}
+function ClubGuests({ room }: { room: Room }) { return <>{CLUB_GUESTS.map((_, i) => <ClubGuest key={i} index={i} room={room} />)}</>; }
+
 type Mgr = { seat: boolean; title: string; needed: number; daily: number; tasks: { id: string; label: string; mins: number }[]; holder: { name: string; look: Look; until: number } | null;
   me: { isHolder: boolean; holdsSeat: boolean; progress: number; salaryInMs: number; otherSeat: boolean }; active: { label: string; secs: number; left: number } | null };
 // The manager's desk. Vacant until someone applies. If the manager is not in the room right now, their character still sits at the desk.
@@ -291,6 +324,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
       <mesh rotation-x={-Math.PI / 2} receiveShadow onClick={e => { if (e.delta > 6) return; setMenu(null); walk(e.point.x, e.point.z); }}><planeGeometry args={[room.w, room.d]} /><meshStandardMaterial color={room.floor} roughness={.9} /></mesh>
       <Walls room={room} /><Furniture room={room} /><Decor room={room} />
       {room.posts.map(p => <Staff key={p.idx} post={p} look={staff[p.idx]} onTalk={talk} />)}
+      {biz.type === 'Nightclub' && <ClubGuests room={room} />}
       {room.office && <ManagerSeat office={room.office} mgr={mgr} meName={look.name} onTap={() => { const sp = room.spots.find(x => x.id === 'mgmt'); if (sp) goSpot(sp); }} />}
       {room.spots.map(s => <SpotMark key={s.id} s={s} active={spot?.id === s.id} onTap={goSpot} />)}
       <Player look={look} room={room} ctl={ctl} onSpot={setSpot} onExit={() => exitNow()} frozen={!!menu || store} snap={snap} cam={cam} go={go} onArrive={arrive} lock={lock} onBlocked={() => { if (Date.now() - blockedAt.current > 3000) { blockedAt.current = Date.now(); toast('🔒 You are on the clock. Tap Leave to forfeit.'); } }} />
@@ -304,7 +338,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
     {(BAR_TYPES as string[]).includes(biz.type) && <DrinksMenu onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
     {dealerAt(biz.type) && <Dealers onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
-    {biz.type === 'Nightclub' && <Underworld onCash={onCash} onFx={onFx} toast={toast} />}
+    {biz.type === 'Nightclub' && <><Underworld onCash={onCash} onFx={onFx} toast={toast} /><ClubNightlife /></>}
     {gameOpen && job?.kind === 'shift' && gameKind && left > 5 && <JobGame kind={gameKind} initial={score} onClose={() => setGameOpen(false)} onStars={async (stars) => { const r = await post('/api/shift', { action: 'play', stars }); if (!r.ok) return null; const sc: Score = { pts: r.d.pts, rounds: r.d.rounds, bonus: r.d.bonus, capped: r.d.capped }; setScore(sc); return sc; }} />}
     <RuntimeStyle id="arl-jobopen" css={`.jgOpen{all:unset;cursor:pointer;margin-left:8px;padding:3px 9px;border-radius:99px;background:#d99a42;color:#1a1208;font-weight:900;font-size:11px;pointer-events:auto}`} />
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}

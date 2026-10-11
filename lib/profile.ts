@@ -56,8 +56,8 @@ export const PROFESSIONS = [
   { id: 'firefighter', label: 'Firefighter', e: '🚒', rank: 1, blurb: 'Fires, floods and rescues. First on the scene.' },
   { id: 'mechanic', label: 'Mechanic', e: '🔧', rank: 1, blurb: 'Repair breakdowns and crashed vehicles.' },
   // Underworld roles: played by REAL players only. Their business is done with other real players inside the Nightclub (see lib/nightlife.ts).
-  { id: 'escort', label: 'Club Escort', e: '💃', rank: 1, blurb: 'Work the club: sell your company to real players. Police can sting you.' },
-  { id: 'dealer', label: 'Drug Dealer', e: '💊', rank: 1, blurb: 'Sell to real players in the club. High pay, high heat, real police.' },
+  { id: 'escort', label: 'Hooker / Club Escort', e: '💃', rank: 1, blurb: 'An 18+ fictional nightlife role: offer company to consenting real players, who choose whether to accept. Police can sting you.' },
+  { id: 'dealer', label: 'Drug Dealer', e: '💊', rank: 1, blurb: 'An 18+ fictional crime role: make in-game contraband offers to real players in the club. High pay, high heat, real police.' },
   { id: 'gang', label: 'Gang Member', e: '🔫', rank: 1, blurb: 'Run protection in the club and rule the night. Heat follows.' },
 ] as const;
 export type ProfessionId = (typeof PROFESSIONS)[number]['id'];

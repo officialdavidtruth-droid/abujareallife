@@ -46,6 +46,8 @@ model User {
   passwordHash String
   email        String?    @unique
   emailVerifiedAt DateTime?
+  dateOfBirth DateTime?
+  adultContentAcceptedAt DateTime?
   origin       String?   // 'LAPO' | 'NEPO': spun once at sign-up, never changes
   name         String?
   createdAt    DateTime   @default(now())

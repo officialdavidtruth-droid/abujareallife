@@ -13,7 +13,7 @@ export type DealDef = {
   sting: boolean;                                 // an officer accepting this is a sting: no money, no goods, seller gets busted heat
 };
 export const DEALS: Record<DealKind, DealDef> = {
-  company: { kind: 'company', by: 'escort', label: 'Private booth & company', e: '💃', blurb: 'A VIP booth and a good night.', min: 15_000, max: 250_000, sellerHeat: 10, buyerHeat: 0, fx: { fun: 40, social: 30, energy: -10 }, skill: 'charisma', xp: 8, sting: true },
+  company: { kind: 'company', by: 'escort', label: 'Private booth & company', e: '💃', blurb: 'A fictional adult nightlife offer; the other real player chooses whether to accept.', min: 15_000, max: 250_000, sellerHeat: 10, buyerHeat: 0, fx: { fun: 40, social: 30, energy: -10 }, skill: 'charisma', xp: 8, sting: true },
   stash: { kind: 'stash', by: 'dealer', label: 'Street package', e: '💊', blurb: 'Quiet hand-off in the corner.', min: 10_000, max: 200_000, sellerHeat: 25, buyerHeat: 8, fx: { fun: 45, social: 10, energy: -15, hygiene: -5 }, skill: 'hustling', xp: 8, sting: true },
   protection: { kind: 'protection', by: 'gang', label: 'Protection fee', e: '🔫', blurb: 'Pay up and stay on our good side.', min: 5_000, max: 150_000, sellerHeat: 15, buyerHeat: 0, fx: { social: 5 }, skill: 'combat', xp: 8, sting: false },
 };

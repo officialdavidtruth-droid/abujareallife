@@ -16,15 +16,16 @@ export const dynamic = 'force-dynamic';
 const KEY = 'casino';
 type Row = { day: string; net: number; wagered: number; rounds: number; limit: number; pend: { v: number; at: number } | null; breakUntil: number };
 
-async function readRow(userId: string): Promise<Row> {
-  const r = await prisma.inventoryItem.findUnique({ where: { userId_itemKey: { userId, itemKey: KEY } }, select: { metadata: true } });
+type Db = Pick<typeof prisma, 'inventoryItem'>;
+async function readRow(userId: string, db: Db = prisma): Promise<Row> {
+  const r = await db.inventoryItem.findUnique({ where: { userId_itemKey: { userId, itemKey: KEY } }, select: { metadata: true } });
   const m = ((r?.metadata as Partial<Row>) || {}), today = dayKey(), now = Date.now();
   let limit = Math.min(LIMIT_MAX, Math.max(LIMIT_MIN, Number(m.limit) || LIMIT_DEFAULT)), pend = m.pend && Number(m.pend.v) ? { v: Number(m.pend.v), at: Number(m.pend.at) || 0 } : null;
   if (pend && now >= pend.at) { limit = Math.min(LIMIT_MAX, Math.max(LIMIT_MIN, pend.v)); pend = null; } // a raise only counts after its delay
   const same = m.day === today;
   return { day: today, net: same ? Number(m.net) || 0 : 0, wagered: same ? Number(m.wagered) || 0 : 0, rounds: same ? Number(m.rounds) || 0 : 0, limit, pend, breakUntil: Number(m.breakUntil) || 0 };
 }
-const save = (userId: string, row: Row) => prisma.inventoryItem.upsert({ where: { userId_itemKey: { userId, itemKey: KEY } }, update: { metadata: row, quantity: 0 }, create: { userId, itemKey: KEY, name: 'Casino log', quantity: 0, metadata: row } });
+const save = (userId: string, row: Row, db: Db = prisma) => db.inventoryItem.upsert({ where: { userId_itemKey: { userId, itemKey: KEY } }, update: { metadata: row, quantity: 0 }, create: { userId, itemKey: KEY, name: 'Casino log', quantity: 0, metadata: row } });
 const toppedUp = async (userId: string) => BLOCK_IF_TOPPED_UP && !!(await prisma.transaction.findFirst({ where: { userId, type: 'TOPUP', description: { startsWith: 'paystack:' } }, select: { id: true } }));
 const view = (row: Row, cash: number) => {
   const now = Date.now(), left = Math.max(0, row.limit + row.net);
@@ -45,44 +46,46 @@ export async function POST(req: Request) {
   const b = await req.json().catch(() => ({})), st = await loadState(u.id); if (!st) return err('Create your character first.', 409);
   if (st.jailLeft) return err('You are in jail.', 403);
   if (await toppedUp(u.id)) return err('The casino is closed to accounts that have bought game money with real money.', 403);
-  const row = await readRow(u.id), action = String(b.action || ''), now = Date.now();
+  const action = String(b.action || ''), now = Date.now();
+  if (!['limit', 'break', 'play'].includes(action)) return err('Unknown action.');
 
-  if (action === 'limit') { // lowering is instant, raising waits 24h
-    const v = Math.round(Number(b.value)); if (!Number.isFinite(v) || v < LIMIT_MIN || v > LIMIT_MAX) return err('Pick a limit between the allowed minimum and maximum.');
-    if (v < row.limit) { row.limit = v; row.pend = null; } else if (v > row.limit) row.pend = { v, at: now + RAISE_DELAY_MS }; else row.pend = null;
-    await save(u.id, row); return NextResponse.json({ ok: true, ...view(row, st.save.cash), closed: closed(row) });
-  }
-  if (action === 'break') { row.breakUntil = Math.max(row.breakUntil, now + BREAK_MS); await save(u.id, row); return NextResponse.json({ ok: true, ...view(row, st.save.cash), closed: closed(row) }); }
-  if (action !== 'play') return err('Unknown action.');
+  // Everything below runs inside ONE transaction holding a lock on the player's Save row, so parallel requests are served one at a time:
+  // the loss limit, break and limit changes can no longer be bypassed or overwritten by racing requests.
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT 1 FROM "Save" WHERE "userId" = ${u.id} FOR UPDATE`;
+    const row = await readRow(u.id, tx), cash = (await tx.save.findUnique({ where: { userId: u.id }, select: { cash: true } }))?.cash ?? 0;
 
-  const bet = Math.floor(Number(b.bet)), shut = closed(row); if (shut) return err(shut, 403);
-  if (!Number.isFinite(bet) || bet < MIN_BET || bet > MAX_BET) return err('That bet is outside the table limits.');
-  const room = row.limit + row.net; if (bet > room) return err(`Your daily loss limit only leaves room for a bet of up to ₦${Math.max(0, room).toLocaleString()}.`, 403);
-  if (st.save.cash < bet) return err("You don't have enough cash for that bet.", 402);
+    if (action === 'limit') { // lowering is instant, raising waits 24h
+      const v = Math.round(Number(b.value)); if (!Number.isFinite(v) || v < LIMIT_MIN || v > LIMIT_MAX) return err('Pick a limit between the allowed minimum and maximum.');
+      if (v < row.limit) { row.limit = v; row.pend = null; } else if (v > row.limit) row.pend = { v, at: now + RAISE_DELAY_MS }; else row.pend = null;
+      await save(u.id, row, tx); return NextResponse.json({ ok: true, ...view(row, cash), closed: closed(row) });
+    }
+    if (action === 'break') { row.breakUntil = Math.max(row.breakUntil, now + BREAK_MS); await save(u.id, row, tx); return NextResponse.json({ ok: true, ...view(row, cash), closed: closed(row) }); }
 
-  let mult = 0, outcome: Record<string, unknown> = {};
-  const game = String(b.game || '');
-  if (game === 'slots') {
-    const bag = SYMBOLS.flatMap(x => Array(x.w).fill(x.s)), reels = [0, 1, 2].map(() => bag[randomInt(bag.length)] as string);
-    mult = slotMult(reels); outcome = { reels };
-  } else if (game === 'roulette') {
-    const p = (b.pick || {}) as RoulettePick; if (!['red', 'black', 'even', 'odd', 'low', 'high', 'number'].includes(p.type)) return err('Pick a bet.');
-    if (p.type === 'number' && !(Number.isInteger(p.n) && p.n! >= 0 && p.n! <= 36)) return err('Pick a number from 0 to 36.');
-    const n = randomInt(37); mult = rouletteMult(p, n); outcome = { n, color: colorOf(n) };
-  } else if (game === 'dice') {
-    const t = Math.floor(Number(b.target)); if (!(t >= DICE_MIN && t <= DICE_MAX)) return err('Pick a target between the allowed limits.');
-    const roll = randomInt(1, 101); mult = roll < t ? diceMult(t) : 0; outcome = { roll, target: t, chance: diceChance(t), mult: diceMult(t) };
-  } else return err('Unknown game.');
+    const bet = Math.floor(Number(b.bet)), shut = closed(row); if (shut) return err(shut, 403);
+    if (!Number.isFinite(bet) || bet < MIN_BET || bet > MAX_BET) return err('That bet is outside the table limits.');
+    const room = row.limit + row.net; if (bet > room) return err(`Your daily loss limit only leaves room for a bet of up to ₦${Math.max(0, room).toLocaleString()}.`, 403);
+    if (cash < bet) return err("You don't have enough cash for that bet.", 402);
 
-  const payout = Math.min(MAX_WIN, Math.round(bet * mult)), delta = payout - bet;
-  const ok = await prisma.$transaction(async tx => {
-    const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: bet } }, data: { cash: { increment: delta } } }); if (!r.count) return false;
+    let mult = 0, outcome: Record<string, unknown> = {};
+    const game = String(b.game || '');
+    if (game === 'slots') {
+      const bag = SYMBOLS.flatMap(x => Array(x.w).fill(x.s)), reels = [0, 1, 2].map(() => bag[randomInt(bag.length)] as string);
+      mult = slotMult(reels); outcome = { reels };
+    } else if (game === 'roulette') {
+      const p = (b.pick || {}) as RoulettePick; if (!['red', 'black', 'even', 'odd', 'low', 'high', 'number'].includes(p.type)) return err('Pick a bet.');
+      if (p.type === 'number' && !(Number.isInteger(p.n) && p.n! >= 0 && p.n! <= 36)) return err('Pick a number from 0 to 36.');
+      const n = randomInt(37); mult = rouletteMult(p, n); outcome = { n, color: colorOf(n) };
+    } else if (game === 'dice') {
+      const t = Math.floor(Number(b.target)); if (!(t >= DICE_MIN && t <= DICE_MAX)) return err('Pick a target between the allowed limits.');
+      const roll = randomInt(1, 101); mult = roll < t ? diceMult(t) : 0; outcome = { roll, target: t, chance: diceChance(t), mult: diceMult(t) };
+    } else return err('Unknown game.');
+
+    const payout = Math.min(MAX_WIN, Math.round(bet * mult)), delta = payout - bet;
+    await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: delta } } });   // cash >= bet was checked under the lock
     await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -bet, description: `casino-bet:${game}` } });
     if (payout > 0) await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: payout, description: `casino:${game}` } });
-    return true;
+    row.net += delta; row.wagered += bet; row.rounds += 1; await save(u.id, row, tx);
+    return NextResponse.json({ ok: true, game, outcome, bet, payout, win: payout > 0, delta, ...view(row, cash + delta), closed: closed(row) });
   });
-  if (!ok) return err("You don't have enough cash for that bet.", 402);
-  row.net += delta; row.wagered += bet; row.rounds += 1; await save(u.id, row);
-  const n = await loadState(u.id);
-  return NextResponse.json({ ok: true, game, outcome, bet, payout, win: payout > 0, delta, ...view(row, n!.save.cash), closed: closed(row) });
 }

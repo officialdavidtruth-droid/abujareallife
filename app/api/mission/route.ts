@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, throttled } from '../../../lib/auth';
-import { loadState } from '../../../lib/game';
+import { clampHeat, loadState } from '../../../lib/game';
 import { MISSIONS, MISSION_COOLDOWN_MS, MISSION_GRACE_MS, MISSION_WINDOW_MS } from '../../../lib/missions';
 /* Missions are tracked with Transaction rows (no schema change needed):
    'mission-start:<id>'  amount 0     -> the contract is active (deleted when claimed / abandoned)
@@ -30,26 +30,34 @@ export async function POST(req: Request) {
   }
   const m = MISSIONS.find(x => x.id === b.id); if (!m) return err('Unknown mission.');
 
+  // start and claim run under a lock on the player's row: parallel requests can no longer create several start rows
+  // (and so claim the same contract several times) or pass the cooldown check together.
   if (b.action === 'start') {
-    const done = await prisma.transaction.findFirst({ where: { userId: u.id, description: 'mission:' + m.id, createdAt: { gte: since(MISSION_COOLDOWN_MS) } } });
-    if (done) return err('You already completed this contract. Try again later.', 429);
-    await prisma.transaction.deleteMany({ where: { userId: u.id, description: { startsWith: 'mission-start:' } } }); // one active contract at a time
-    const row = await prisma.transaction.create({ data: { userId: u.id, type: 'MISSION', amount: 0, description: 'mission-start:' + m.id } });
-    if (m.heat) await prisma.save.update({ where: { userId: u.id }, data: { heat: { increment: m.heat }, heatAt: new Date() } }); // chase contracts put the police on you at once
-    return NextResponse.json({ ok: true, startedAt: row.createdAt.getTime(), heatAdded: m.heat });
+    return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT 1 FROM "Save" WHERE "userId" = ${u.id} FOR UPDATE`;
+      const done = await tx.transaction.findFirst({ where: { userId: u.id, description: 'mission:' + m.id, createdAt: { gte: since(MISSION_COOLDOWN_MS) } } });
+      if (done) return err('You already completed this contract. Try again later.', 429);
+      await tx.transaction.deleteMany({ where: { userId: u.id, description: { startsWith: 'mission-start:' } } }); // one active contract at a time
+      const row = await tx.transaction.create({ data: { userId: u.id, type: 'MISSION', amount: 0, description: 'mission-start:' + m.id } });
+      if (m.heat) { await tx.save.update({ where: { userId: u.id }, data: { heat: { increment: m.heat }, heatAt: new Date() } }); await clampHeat(tx, [u.id]); } // chase contracts put the police on you at once
+      return NextResponse.json({ ok: true, startedAt: row.createdAt.getTime(), heatAdded: m.heat });
+    });
   }
 
   if (b.action === 'claim') {
-    const start = await prisma.transaction.findFirst({ where: { userId: u.id, description: 'mission-start:' + m.id, createdAt: { gte: since(MISSION_WINDOW_MS) } }, orderBy: { createdAt: 'desc' } });
-    if (!start) return err('Start the mission first.');
-    if (Date.now() - start.createdAt.getTime() < m.minSecs * 1000) return err('Too fast. No pay.', 429);
-    if (Date.now() - start.createdAt.getTime() > m.deadlineSecs * 1000 + MISSION_GRACE_MS) { await prisma.transaction.deleteMany({ where: { id: start.id } }); return err('Mission failed: time ran out.', 410); }
-    const del = await prisma.transaction.deleteMany({ where: { id: start.id } });   // atomic: only one claim can consume the start row
-    if (del.count !== 1) return err('Already claimed.', 409);
-    await prisma.save.update({ where: { userId: u.id }, data: { cash: { increment: m.reward } } });
-    await prisma.transaction.create({ data: { userId: u.id, type: 'EARN', amount: m.reward, description: 'mission:' + m.id } });
-    const n = await loadState(u.id);
-    return NextResponse.json({ ok: true, reward: m.reward, cash: n!.save.cash });
+    return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT 1 FROM "Save" WHERE "userId" = ${u.id} FOR UPDATE`;
+      const start = await tx.transaction.findFirst({ where: { userId: u.id, description: 'mission-start:' + m.id, createdAt: { gte: since(MISSION_WINDOW_MS) } }, orderBy: { createdAt: 'desc' } });
+      if (!start) return err('Start the mission first.');
+      if (await tx.transaction.findFirst({ where: { userId: u.id, description: 'mission:' + m.id, createdAt: { gte: since(MISSION_COOLDOWN_MS) } }, select: { id: true } })) return err('You already completed this contract. Try again later.', 429);
+      if (Date.now() - start.createdAt.getTime() < m.minSecs * 1000) return err('Too fast. No pay.', 429);
+      if (Date.now() - start.createdAt.getTime() > m.deadlineSecs * 1000 + MISSION_GRACE_MS) { await tx.transaction.deleteMany({ where: { userId: u.id, description: { startsWith: 'mission-start:' } } }); return err('Mission failed: time ran out.', 410); }
+      await tx.transaction.deleteMany({ where: { userId: u.id, description: { startsWith: 'mission-start:' } } });   // consume every start row, not just this one
+      await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: m.reward } } });
+      await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: m.reward, description: 'mission:' + m.id } });
+      const n = await tx.save.findUnique({ where: { userId: u.id }, select: { cash: true } });
+      return NextResponse.json({ ok: true, reward: m.reward, cash: n?.cash ?? 0 });
+    });
   }
   return err('Unknown action.');
 }

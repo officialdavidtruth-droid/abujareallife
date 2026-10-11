@@ -59,6 +59,8 @@ CREATE INDEX IF NOT EXISTS "Save_fame_idx" ON "Save"("fame");
 
 -- Origin is decided once at sign-up and stored on the account.
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "dateOfBirth" TIMESTAMP(3);
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "adultContentAcceptedAt" TIMESTAMP(3);
 
 -- Manager seats (7-day terms) + management-task progress.
 ALTER TABLE "Save" ADD COLUMN IF NOT EXISTS "mgrTasks" INTEGER NOT NULL DEFAULT 0;

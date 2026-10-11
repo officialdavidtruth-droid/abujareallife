@@ -36,7 +36,9 @@ import { playScene } from './StreetEscort';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
-import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit } from '../lib/collision';
+import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit, setPlan } from '../lib/collision';
+import PlanHouse from './HomePlan';
+import { exteriorWalls, planBounds, type Room as PlanRoom } from '../lib/homeRooms';
 import { USES } from '../lib/pantry';
 import { itemById } from '../lib/catalog';
 import FurnitureModel, { hasFurnitureModel } from './FurnitureModels';
@@ -128,7 +130,20 @@ const OBJ: Obj[] = [
 const GATE: Record<string, string> = { massage: 'massage', aquarium: 'aquarium', treadmill: 'treadmill', gbench: 'gym_room', gbag: 'gym_room', cinema: 'cinema_room', odesk: 'office_room', oshelf: 'office_room' };
 const LUX_IDS = new Set(Object.keys(GATE));
 const has = (id: string) => HOME.own.has(id);
-const hasObj = (id: string) => !GATE[id] || HOME.own.has(GATE[id]);
+/* Build mode (BUILD-MODE.md, step 2): a house with saved rooms is drawn and walked from those rooms. The old fixed flat's fixtures stay hidden (until step 4 converts them) except the front door, which moves to the west edge of the plan. */
+const PLANR = { rooms: [] as PlanRoom[], ver: 0, door: null as null | { x: number; z: number; r: number }, spawn: [0, .5] as P };
+let legacyIds: Set<string> | null = null;
+const planHidden = (id: string) => { if (!PLANR.rooms.length || id === 'door') return false; legacyIds ??= new Set([...OBJ.map(o => o.id), ...DECOR.map(d => d.id), 'wall', 'swall']); return legacyIds.has(id); };
+const hasObj = (id: string) => !planHidden(id) && (!GATE[id] || HOME.own.has(GATE[id]));
+/** Take a house's saved rooms (empty = the old fixed flat): walkable area, front door, and where you appear. */
+function applyPlan(rooms: PlanRoom[]) {
+  PLANR.rooms = rooms; PLANR.ver++; setPlan(rooms.length ? rooms : null); PLANR.door = null; blKey = '\0';
+  if (!rooms.length) { PLANR.spawn = [0, .5]; return; }
+  const west = Math.min(...rooms.map(r => r.x)), seg = exteriorWalls(rooms).filter(w => w.axis === 'z' && w.x === west).sort((a, b) => a.z - b.z)[0];
+  const dz = seg.z + seg.len / 2;
+  PLANR.door = { x: seg.x - (-6.2), z: dz - 3.5, r: 0 }; PLANR.spawn = [seg.x + 1.4, dz];   // the door object is at (-6.2, 3.5) in the old flat; this shifts it onto the plan's west wall
+  if (blocked([], S.pos as P, undefined, HARD)) { S.pos = [PLANR.spawn[0], PLANR.spawn[1]]; S.q = []; S.cur = null; }
+}
 const EMOTES: Act[] = [
   { k: 'wave', label: 'Wave', e: '👋', dur: 6, fx: { social: 8 }, pose: 'stand', anim: 'wave' },
   { k: 'edance', label: 'Dance', e: '🕺', dur: 20, fx: { fun: 22, energy: -6 }, pose: 'stand', anim: 'dance' },
@@ -171,7 +186,7 @@ const BASE_NAMES: Record<string, string> = { tv: 'Sofa', desk: 'Desk', odesk: 'E
 const EDITABLE_HOME_IDS = new Set(OBJ.map(o => o.id).concat(DECOR.map(d => d.id), Object.keys(PART_AT)).filter(id => id !== 'door'));
 const homeName = (id: string) => HOME_OWNED.find(i => i.id === id)?.name || PART_NAMES[id] || BASE_NAMES[id] || OBJ.find(o => o.id === id)?.name || id;
 const rotXZ = (a: number, x: number, z: number): [number, number] => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
-const homeT = (id: string) => HOME_LAYOUT[id] || { x: 0, z: 0, r: 0 };
+const homeT = (id: string) => (id === 'door' && PLANR.door) || HOME_LAYOUT[id] || { x: 0, z: 0, r: 0 };
 const movedP = (p: P, id: string): P => { const t = homeT(id); return [p[0] + t.x, p[1] + t.z]; };
 const movedObj = (o: Obj): Obj => { const t = homeT(o.id); const sk = o.sp || o.id; const p = movedP(o.p, o.id); const spot = movedP(o.spot, sk); const appr = o.appr ? movedP(o.appr, sk) : undefined; const boxes = (o.boxes || []).map((b, i) => { const tb = homeT(o.bp?.[i] || o.id); return [b[0] + tb.x, b[1] + tb.x, b[2] + tb.z, b[3] + tb.z] as Box; }); return { ...o, p, rot: o.rot + t.r, spot, appr, boxes, face: o.face + homeT(sk).r }; };
 const movedDecor = (d: typeof DECOR[number]) => { const t = homeT(d.id); return { ...d, p: movedP(d.p, d.id), rot: d.rot + t.r, boxes: d.boxes.map(b => [b[0] + t.x, b[1] + t.x, b[2] + t.z, b[3] + t.z] as Box) }; };
@@ -233,15 +248,15 @@ const WING_IDS = new Set(['toybox', 'kdesk', 'kbedA', 'kbedB', 'nstand', 'kwar']
 const BL_BASE: Blk[] = [...HOME_OWNED.flatMap(o => [{ id:o.id, b:ownedBox(o) }]), ...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
 let blKey = '\0', blList: Blk[] = [];
 const BL = (): Blk[] => {
-  const key = (wingOn() ? 'w' : '') + (southOn() ? 's' : '') + [...LUX_IDS].filter(hasObj).join(',') + JSON.stringify(HOME_LAYOUT);
+  const key = PLANR.ver + (wingOn() ? 'w' : '') + (southOn() ? 's' : '') + [...LUX_IDS].filter(hasObj).join(',') + JSON.stringify(HOME_LAYOUT);
   if (key !== blKey) { blKey = key; blList = [...HOME_OWNED.flatMap(o => [{ id:o.id, b:ownedBox(o) }]), ...OBJ.flatMap(o => (movedObj(o).boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => movedDecor(d).boxes.map(b => ({ id: d.id, b }))), ...WALLS, ...(southOn() ? SWALLS : [])].filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && hasObj(k.id)); }
   return blList;
 };
 // Apply what the server says you own: build/remove the wing, move the family in, show the luxury items.
 function applyHome(ids: string[]) {
   HOME.own = new Set(ids); setEastLimit(wingOn()); setSouthLimit(southOn());
-  if (!wingOn() && S.pos[0] > 5.5) { S.pos = [4.8, S.pos[1]]; S.q = []; S.cur = null; }
-  if (!southOn() && S.pos[1] > 4.1) { S.pos = [S.pos[0], 3.7]; S.q = []; S.cur = null; }
+  if (!PLANR.rooms.length && !wingOn() && S.pos[0] > 5.5) { S.pos = [4.8, S.pos[1]]; S.q = []; S.cur = null; }
+  if (!PLANR.rooms.length && !southOn() && S.pos[1] > 4.1) { S.pos = [S.pos[0], 3.7]; S.q = []; S.cur = null; }
   if (has('solar')) S.power = true;
   const fam = HOME.own.has('family') && wingOn(); if (fam !== F.on) F.setOn(fam);
 }
@@ -974,6 +989,7 @@ function Lights() {
     const h = (S.min / 60) % 24, s = Math.max(0, Math.sin((h - 6) / 12 * Math.PI));
     sun.current.intensity = .15 + 2.4 * s; amb.current.intensity = .25 + 1 * s;
     sun.current.color.set(h < 8 || h > 17 ? '#ffb27a' : '#fff4e0');
+    if (PLANR.rooms.length) { const b = planBounds(PLANR.rooms); lamp.current.position.set(b.cx, 3.2, b.cz); }
     lamp.current.intensity = S.power ? (1 - s) * 70 : 0; lamp2.current.intensity = S.power && wingOn() ? (1 - s) * 55 : 0; lamp3.current.intensity = S.power && southOn() ? (1 - s) * 60 : 0;
     (scene.background as THREE.Color).copy(night).lerp(day, s);
   });
@@ -1012,6 +1028,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
   const { camera, gl } = useThree();
   const drag = useRef<{ id: string; sx: number; sz: number; tx: number; tz: number; r: number } | null>(null), ctl = useRef<any>(null), lay = useRef(onLayout), plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   lay.current = onLayout;
+  const plan = PLANR.rooms.length > 0, PB = plan ? planBounds(PLANR.rooms) : { cx: 0, cz: 0 };   // build mode: draw the house from its saved rooms
   EDIT.on = editingHome;
   EDIT.pick = id => { setHomeSel(id); setSel(null); };
   EDIT.down = (id, e) => { e.stopPropagation(); const h = e.ray.intersectPlane(plane, new THREE.Vector3()); if (!h) return; const t = homeT(id); drag.current = { id, sx: h.x, sz: h.z, tx: t.x, tz: t.z, r: t.r }; if (ctl.current) ctl.current.enabled = false; setHomeSel(id); setSel(null); };
@@ -1085,7 +1102,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     if (st.clock.elapsedTime - nearAt.current > .12) { // the piece of furniture you are next to (for the "E" prompt)
       nearAt.current = st.clock.elapsedTime; let best: Obj | null = null, bd = 1.05;
       if (!S.cur || S.cur.t === 'walk') for (const raw of OBJ) {
-        if (ui.homeSold.includes(raw.id) || (GATE[raw.id] && !ui.home.includes(GATE[raw.id])) || !(ui.famOn || raw.acts.some(x => !x.all))) continue;
+        if (planHidden(raw.id) || ui.homeSold.includes(raw.id) || (GATE[raw.id] && !ui.home.includes(GATE[raw.id])) || !(ui.famOn || raw.acts.some(x => !x.all))) continue;
         const o = movedObj(raw); let dd = Math.min(dist(S.pos as P, o.spot), o.appr ? dist(S.pos as P, o.appr) : 9);
         for (const b of o.boxes || []) dd = Math.min(dd, Math.hypot(Math.max(b[0] - S.pos[0], 0, S.pos[0] - b[1]), Math.max(b[2] - S.pos[1], 0, S.pos[1] - b[3])));
         if (dd < bd) { bd = dd; best = o; }
@@ -1095,27 +1112,30 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
   });
   return <>
     <Lights />
-    {tpOn && <TPWalls ui={ui} />}
+    {tpOn && !plan && <TPWalls ui={ui} />}
     {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: coarse ? 'auto' : 'none' }}><div className="tpPrompt" onClick={() => TP.interact?.()}>{coarse ? <b>👆</b> : <b>E</b>} {near.name}</div></Html>}
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
-    <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
-      <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial key={HL.floorKind} map={HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null} color={HL.floorTint} roughness={HL.floorKind === 'marble' ? .22 : .7} metalness={HL.floorKind === 'marble' ? .12 : 0} /></mesh>
-    <Room />
-    {ui.south && <SouthWing ui={ui} />}
-    {ui.wing ? <Wing /> : <EastWall />}
+    {plan && <PlanHouse rooms={PLANR.rooms} tall={tpOn} wall={HL.w2} trim="#f4f0e6" door={PLANR.door ? { x: PLANR.door.x - 6.2, z: PLANR.door.z + 3.5 } : null}
+      floor={{ map: HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null, color: HL.floorTint, roughness: HL.floorKind === 'marble' ? .22 : .7, metalness: HL.floorKind === 'marble' ? .12 : 0 }}
+      onFloor={(x, z) => { setSel(null); if (editingHome) { setHomeSel(null); return; } walk(x, z); }} />}
+    {!plan && <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
+      <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial key={HL.floorKind} map={HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null} color={HL.floorTint} roughness={HL.floorKind === 'marble' ? .22 : .7} metalness={HL.floorKind === 'marble' ? .12 : 0} /></mesh>}
+    {!plan && <Room />}
+    {!plan && ui.south && <SouthWing ui={ui} />}
+    {!plan && (ui.wing ? <Wing /> : <EastWall />)}
     <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
-    {OBJ.filter(o => !ui.homeSold.includes(o.id) && (!GATE[o.id] || ui.home.includes(GATE[o.id])) && (ui.famOn || o.acts.some(a => !a.all))).map(raw => { const o = movedObj(raw); return <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
+    {OBJ.filter(o => !planHidden(o.id) && !ui.homeSold.includes(o.id) && (!GATE[o.id] || ui.home.includes(GATE[o.id])) && (ui.famOn || o.acts.some(a => !a.all))).map(raw => { const o = movedObj(raw); return <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
       onPointerDown={editingHome && EDITABLE_HOME_IDS.has(o.id) ? (e: any) => EDIT.down(o.id, e) : undefined}
       onClick={e => { if (e.delta > 4) return; e.stopPropagation(); if (editingHome && EDITABLE_HOME_IDS.has(o.id)) { setHomeSel(o.id); setSel(null); return; } setSel(ui.famOn ? o : { ...o, acts: o.acts.filter(a => !a.all) }); }}
       onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; setHov(o.id); }} onPointerOut={() => { document.body.style.cursor = 'auto'; setHov(h => (h === o.id ? null : h)); }}>{VIS[o.id](ui)}</group>; })}
-    {DECOR.filter(d => !ui.homeSold.includes(d.id) && (ui.wing || !WING_IDS.has(d.id))).map(raw => { const d = movedDecor(raw); return <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot} onPointerDown={editingHome && EDITABLE_HOME_IDS.has(d.id) ? (e: any) => EDIT.down(d.id, e) : undefined} onClick={e => { if (e.delta > 4) return; e.stopPropagation(); if (editingHome && EDITABLE_HOME_IDS.has(d.id)) setHomeSel(d.id); }}><group>{VIS[d.vis](ui)}</group></group>; })}
+    {DECOR.filter(d => !planHidden(d.id) && !ui.homeSold.includes(d.id) && (ui.wing || !WING_IDS.has(d.id))).map(raw => { const d = movedDecor(raw); return <group key={d.id} position={[d.p[0], 0, d.p[1]]} rotation-y={d.rot} onPointerDown={editingHome && EDITABLE_HOME_IDS.has(d.id) ? (e: any) => EDIT.down(d.id, e) : undefined} onClick={e => { if (e.delta > 4) return; e.stopPropagation(); if (editingHome && EDITABLE_HOME_IDS.has(d.id)) setHomeSel(d.id); }}><group>{VIS[d.vis](ui)}</group></group>; })}
     {ui.homeOwned.map(i => <OwnedFurniture key={i.id} item={i} editing={editingHome} onSelect={setHomeSel} />)}
     {editingHome && homeSel && (() => { const q = homePos(homeSel); return q ? <mesh rotation-x={-Math.PI / 2} position={[q[0], .035, q[1]]}><ringGeometry args={[.62, .76, 40]} /><meshBasicMaterial color="#f0b94a" transparent opacity={.95} depthTest={false} /></mesh> : null; })()}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /><HomePeers look={look} sample={homeSample} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]} calculatePosition={keepMenuOnScreen}><div className="pie"><b>{sel.name}</b>
       {sel.acts.filter(a => a.k !== 'together' || COMPANION.phase === 'home').map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { if (a.k === 'together') spendNight(); else enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : a.k === 'together' ? 'tonight' : `${a.dur} min`}</small></button>)}</div></Html>}
-    {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}
+    {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={plan ? [PB.cx, 0, PB.cz] : [ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}
   </>;
 }
 
@@ -1132,6 +1152,7 @@ export default function Sim() {
   /** (Re)load the house you live in: rooms, look, layout and furniture. A housemate gets the owner's house. Used at sign-in and when you move in or out. */
   async function reloadHome(username: string, visitOwner?: string) {
     const q = visitOwner ? '?visit=' + encodeURIComponent(visitOwner) : '';
+    try { const r = await fetch('/api/home/rooms' + q, { cache: 'no-store' }); applyPlan(r.ok ? ((await r.json()).rooms || []) : []); } catch { applyPlan([]); }   // build mode: the saved rooms (none = the old fixed flat)
     try { const h = await fetch('/api/home' + q, { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setHomeLook(defaultHomeLook(username)); try { const l = await fetch('/api/home/layout' + q, { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); setHomeLook(sanitizeHomeLook(ld.look, defaultHomeLook(username))); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture' + q,{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ }
     markHomeBase();
   }
@@ -1146,7 +1167,7 @@ export default function Sim() {
   /** Walk into a house you were let into (components/HomeDoor.tsx): you see its rooms and furniture, and everyone inside sees you. */
   async function enterVisit(owner: string, slot: number | null) {
     GAME.nav = null; setInside(null); setSel(null); setHomeEdit(false); setDoorPanel(false); HOME_VIEW.slot = slot; setVisit({ u: owner, slot }); visitRef.current = { u: owner, slot };
-    await reloadHome(user?.username || '', owner); S.pos = [0, .5]; S.q = []; S.cur = null; S.prog = 0; S.pose = 'stand'; setOutside(false); setUi(snap());
+    await reloadHome(user?.username || '', owner); S.pos = [PLANR.spawn[0], PLANR.spawn[1]]; S.q = []; S.cur = null; S.prog = 0; S.pose = 'stand'; setOutside(false); setUi(snap());
   }
   /** Back to the street (out the visited door) and to your own home's rooms. */
   async function leaveVisit(why = '') {
@@ -1228,7 +1249,7 @@ export default function Sim() {
   useEffect(() => { if (ui.toast) sfx('pop'); }, [ui.toast]);
   useEffect(() => { const f = (e: Event) => { const fx = (e as CustomEvent).detail as Record<string, number> | undefined; if (fx) for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }; window.addEventListener('arl-apply-fx', f); return () => window.removeEventListener('arl-apply-fx', f); }, []); // street NPC scenes change your needs
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.cash === 'number') S.cash = d.cash; }; window.addEventListener('arl-mission-paid', f); window.addEventListener('arl-cash-update', f); return () => { window.removeEventListener('arl-mission-paid', f); window.removeEventListener('arl-cash-update', f); }; }, []);
-  useEffect(() => { const f = () => { dropVisit(); S.pos = [0, .5]; S.q = []; S.cur = null; S.prog = 0; S.pose = 'stand'; S.cash = 0; say('💀 You woke up at home. You lost all your cash.'); setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f); }, []); // killed: wake up in your house
+  useEffect(() => { const f = () => { dropVisit(); S.pos = [PLANR.spawn[0], PLANR.spawn[1]]; S.q = []; S.cur = null; S.prog = 0; S.pose = 'stand'; S.cash = 0; say('💀 You woke up at home. You lost all your cash.'); setInside(null); setSel(null); setOutside(false); }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f); }, []); // killed: wake up in your house
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d === 'object') for (const k of Object.keys(d)) if (k in S.needs && Number.isFinite(d[k])) S.needs[k as N] = cl(S.needs[k as N] + d[k]); }; window.addEventListener('arl-need-fx', f); return () => window.removeEventListener('arl-need-fx', f); }, []); // parties and other panels change needs through this event
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.meals === 'number') { S.meals = d.meals; S.supplies = d.supplies; } }; window.addEventListener('arl-pantry', f); return () => window.removeEventListener('arl-pantry', f); }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;

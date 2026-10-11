@@ -65,3 +65,35 @@ export function checkDemolish(rooms: Room[], id: string): string | null {
 
 /** The room standing on this world point, if any. */
 export const roomAt = (rooms: Room[], x: number, z: number): Room | null => rooms.find(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d) ?? null;
+
+/* ───── step 2: what the 3D house draws ───── */
+export type WallSeg = { x: number; z: number; len: number; axis: 'x' | 'z' };   // (x, z) = start of the wall; it runs `len` metres along `axis`
+/** Outside walls: every tile edge with a room on one side and nothing on the other, merged into straight runs. (Walls between two rooms come with doors in step 5; until then rooms are open plan.) */
+export function exteriorWalls(rooms: Room[]): WallSeg[] {
+  const has = (x: number, z: number) => rooms.some(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
+  const horiz = new Map<number, number[]>(), vert = new Map<number, number[]>();   // z -> xs of tiles with an edge on that line, x -> zs
+  const add = (m: Map<number, number[]>, k: number, v: number) => { const a = m.get(k); if (a) a.push(v); else m.set(k, [v]); };
+  for (const r of rooms) {
+    for (let x = r.x; x < r.x + r.w; x++) { if (!has(x, r.z - 1)) add(horiz, r.z, x); if (!has(x, r.z + r.d)) add(horiz, r.z + r.d, x); }
+    for (let z = r.z; z < r.z + r.d; z++) { if (!has(r.x - 1, z)) add(vert, r.x, z); if (!has(r.x + r.w, z)) add(vert, r.x + r.w, z); }
+  }
+  const out: WallSeg[] = [];
+  const merge = (m: Map<number, number[]>, axis: 'x' | 'z') => {
+    for (const [line, vs] of m) {
+      vs.sort((a, b) => a - b);
+      let s = vs[0], p = vs[0];
+      for (let i = 1; i <= vs.length; i++) {
+        if (i < vs.length && vs[i] === p + 1) { p = vs[i]; continue; }
+        out.push(axis === 'x' ? { x: s, z: line, len: p + 1 - s, axis } : { x: line, z: s, len: p + 1 - s, axis });
+        if (i < vs.length) { s = vs[i]; p = vs[i]; }
+      }
+    }
+  };
+  merge(horiz, 'x'); merge(vert, 'z');
+  return out;
+}
+/** Where to centre the camera and put the lights: the middle of the whole plan, and its size. */
+export function planBounds(rooms: Room[]) {
+  const x0 = Math.min(...rooms.map(r => r.x)), x1 = Math.max(...rooms.map(r => r.x + r.w)), z0 = Math.min(...rooms.map(r => r.z)), z1 = Math.max(...rooms.map(r => r.z + r.d));
+  return { x0, x1, z0, z1, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2 };
+}

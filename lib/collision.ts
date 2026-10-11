@@ -7,13 +7,35 @@ export const R = 0.24; // body radius used when planning routes
 export const HARD = 0.18; // body radius used for the hard "you cannot enter this" check every frame
 export const FULL_X1 = 10.95, FLAT_X1 = 5.95, FLAT_Z1 = 4.3, FULL_Z1 = 9.1;
 export const BOUNDS = { x0: -5.85, x1: FULL_X1, z0: -4.3, z1: FLAT_Z1 }; // walkable area inside the walls. Only the main flat by default; the kids' wing to the east is added when a family starts.
-export const setEastLimit = (wing: boolean) => { BOUNDS.x1 = wing ? FULL_X1 : FLAT_X1; };
-export const setSouthLimit = (south: boolean) => { BOUNDS.z1 = south ? FULL_Z1 : FLAT_Z1; }; // the south wing (gym, cinema, office) extends the walkable floor to the south
+export const setEastLimit = (wing: boolean) => { if (PLAN.rooms) return; BOUNDS.x1 = wing ? FULL_X1 : FLAT_X1; };
+export const setSouthLimit = (south: boolean) => { if (PLAN.rooms) return; BOUNDS.z1 = south ? FULL_Z1 : FLAT_Z1; }; // the south wing (gym, cinema, office) extends the walkable floor to the south
+/* Build mode (BUILD-MODE.md, step 2): when a house has saved rooms, you can walk exactly where the rooms are (open plan until doors arrive in step 5) instead of inside the fixed BOUNDS box. */
+type Rect = { x: number; z: number; w: number; d: number };
+export const PLAN: { rooms: Rect[] | null } = { rooms: null };
+const LEGACY = { x0: BOUNDS.x0, z0: BOUNDS.z0, x1: BOUNDS.x1, z1: BOUNDS.z1 };
+const inRooms = (rooms: Rect[], x: number, z: number) => rooms.some(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
+/** A body of radius r at (x, z) must have its whole outline over rooms. */
+const covered = (rooms: Rect[], x: number, z: number, r: number) => {
+  for (const [dx, dz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]]) if (!inRooms(rooms, x + dx, z + dz)) return false;
+  return true;
+};
+/** Switch to a room plan (or back to the old fixed flat with null). Re-sizes the path-finding grid to fit. */
+export function setPlan(rooms: Rect[] | null) {
+  if (rooms && rooms.length) {
+    PLAN.rooms = rooms;
+    BOUNDS.x0 = Math.min(...rooms.map(r => r.x)); BOUNDS.x1 = Math.max(...rooms.map(r => r.x + r.w));
+    BOUNDS.z0 = Math.min(...rooms.map(r => r.z)); BOUNDS.z1 = Math.max(...rooms.map(r => r.z + r.d));
+    NX = Math.ceil((BOUNDS.x1 - BOUNDS.x0) / G) + 1; NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
+  } else {
+    PLAN.rooms = null; Object.assign(BOUNDS, LEGACY);
+    NX = Math.ceil((FULL_X1 - BOUNDS.x0) / G) + 1; NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
+  }
+}
 const G = 0.15; // grid cell size for path-finding
 
 export const inside = (p: P, k: Box, r = 0) => p[0] > k[0] - r && p[0] < k[1] + r && p[1] > k[2] - r && p[1] < k[3] + r;
 export const blocked = (blks: Blk[], p: P, own?: string, r = R) =>
-  p[0] < BOUNDS.x0 || p[0] > BOUNDS.x1 || p[1] < BOUNDS.z0 || p[1] > BOUNDS.z1 || blks.some(k => k.id !== own && inside(p, k.b, r));
+  (PLAN.rooms ? !covered(PLAN.rooms, p[0], p[1], r) : false) || p[0] < BOUNDS.x0 || p[0] > BOUNDS.x1 || p[1] < BOUNDS.z0 || p[1] > BOUNDS.z1 || blks.some(k => k.id !== own && inside(p, k.b, r));
 
 function clear(blks: Blk[], a: P, b: P, own?: string) { // is the straight line a→b free?
   const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(d / 0.07));
@@ -21,7 +43,7 @@ function clear(blks: Blk[], a: P, b: P, own?: string) { // is the straight line 
   return true;
 }
 
-const NX = Math.ceil((FULL_X1 - BOUNDS.x0) / G) + 1, NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
+let NX = Math.ceil((FULL_X1 - BOUNDS.x0) / G) + 1, NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
 const cell = (p: P): [number, number] => [Math.round((p[0] - BOUNDS.x0) / G), Math.round((p[1] - BOUNDS.z0) / G)];
 const pos = (i: number, j: number): P => [i * G + BOUNDS.x0, j * G + BOUNDS.z0];
 

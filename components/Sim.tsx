@@ -23,6 +23,7 @@ import { setMusicMood, sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import GameLayer from './GameLayer';
 import Interior from './Interior';
+import HomePeers, { type HomeSample } from './HomePresence';
 import MovieScreen, { type ScreenMode, type JobInfo } from './MovieScreen';
 import { CITY } from '../lib/cityData';
 import { GAME, buildingExitPoint } from './CityWorld';
@@ -616,6 +617,11 @@ const Win = ({ p, ry = 0, w, h }: { p: V3; ry?: number; w: number; h: number }) 
   {[-1, 1].map(s => <group key={s}><B p={[s * (w / 2 + .2), -.02, .15]} s={[.38, h + .5, .07]} c="#d8c7a4" ro={1} r={.03} />{[-.1, 0, .1].map(f => <B key={f} p={[s * (w / 2 + .2) + f, -.02, .19]} s={[.05, h + .46, .03]} c="#cdb88f" ro={1} r={.015} />)}</group>)}</group>;
 const FanHead = ({ on }: { on: boolean }) => { const g = useRef<THREE.Group>(null!); useFrame((_, dt) => { if (on) g.current.rotation.z -= dt * 14; }); return <group ref={g}><C p={[0, 0, .01]} r={.035} h={.05} c="#2a2a2a" rot={[Math.PI / 2, 0, 0]} />{[0, 1, 2].map(i => <group key={i} rotation-z={i * 2.094}><B p={[0, .1, 0]} s={[.09, .17, .008]} c="#bcd3de" r={.004} op={.9} /></group>)}</group>; };
 
+// What the other people in this house get to see of you (components/HomePresence.tsx): where you stand, which way you face, and whether you walk, sit or sleep.
+const homeSample = (): HomeSample => {
+  const sit = S.pose === 'sit', lo = sit && S.cur?.t === 'act' ? loungeOff(S.cur.a.anim, S.rot) : [0, 0];
+  return { x: S.pos[0] + lo[0], z: S.pos[1] + lo[1], r: S.rot, walking: (S.cur?.t === 'walk' || (TP.on && !!TP.dir)) && S.speed > 0, pose: S.pose === 'sleep' ? 2 : sit ? 1 : 0 };
+};
 function Avatar({ bubble, look }: { bubble: string; look: Look }) {
   const g = useRef<THREE.Group>(null!), inner = useRef<THREE.Group>(null!), plumb = useRef<THREE.Mesh>(null!), pg = useRef<THREE.Group>(null!);
   useFrame(({ clock }) => {
@@ -1102,7 +1108,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     {ui.homeOwned.map(i => <OwnedFurniture key={i.id} item={i} editing={editingHome} onSelect={setHomeSel} />)}
     {editingHome && homeSel && (() => { const q = homePos(homeSel); return q ? <mesh rotation-x={-Math.PI / 2} position={[q[0], .035, q[1]]}><ringGeometry args={[.62, .76, 40]} /><meshBasicMaterial color="#f0b94a" transparent opacity={.95} depthTest={false} /></mesh> : null; })()}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
-    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
+    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /><HomePeers look={look} sample={homeSample} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]} calculatePosition={keepMenuOnScreen}><div className="pie"><b>{sel.name}</b>
       {sel.acts.filter(a => a.k !== 'together' || COMPANION.phase === 'home').map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { if (a.k === 'together') spendNight(); else enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : a.k === 'together' ? 'tonight' : `${a.dur} min`}</small></button>)}</div></Html>}
     {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}

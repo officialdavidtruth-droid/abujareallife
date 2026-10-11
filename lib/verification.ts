@@ -1,7 +1,8 @@
 import { createHash, randomInt } from 'crypto';
 import { prisma } from './prisma';
 
-export const hashCode = (c: string) => createHash('sha256').update(c + (process.env.AUTH_SECRET || '')).digest('hex');
+const authSecret = () => { const s = process.env.AUTH_SECRET; if (!s || s.length < 32) throw new Error('AUTH_SECRET must be set (32+ characters).'); return s; };
+export const hashCode = (c: string) => createHash('sha256').update(c + authSecret()).digest('hex');
 
 async function sendMail(to: string, code: string) {
   const key = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM;

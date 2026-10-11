@@ -13,6 +13,7 @@ export async function POST(req: Request) {
     if (await throttledShared('login:' + key, 10, 10 * 60_000)) return err('Too many attempts. Try again in a few minutes.', 429);
     const user = await prisma.user.findUnique({ where: { usernameKey: key } });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) return err('Wrong username or password.', 401);
+    if (bcrypt.getRounds(user.passwordHash) < 12) { try { await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(password, 12) } }); } catch { /* upgrade next login */ } }
     await startSession(user.id);
     return NextResponse.json({ ok: true, user: publicUser(user) });
   } catch (e) { return serverError(e); }

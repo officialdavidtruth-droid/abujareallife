@@ -1130,7 +1130,7 @@ function TrainLine() {
 const AIR = { x: 122 * WS, z: -12 * WS, s: 1.8 };
 function Airport() {
   return <group position={[AIR.x, 0, AIR.z]} scale={AIR.s}>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .02, 0]}><planeGeometry args={[22, 7]} /><meshStandardMaterial color="#33383e" /></mesh>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><planeGeometry args={[22, 7]} /><meshStandardMaterial color="#33383e" /></mesh>
     <Text position={[0, .1, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={.6} color="#fff" anchorX="center">RUNWAY</Text>
     <RoundedBox args={[9, 1.5, 5]} position={[0, .75, -7]} radius={.15}><meshStandardMaterial color="#7b8791" /></RoundedBox>
     <Text position={[0, 1.65, -4.4]} fontSize={.45} color="#fff" anchorX="center">Nnamdi Azikiwe Airport</Text>
@@ -1730,7 +1730,7 @@ function WeatherEffects(){
  const puddles=useMemo(()=>Array.from({length:36},(_,i)=>({x:(hs('px'+i)*2-1)*125,z:(hs('pz'+i)*2-1)*125,s:.7+hs('ps'+i)*1.8})),[]);
  const umb=useRef<THREE.Group>(null!);
  useFrame(()=>{const w=weatherAt(); if(umb.current) umb.current.visible=w.rain>.45;});
- return <><group>{puddles.map((p,i)=><mesh key={i} position={[p.x,.025,p.z]} rotation-x={-Math.PI/2} scale={[p.s,p.s,1]}><circleGeometry args={[1,20]}/><meshBasicMaterial color="#5b7180" transparent opacity={.18} depthWrite={false}/></mesh>)}</group><group ref={umb}>{Array.from({length:12},(_,i)=><group key={i} position={[(hs('ux'+i)*2-1)*45,1.6,(hs('uz'+i)*2-1)*45]}><mesh rotation-x={-Math.PI/2}><cylinderGeometry args={[.45,.45,.03,16]}/><meshStandardMaterial color={['#d99a42','#2c5aa0','#c0392b','#1e9e55'][i%4]} /></mesh><mesh position={[0,-.45,0]}><cylinderGeometry args={[.025,.025,.9,6]}/><meshStandardMaterial color="#222"/></mesh></group>)}</group></>;
+ return <><group>{puddles.map((p,i)=><mesh key={i} position={[p.x,.036,p.z]} rotation-x={-Math.PI/2} scale={[p.s,p.s,1]}><circleGeometry args={[1,20]}/><meshBasicMaterial color="#5b7180" transparent opacity={.18} depthWrite={false}/></mesh>)}</group><group ref={umb}>{Array.from({length:12},(_,i)=><group key={i} position={[(hs('ux'+i)*2-1)*45,1.6,(hs('uz'+i)*2-1)*45]}><mesh rotation-x={-Math.PI/2}><cylinderGeometry args={[.45,.45,.03,16]}/><meshStandardMaterial color={['#d99a42','#2c5aa0','#c0392b','#1e9e55'][i%4]} /></mesh><mesh position={[0,-.45,0]}><cylinderGeometry args={[.025,.025,.9,6]}/><meshStandardMaterial color="#222"/></mesh></group>)}</group></>;
 }
 function WorldEventVisuals(){
  const [events,setEvents]=useState<any[]>([]); useEffect(()=>{let dead=false;const load=()=>fetch('/api/city-life').then(r=>r.ok?r.json():null).then(d=>{if(!dead)setEvents(d?.events||[])}).catch(()=>{});load();const i=setInterval(load,12000);return()=>{dead=true;clearInterval(i)}},[]);

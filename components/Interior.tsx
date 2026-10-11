@@ -14,7 +14,7 @@ import { DrinksMenu } from './Intoxication';
 import Dealers from './Dealers';
 import ClubNightlife from './ClubNightlife';
 import ClubTalk from './ClubTalk';
-import { CLUB_REG, CLUB_TALK } from '../lib/clubNpc';
+import { CLUB_REG, CLUB_TALK, COMPANION } from '../lib/clubNpc';
 import { dealerAt } from '../lib/dealers';
 import { BAR_TYPES } from '../lib/intoxication';
 import { sfx } from '../lib/audio';
@@ -111,12 +111,20 @@ const CLUB_GUESTS: Look[] = [
 ];
 function ClubGuest({ index, room }: { index: number; room: Room }) {
   const group = useRef<THREE.Group>(null!);
-  const state = useRef({ x: [-5.3, -2.6, 2.6, 5.1, 0, -4.2, 4.4][index], z: [-2.8, 2.5, -3.2, 2.2, 0.4, 3.6, -1.2][index], tx: [-2.5, 1.5, 4, -3.6, 2.8, -3.4, 3.2][index], tz: [2.8, -2.7, 2.5, -2.8, 3.2, 2.9, -2][index], wait: index * .65, dance: index % 2 === 0, rot: 0 });
+  const state = useRef({ x: [-5.3, -2.6, 2.6, 5.1, 0, -4.2, 4.4][index], z: [-2.8, 2.5, -3.2, 2.2, 0.4, 3.6, -1.2][index], tx: [-2.5, 1.5, 4, -3.6, 2.8, -3.4, 3.2][index], tz: [2.8, -2.7, 2.5, -2.8, 3.2, 2.9, -2][index], wait: index * .65, dance: index % 2 === 0, rot: 0, mv: false });
   const look = CLUB_GUESTS[index];
   useFrame((_, dtRaw) => {
     if (!group.current) return;
     const q = state.current, dt = Math.min(dtRaw, .05);
-    const talking = CLUB_TALK.idx === index;
+    const talking = CLUB_TALK.idx === index, mine = COMPANION.idx === index;
+    group.current.visible = !(mine && COMPANION.phase === 'outside');
+    if (mine && COMPANION.phase === 'inside') {   // she paid-for company: stays a step behind you and follows you around the club
+      const fx = ROOM.me.x - q.x, fz = ROOM.me.z - q.z, d = Math.hypot(fx, fz); q.dance = false; q.mv = d > 1.7;
+      if (q.mv) { const step = Math.min(d - 1.4, 1.9 * dt); q.x += fx / d * step; q.z += fz / d * step; }
+      let a = Math.atan2(fx, fz) - q.rot; a = Math.atan2(Math.sin(a), Math.cos(a)); q.rot += a * Math.min(1, dt * 6);
+      q.x = THREE.MathUtils.clamp(q.x, -room.w / 2 + 1.2, room.w / 2 - 1.2); q.z = THREE.MathUtils.clamp(q.z, -room.d / 2 + 1.2, room.d / 2 - 1.2);
+      group.current.position.set(q.x, 0, q.z); group.current.rotation.y = q.rot; CLUB_REG[index] = { x: q.x, z: q.z }; return;
+    }
     if (talking) { const fx = ROOM.me.x - q.x, fz = ROOM.me.z - q.z; let a = Math.atan2(fx, fz) - q.rot; a = Math.atan2(Math.sin(a), Math.cos(a)); q.rot += a * Math.min(1, dt * 6); q.dance = false; } // she stops, turns to you and listens
     else q.wait -= dt;
     if (!talking && q.wait <= 0) {
@@ -129,7 +137,7 @@ function ClubGuest({ index, room }: { index: number; room: Room }) {
   });
   return <group ref={group} position={[state.current.x, 0, state.current.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-talk', { detail: { index } })); }}>
     <mesh position={[0, 1, 0]}><cylinderGeometry args={[.48, .48, 2, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
-    <Human look={look} getState={() => (state.current.dance || CLUB_TALK.idx === index) ? 'idle' : 'walk'} getAnim={() => state.current.dance ? 'dance' : undefined} />
+    <Human look={look} getState={() => COMPANION.idx === index && COMPANION.phase === 'inside' ? (state.current.mv ? 'walk' : 'idle') : (state.current.dance || CLUB_TALK.idx === index) ? 'idle' : 'walk'} getAnim={() => state.current.dance ? 'dance' : undefined} />
     <Html position={[0, 2.5, 0]} center distanceFactor={11} zIndexRange={[5, 0]}><button className="clubGuestTag" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-talk', { detail: { index } })); }}>{index > 4 ? '💋' : '💬'} {look.name.split(' · ')[0]}</button></Html>
   </group>;
 }
@@ -199,7 +207,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   const [job, setJob] = useState<{ kind: 'shift' | 'quest' | 'mtask'; id: string | number; end: number; label: string } | null>(null), [, tick] = useState(0), [near, setNear] = useState<string | null>(null);
   const [gameOpen, setGameOpen] = useState(false), [score, setScore] = useState<Score>({ pts: 0, rounds: 0, bonus: 0 }), [gameKind, setGameKind] = useState<GameKind | null>(null); // optional job mini-game during a shift
   const toast = (m: string, bad = false) => { setMsg(m); setTimeout(() => setMsg(''), 4500); sfx(bad ? 'error' : /^(Done|💰|🎉|🚔 .* arrested)/.test(m) ? 'success' : 'pop'); };
-  useEffect(() => { sfx('door'); return () => { HOLD.on = false; }; }, []);
+  useEffect(() => { sfx('door'); return () => { HOLD.on = false; if (COMPANION.idx >= 0 && COMPANION.phase === 'inside') COMPANION.phase = 'outside'; }; }, []);   // leaving the club with your paid companion: she walks out with you
   const [shopInfo, setShopInfo] = useState<{ owner: string | null; prices?: Record<string, number> } | null>(null); // who runs this building and what they charge
   useEffect(() => { fetch('/api/shop').then(r => r.ok ? r.json() : null).then(d => d && setShopInfo(d)).catch(() => {}); }, []);
   /* Shop hold-up: the server hides when the police arrive. Staying fills the bag; running early takes a partial share; waiting too long = arrested. */

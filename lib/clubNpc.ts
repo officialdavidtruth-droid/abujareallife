@@ -14,3 +14,7 @@ export const clubPerson = (idx: number) => CLUB_PEOPLE.find(p => p.idx === idx) 
 export const CLUB_REG: Record<number, { x: number; z: number }> = {};
 export const CLUB_TALK = { idx: -1 };
 export const TALK_RANGE = 3.2;
+
+/* Step 2: the companion you paid. She follows you inside the club; when you walk out she goes with you ('outside' is picked up by the next step). */
+export const COMPANION = { idx: -1, name: '', phase: 'none' as 'none' | 'inside' | 'outside' };
+export const endCompanion = () => { COMPANION.idx = -1; COMPANION.name = ''; COMPANION.phase = 'none'; };

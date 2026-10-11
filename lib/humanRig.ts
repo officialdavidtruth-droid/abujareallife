@@ -512,7 +512,7 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   if (k === 'game') { j.sX = .05; j.hX = .12; j.laX = .75; j.raX = .75; j.laZ = .03; j.raZ = .03; j.leX = .8 + .08 * sin(t * 14); j.reX = .8 + .08 * sin(t * 11); j.sY = .05 * sin(t * 2); }
   if (k === 'tv' || k === 'movie') {   // relaxed lounging: sunk back into the sofa, feet slid forward, hands resting on the lap, eyes on the screen; now and then he laughs or leans in on a tense bit
     const cy = (t * .8) % 13, laugh = cy > 7.2 && cy < 9 ? sin((cy - 7.2) / 1.8 * Math.PI) : 0, tense = cy > 3 && cy < 5.6 ? sin((cy - 3) / 2.6 * Math.PI) : 0;
-    j.sX = -.32 + .24 * tense + .03 * laugh * sin(t * 18); j.hX = .17 - .1 * laugh + .05 * tense; j.hY = .05 * sin(t * .5); j.hZ = .03 * sin(t * .3);
+    j.sX = -.18 + .24 * tense + .03 * laugh * sin(t * 18); j.hX = .1 - .1 * laugh + .05 * tense; j.hY = .05 * sin(t * .5); j.hZ = .03 * sin(t * .3);
     j.llX = 1.3; j.rlX = 1.38; j.lkX = 1.0; j.rkX = 1.05 + .06 * laugh * sin(t * 16); j.llZ = .1; j.rlZ = -.1;
     j.laX = -.1; j.leX = .95 + .02 * sin(t * 1.3); j.laZ = .1;
     j.raX = -.05 + .75 * tense; j.reX = 1.0 + .9 * tense; j.raZ = .1 - .06 * tense;

@@ -489,6 +489,8 @@ const Sp = ({ p, r, c, sc = [1, 1, 1], ro = .85, rot }: { p: V3; r: number; c: s
 const Screen = ({ p, w, h, on, col, ry = 0 }: { p: V3; w: number; h: number; on: boolean; col: string; ry?: number }) =>
   <mesh position={p} rotation-y={ry}><planeGeometry args={[w, h]} /><meshStandardMaterial color="#05070a" emissive={on ? col : '#000'} emissiveIntensity={on ? .9 : 0} roughness={.2} /></mesh>;
 // what the living-room / cinema screen should be showing right now: the player's own activity, or the family watching TV
+// the relaxed lounging pose leans back, so seat him a little forward of the backrest to stop his back clipping into the cushions
+const loungeOff = (anim: string | undefined, rot: number): [number, number] => anim === 'tv' || anim === 'movie' || anim === 'chill' ? [Math.sin(rot) * .16, Math.cos(rot) * .16] : [0, 0];
 const watchMode = (fam = true): ScreenMode => {
   const a = S.cur?.t === 'act' ? S.cur.a : null;
   if (a && (a.k === 'tv' || a.k === 'movie')) return 'movie';
@@ -548,7 +550,8 @@ function Avatar({ bubble, look }: { bubble: string; look: Look }) {
   const g = useRef<THREE.Group>(null!), inner = useRef<THREE.Group>(null!), plumb = useRef<THREE.Mesh>(null!), pg = useRef<THREE.Group>(null!);
   useFrame(({ clock }) => {
     const sleep = S.pose === 'sleep', sit = S.pose === 'sit';
-    g.current.position.set(sleep ? -4.95 : S.pos[0], sleep ? .86 : 0, sleep ? -2.45 : S.pos[1]); g.current.rotation.y = sleep ? 0 : S.rot;
+    const lo = sit && S.cur?.t === 'act' ? loungeOff(S.cur.a.anim, S.rot) : [0, 0] as [number, number];
+    g.current.position.set(sleep ? -4.95 : S.pos[0] + lo[0], sleep ? .86 : 0, sleep ? -2.45 : S.pos[1] + lo[1]); g.current.rotation.y = sleep ? 0 : S.rot;
     inner.current.rotation.x = sleep ? -Math.PI / 2 : 0; inner.current.position.y = 0; void sit;
     pg.current.position.set(0, sleep ? 1.1 : 2.45 * look.height + Math.sin(clock.elapsedTime * 2) * .06, sleep ? -1.7 : 0); plumb.current.rotation.y = clock.elapsedTime * 1.6;
     const m = mood(), col = m > 60 ? '#35e07a' : m > 35 ? '#f2c230' : '#ef4b4b';
@@ -854,7 +857,7 @@ function Member({ m, look, ui, onPick }: { m: Mem; look: Look; ui: UI; onPick: (
     const lie = m.pose === 'sleep' ? m.at?.lie : undefined;
     g.current.visible = !m.away;
     if (lie) { g.current.position.set(lie.x, lie.y, lie.z); g.current.rotation.y = 0; inner.current.rotation.x = -Math.PI / 2; }
-    else { g.current.position.set(m.pos[0], m.pose === 'sit' ? .5 * (1 - m.h) : 0, m.pos[1]); g.current.rotation.y = m.rot; inner.current.rotation.x = 0; }
+    else { { const lo = m.pose === 'sit' ? loungeOff(m.anim, m.rot) : [0, 0]; g.current.position.set(m.pos[0] + lo[0], m.pose === 'sit' ? .5 * (1 - m.h) : 0, m.pos[1] + lo[1]); } g.current.rotation.y = m.rot; inner.current.rotation.x = 0; }
   });
   const f = ui.fam.find(x => x.id === m.id);
   return <group ref={g} onClick={e => { if (e.delta > 4) return; e.stopPropagation(); onPick(m.id); }}

@@ -1,0 +1,54 @@
+/* ===== GAME UI SKIN =====
+   Loaded last. Visual only (fonts, colours, borders, shadows) - no layout changes,
+   so every template / screen picks it up at once. Display font = Lilita One (--font-game). */
+:root{--g-gold:#f0b94a;--g-gold2:#d99a42;--g-ink:#07110c;--g-panel:#0b1a13;--g-edge:#ffffff26;--g-glow:0 0 14px #f0b94a55}
+
+/* Display text: titles, labels, buttons, tabs, pills use the game font */
+h1,h2,h3,h4,.pill,.chip,.go,.tabs button,.pie button,.pie b,.cityActions button,.nearCard button,.dockGrid button,.dockToggle,
+.phoneSectionTitle,.panelTitleRow,.jbCard b,.jbApply,.huBuy button,.famBtn,.mood b,.cur>span,.toast,.tpPrompt,.glRow,.lbRow b,.owCard h1,.owCard h2,
+.modal .box h1,.modal .box h2,.modal .box h3,.modal button,.row button{font-family:var(--font-game),Inter,system-ui,sans-serif;font-weight:400;letter-spacing:.04em}
+h1,h2,h3,.phoneSectionTitle,.panelTitleRow,.pie b{text-transform:uppercase;letter-spacing:.08em;text-shadow:0 2px 0 #0008}
+h1,h2,h3{color:#fff}
+.pill,.chip,.go,.tabs button,.cityActions button,.nearCard button,.modal button{text-shadow:0 1px 0 #0009}
+
+/* HUD pills: dark glass, gold accent edge, sharp game-like corners */
+.pill{background:linear-gradient(180deg,#14281fe8,#0a1711ee);border:1px solid var(--g-edge);border-left:3px solid var(--g-gold2);border-radius:8px;box-shadow:0 3px 0 #000a,0 6px 16px #0006}
+.pill.on{border-left-color:#5be08a;box-shadow:0 3px 0 #000a,0 0 12px #5be08a44}
+.pill.gold,.gold{color:var(--g-gold)}
+
+/* Panels and modals: framed card with gold top rail */
+.modal .box,.box,.pie,.dockGrid,.nearCard,.cityActions,.fam,.glBar,.cur,.cityTop,.fameMe,.phoneDevice{border:2px solid var(--g-edge);border-top:3px solid var(--g-gold2);border-radius:10px;background-image:linear-gradient(180deg,#ffffff0d,transparent 40%);box-shadow:0 10px 0 -4px #0009,0 18px 44px #000b,inset 0 0 0 1px #00000066}
+
+/* Buttons: chunky 3D keys that press down */
+.go,.jbApply,.huBuy button,.cityActions button,.nearCard button,.modal .box button,.pie button,.tabs button{border-radius:8px;box-shadow:0 3px 0 #000a;transition:transform .08s,box-shadow .08s,filter .15s,background .15s}
+.go,.jbApply{background:linear-gradient(180deg,#ffd36e,#e0a23c);color:#1a1208;border:2px solid #7a5416;text-shadow:0 1px 0 #fff6;box-shadow:0 4px 0 #6b4812,0 8px 16px #0006;text-transform:uppercase;letter-spacing:.07em}
+.go:hover:not(:disabled),.jbApply:hover:not(:disabled){filter:brightness(1.08)}
+.go:active:not(:disabled),.jbApply:active:not(:disabled),.pie button:active:not(:disabled),.tabs button:active,.cityActions button:active,.nearCard button:active,.modal .box button:active:not(:disabled){transform:translateY(3px);box-shadow:0 0 0 #000a}
+.tabs button.on,.tabs button.active,.tabs button[aria-selected=true]{background:linear-gradient(180deg,#ffd36e,#e0a23c);color:#1a1208;border-color:#7a5416;text-shadow:none}
+button:disabled{filter:grayscale(.6)}
+
+/* Cards / list rows */
+.jbCard,.huCard,.carCard,.lbRow,.frow{border:1px solid var(--g-edge);border-left:3px solid #3f6b57;border-radius:8px;box-shadow:0 2px 0 #0008}
+.jbCard:hover,.huCard:hover{border-left-color:var(--g-gold)}
+
+/* Bars: segmented glossy meters with a tick pattern */
+.bar,.fbar{border-radius:3px;border:1px solid #000a;background:#0007;box-shadow:inset 0 1px 3px #000c}
+.bar i,.fbar i{border-radius:2px;position:relative;box-shadow:inset 0 2px 0 #ffffff40,0 0 8px currentColor}
+.bar i::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 5px,#0000004d 5px 6px);border-radius:inherit}
+.needs{border:2px solid var(--g-edge);border-bottom:3px solid var(--g-gold2);border-radius:8px}
+.needs .bar{border-radius:2px}
+.mood{font-family:var(--font-game),sans-serif}
+
+/* Money + clock read like a game HUD */
+.pill.gold,.top>.gold{font-size:1.05em;letter-spacing:.06em;text-shadow:0 2px 0 #000a,0 0 10px #f0b94a66}
+
+/* Toasts / prompts / interaction hints */
+.toast,.glToast,.tpPrompt{border:2px solid var(--g-gold2);border-radius:8px;box-shadow:0 4px 0 #000a,0 0 18px #f0b94a33;letter-spacing:.05em}
+.tpPrompt b,.pie .tpK{border-radius:4px;box-shadow:0 2px 0 #6b4812}
+
+/* Inputs */
+input,select,textarea{border-radius:6px}
+input:focus,select:focus,textarea:focus{border-color:var(--g-gold)!important;box-shadow:0 0 0 3px #f0b94a33!important;outline:none}
+
+/* Round action/emote buttons: gold ring */
+.emotes button,.dockToggle,.tpBtns button{border:2px solid var(--g-gold2);box-shadow:0 3px 0 #000a,0 0 10px #f0b94a33}

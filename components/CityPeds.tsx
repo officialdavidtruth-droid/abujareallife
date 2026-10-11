@@ -10,7 +10,7 @@ import { NET } from '../lib/cityNet';
 import { thud } from '../lib/cityAudio';
 import { vehicleByName } from '../lib/vehicles';
 import RuntimeStyle from './RuntimeStyle';
-import { worldCalendar, weatherAt } from '../lib/worldClock';
+import { worldCalendar, weatherAt, simSeconds, simRand } from '../lib/worldClock';
 import { BOLT_LINES, DRV_SHOUT, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, assaultQuiet, decide, drainCrimes, duration, lineFor, perceive, personaOf, pushCrime, reportCrime, shout, wnow, type Reaction } from '../lib/witness';
 import { GRID, WS, inJunction, curbSpot, halfW, signalised } from '../lib/roadRoute';
 import { GAME, PEDPOS, TPOS, VEH, WSCALE, hs, lightState, pick } from './cityShared';
@@ -22,7 +22,7 @@ import { CAR_POSTS } from './CityCollision';
 
 
 /* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
-export type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number]; vis:number; yaw:number; off:number; vf:number; tc:number; rest:number; ox:number; oz:number; lat:number; latT:number };
+export type Ped = { axis: 'x' | 'z'; line: number; u: number; dir: 1 | -1; sp: number; ph: number; down: number; x: number; z: number; moving: boolean; shirt: string; pants: string; skin: string; home:string; work:string; mode:'home'|'commute'|'work'|'social'|'flee'; hidden:boolean; target:[number,number]; vis:number; yaw:number; off:number; vf:number; tc:number; rest:number; ox:number; oz:number; lat:number; latT:number; rc:number };
 
 export const SHIRTS = ['#c0392b', '#2c5aa0', '#e8e8ea', '#1e9e55', '#f1c40f', '#7c3aed', '#0f766e', '#d97706', '#111827', '#be185d'];
 
@@ -35,7 +35,7 @@ export const PED_N = 32;
 export function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {
     const ri = Math.floor(hs('pi' + n) * 11) - 5, side = hs('ps' + n) < .5 ? 1 : -1, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
-    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118 * WS, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0, lat:0, latT:0 };
+    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118 * WS, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0, lat:0, latT:0, rc:0 };
   });
 }
 
@@ -92,7 +92,7 @@ export function Pedestrians() {
     for (const m of [torso, head, legs, arms, handA, handB, footA, footB]) if (m.current.instanceColor) m.current.instanceColor.needsUpdate = true;
   }, [peds]);
   useFrame((st, dtRaw) => {
-    const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
+    const dt = Math.min(dtRaw, .05), t = simSeconds();
     const wc = worldCalendar(); const wx = weatherAt(); const night = wc.hh >= 20 || wc.hh < 6; const rain = wx.rain > .45;
     const part = (mesh: THREE.InstancedMesh, idx: number, tx: number, ty: number, tz: number, rz = 0, dy = 0) => {
       T.t.makeTranslation(tx, ty, tz); T.m.copy(T.base).multiply(T.t);
@@ -156,11 +156,11 @@ export function Pedestrians() {
       if(p.mode==='flee'){ const dx=p.x-(p.target[0]||0),dz=p.z-(p.target[1]||0),len=Math.hypot(dx,dz)||1;p.target=[p.x+dx/len*18,p.z+dz/len*18]; if(i%11===0 && Math.random()<.002) window.dispatchEvent(new CustomEvent('arl-npc-alert',{detail:`🚨 NPC ${i+1} reported an incident to police.`})); }
       const td=Math.hypot(p.x-p.target[0],p.z-p.target[1]);
       p.tc=Math.max(0,p.tc-dt);
-      const wander=()=>(Math.random()<.5?-1:1)*(20+Math.random()*25);
+      const rnd=()=>simRand(i,p.rc++), wander=()=>(rnd()<.5?-1:1)*(20+rnd()*25);   // shared-world: each ped's own seeded draws
       // Arrived near the destination: stand and linger for a while (visible on the pavement, never shrunk or hidden), then wander off somewhere else.
       if(p.mode==='flee') p.rest=0;
       else if(p.rest>0){ p.rest-=dt; if(p.rest<=0){ p.ox=wander(); p.oz=wander(); p.tc=0; } else if(td>16){ p.rest=0; p.tc=0; } } // destination changed (time of day): stop lingering
-      else if(td<12){ p.rest=12+Math.random()*30; }
+      else if(td<12){ p.rest=12+rnd()*30; }
       const lingering = p.rest>0;
       if (p.down > 0) { p.down -= dt; fall = Math.min(1, (3.2 - p.down) / .25) * Math.min(1, Math.max(0, p.down) / .35); }
       else {

@@ -5,6 +5,7 @@ import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { CarModel, pkit } from './CityCars';
 import { OBS, TPOS, lightState } from './cityShared';
+import { simSeconds } from '../lib/worldClock';
 import { MISSIONS, type TailSpec } from '../lib/missions';
 import { TAIL, clearTail, goTail, prepareTail, stepTail, tailShot } from '../lib/tailRoute';
 
@@ -40,7 +41,7 @@ export default function TailTarget() {
   useFrame((st, dtRaw) => {
     if (!TAIL.on) return;
     const dt = Math.min(dtRaw, .05);
-    stepTail(dt, { t: st.clock.elapsedTime, light: lightState, cars: TPOS, player: (window as any).__arlPos });
+    stepTail(dt, { t: simSeconds(), light: lightState, cars: TPOS, player: (window as any).__arlPos });
     const g = grp.current;
     if (g) { g.position.set(TAIL.x, 0, TAIL.z); g.rotation.y = TAIL.r; }
     (window as any).__arlTail = { x: TAIL.x, z: TAIL.z, follow: TAIL.follow };

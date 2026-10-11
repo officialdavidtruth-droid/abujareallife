@@ -79,7 +79,7 @@ export const NIGHT = { n: 0 };
 
 /* ───────────── traffic lights + cars that obey them ───────────── */
 // 32 s cycle with long greens: x green 0–14, amber 14–16, z green 16–30, amber 30–32. Cars only obey it at boulevard × boulevard junctions (see signalised).
-export const lightState = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 'g' : c < 16 ? 'y' : 'r') : (c >= 16 && c < 30 ? 'g' : c >= 30 ? 'y' : 'r'); };
+export { lightState } from '../lib/worldClock';   // the signal cycle lives with the shared clock
 
 export const LCOL = { g: new THREE.Color('#2ee66b'), y: new THREE.Color('#ffc400'), r: new THREE.Color('#ff2a2a') };
 

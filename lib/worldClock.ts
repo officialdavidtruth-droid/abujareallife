@@ -8,6 +8,18 @@ const DAY = 1440;
 
 export const worldMinute = (now: number = Date.now()) => START_MIN + (now - EPOCH) / 1000 * GAME_MIN_PER_SEC;
 
+/** Seconds since the shared epoch. Everything that must look identical on every phone (traffic-light phase, and later the AI sim) reads
+ *  this instead of the per-device R3F `clock.elapsedTime`, which starts at 0 whenever that player's scene happens to mount. */
+export const simSeconds = (now: number = Date.now()) => (now - EPOCH) / 1000;
+export const simToMs = (sec: number) => EPOCH + sec * 1000;
+
+/** Deterministic random in [0,1) for entity `id`'s `n`-th draw. Same (id, n) gives the same number on every phone, in any order, so each
+ *  NPC keeps its own draw counter and never depends on what other NPCs (or the local player) did first. Use for ambient behaviour only. */
+export const simRand = (id: number, n: number) => { let h = Math.imul(id + 1, 0x9e3779b1) ^ Math.imul(n + 1, 0x85ebca6b); h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); h = Math.imul(h ^ (h >>> 12), 0x297a2d39); return ((h ^ (h >>> 15)) >>> 0) / 4294967296; };
+
+/** traffic-light phase for a shared time `t` (seconds): 32 s cycle, x and z roads alternate */
+export const lightState = (t: number, axis: 'x' | 'z') => { const c = t % 32; return axis === 'x' ? (c < 14 ? 'g' : c < 16 ? 'y' : 'r') : (c >= 16 && c < 30 ? 'g' : c >= 30 ? 'y' : 'r'); };
+
 export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export type SeasonId = 'harmattan' | 'hot' | 'rainy';

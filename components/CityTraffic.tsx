@@ -10,7 +10,8 @@ import { OWNER_CHASE_SECS, OWNER_REPORT_SECS } from '../lib/profile';
 import { engineStart, engineStop, honk, thud } from '../lib/cityAudio';
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 import RuntimeStyle from './RuntimeStyle';
-import { worldCalendar, weatherAt } from '../lib/worldClock';
+import { worldCalendar, weatherAt, simSeconds } from '../lib/worldClock';
+import { TrafficCore, LOOP } from '../lib/trafficCore';
 import { createPortal } from 'react-dom';
 import { BUILDING_DESTS, type Dest } from '../lib/destinations';
 import DestPicker, { DEST_PICKER_CSS } from './DestPicker';
@@ -31,7 +32,7 @@ export function Signals() {
     poles.current.instanceMatrix.needsUpdate = true; heads.current.instanceMatrix.needsUpdate = true;
   }, [corners]);
   useFrame(st => {
-    const t = st.clock.elapsedTime, xs = lightState(t, 'x') as 'g' | 'y' | 'r', zs = lightState(t, 'z') as 'g' | 'y' | 'r', key = xs + zs;
+    const t = simSeconds(), xs = lightState(t, 'x') as 'g' | 'y' | 'r', zs = lightState(t, 'z') as 'g' | 'y' | 'r', key = xs + zs;
     if (key === last.current) return; last.current = key;
     corners.forEach((c, i) => heads.current.setColorAt(i, LCOL[c.axis === 'x' ? xs : zs]));
     if (heads.current.instanceColor) heads.current.instanceColor.needsUpdate = true;
@@ -263,6 +264,7 @@ export const v0 = (a: { x: number; z: number }, b: { x: number; z: number }) => 
 export function Traffic() {
   const lanes = useMemo(makeLanes, []), kit = useMemo(carKit, []);
   const flat = useMemo(() => lanes.flatMap(l => l.cars.map(c => ({ l, c }))), [lanes]);
+  const core = useMemo(() => new TrafficCore(lanes.map(l => ({ axis: l.axis, dir: l.dir, road: l.road, speed: l.speed, cars: l.cars.map(c => ({ s: c.s, mul: c.mul })) }))), [lanes]);   // shared-world core: same canonical car positions on every phone (lib/trafficCore.ts)
   const refs = useRef<(THREE.Group | null)[]>([]), DR = useRef<(DriverReaction | null)[]>([]);   // DR: how each AI driver is reacting to a crime right now
   const lbl = useRef<THREE.Group>(null!), lblEl = useRef<HTMLDivElement | null>(null), lblKey = useRef('');
   useEffect(() => {
@@ -282,7 +284,8 @@ export function Traffic() {
     return () => { ROAM.cars = []; ROAM.sel = -1; ROAM.rideIdx = -1; DISPATCH.idx = -1; MANIFEST.clear(); };
   }, [flat]);
   useFrame((st, dtRaw) => {
-    const dt = Math.min(dtRaw, .05), t = st.clock.elapsedTime;
+    const dt = Math.min(dtRaw, .05), t = simSeconds();
+    core.sync(t); if (core.fresh) { flat.forEach(({ c }, i) => { c.s = core.pos(i); }); core.fresh = false; }   // first frame / new era: snap to the shared layout
     const wc = worldCalendar(); const wx = weatherAt(); const rainFactor = wx.storm ? .62 : wx.rain > .45 ? .78 : 1; const rush = (wc.hh >= 7 && wc.hh < 10) || (wc.hh >= 16 && wc.hh < 19) ? 1.18 : 1;
     let nearI = -1, nearD = 90;
     const ROBS: typeof OBS = []; for (const [n, q] of Object.entries(NET.peers)) { if (!q.init) continue; if (q.drv || q.cp) { if (!JACK.hides(n)) ROBS.push({ x: q.cx, z: q.cz, on: true, sp: 7 }); } if (!q.drv) ROBS.push({ x: q.x, z: q.z, on: true, sp: 4.5 }); }   // traffic stops for every real player, in a car or on foot
@@ -343,6 +346,12 @@ export function Traffic() {
         if (c.v !== undefined) { v = Math.min(base, c.v + 5 * dt); c.v = v >= base && c.off === 0 ? undefined : v; }
       }
       let adv = v * dt, gap = Infinity;
+      if (!c.hail && !c.hold && !rk && c.v === undefined) {   // free-driving: follow the shared core position. Stopping for you / a crime / a hail makes this car LAG it, then it catches back up.
+        const cs = core.pos(i); let lag = (cs - c.s) * l.dir; if (lag > LOOP / 2) lag -= LOOP; else if (lag < -LOOP / 2) lag += LOOP;
+        const tx = l.axis === 'x' ? cs : l.fixed, tz = l.axis === 'x' ? l.fixed : cs;
+        if (Math.abs(lag) > 60 && Math.hypot(tx - me.x, tz - me.z) > 60 && Math.hypot(tp.x - me.x, tp.z - me.z) > 60) { c.s = cs; adv = 0; }   // far behind and nobody can see the jump: rejoin the shared position
+        else { const cap = .6 * v * dt; adv = Math.max(0, v * dt + Math.max(-cap, Math.min(cap, lag * Math.min(1, dt * 1.5)))); }
+      }
       let passing = false;   // a hailed vehicle is standing at the kerb ahead: go round it instead of queueing behind it for up to 2 minutes
       for (const o of l.cars) if (o !== c && !o.busy) { const d = (o.s - c.s) * l.dir; if (d > 0 && d < gap) { if (c.hail === 0 && o.hail === 2 && o.off >= .5 && d > 2) { if (d < 16) passing = true; continue; } gap = d; } }
       adv = Math.min(adv, Math.max(0, gap - 7)); // keep a safe distance
@@ -578,7 +587,7 @@ export function TransportVehicles({ look }: { look: Look }) {
     if (!ride || !g || !rs.current || !route.current) { if (g) g.visible = false; return; }
     const r = rs.current, rt = route.current;
     const inJ = EXIT.req && inJunction(r.x, r.z);   // asked to get off: keep rolling until clear of the junction, then stop
-    stepRide(r, rt, Math.min(dtRaw, .05), { vmax: EXIT.req && !inJ ? 0 : ride.kind === 'taxi' ? 11 : ride.kind === 'bus' ? 8.5 : 7.5, t: st.clock.elapsedTime, light: lightState, cars: TPOS });
+    stepRide(r, rt, Math.min(dtRaw, .05), { vmax: EXIT.req && !inJ ? 0 : ride.kind === 'taxi' ? 11 : ride.kind === 'bus' ? 8.5 : 7.5, t: simSeconds(), light: lightState, cars: TPOS });
     if (!EXIT.req && !r.done && r.wait > 40) { r.s = Math.min(rt.len, r.s + 12); r.wait = 0; GAME.notice = '🚌 Traffic cleared: moving on.'; }   // never stay stuck for good
     ride.x = r.x; ride.z = r.z; ride.r = r.r; ride.vOn = true; ride.exiting = false; ride.vx = r.x; ride.vz = r.z; ride.vr = r.r;
     g.visible = true; g.position.set(r.x, 0, r.z); g.rotation.y = r.r; if (paxRef.current) paxRef.current.visible = true;   // you can be seen sitting inside

@@ -1,0 +1,198 @@
+/* ===== GAMEY SKIN v2 — loaded LAST (after hudfix.css). Visual only: no sizes/positions are changed,
+   so every HUD layout fix keeps working. Look: chunky beveled "arcade" panels, hard offset shadows,
+   thick dark outlines, glossy 3D keys, Naija green + gold, Lilita One everywhere. ===== */
+:root{
+  --gy-gold:#ffc83d;--gy-gold-d:#c98a12;--gy-gold-dd:#6b4408;
+  --gy-green:#22c55e;--gy-green-d:#0f7a38;
+  --gy-red:#ff4d4d;--gy-red-d:#9c1c1c;
+  --gy-ink:#050d09;--gy-panel:#0d1f16;--gy-panel2:#143024;--gy-line:#000;
+  --gy-font:var(--font-game),'Lilita One',Inter,system-ui,sans-serif;
+}
+@keyframes gyPop{0%{transform:scale(.88) translateY(14px);opacity:0}60%{transform:scale(1.03) translateY(-2px);opacity:1}100%{transform:none}}
+@keyframes gyPulse{0%,100%{box-shadow:0 4px 0 var(--gy-gold-dd),0 0 0 0 #ffc83d00}50%{box-shadow:0 4px 0 var(--gy-gold-dd),0 0 0 7px #ffc83d33}}
+@keyframes gyShine{0%{transform:translateX(-120%) skewX(-20deg)}60%,100%{transform:translateX(260%) skewX(-20deg)}}
+@keyframes gyStripes{to{background-position:28px 0}}
+
+/* ---------- everything that is text-on-a-game-UI uses the game font ---------- */
+.pill,.top button,.menuBtn,.cwBtn,.cwBtn *,.cwMute,.cwGear,.cpOnline,.cpOnline *,.cpEmoteBtn,.mcQuick button,.mcQuick kbd,
+.nearCard b,.nearCard button,.dockGrid button,.dockToggle,.glToast,.glBar,.glBar *,.inTop,.inTop *,.inDock button,.inAct,.inMenu,.inMenu *,
+.mcPanel,.mcPanel *,.mcTracker,.mcTracker *,.mcNotice,.modal .box,.modal .box *,.tabs button,.needs *,.tpPrompt,.toast{font-family:var(--gy-font)!important}
+.mcPanel *{font-weight:400}
+.mcPanel p,.mcMissionText small,.mcWeapon small,.mcDisclaimer,.mcPanel footer{font-family:Inter,system-ui,sans-serif!important;font-weight:600}
+
+/* ---------- TOP HUD: clock / cash / home / menu = chunky capsules ---------- */
+body .top>.pill,body .sim .top>.pill,body .sim.outside .top>.pill{
+  background:linear-gradient(180deg,#1d4531 0%,#0d2418 55%,#081a10 100%)!important;
+  border:3px solid #000!important;border-radius:14px!important;
+  color:#fff;letter-spacing:.04em;text-shadow:0 2px 0 #000;
+  box-shadow:inset 0 2px 0 #ffffff40,inset 0 -3px 0 #00000070,0 4px 0 #000,0 8px 14px #0008!important;
+  position:relative;overflow:hidden}
+body .top>.pill::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 40%,#ffffff22 50%,transparent 60%);transform:translateX(-120%) skewX(-20deg);animation:gyShine 5s ease-in-out infinite;pointer-events:none}
+/* money pill = gold coin plate */
+body .top>.pill.gold,body .sim.outside .top>.gold,body .top>.gold{
+  background:linear-gradient(180deg,#ffe28a 0%,#ffc83d 45%,#d99a1a 100%)!important;
+  color:#2a1a00!important;text-shadow:0 1px 0 #fff8!important;font-size:1.12em!important;letter-spacing:.05em;
+  border-color:#000!important;
+  box-shadow:inset 0 2px 0 #fff9,inset 0 -3px 0 #a76a0a,0 4px 0 #000,0 0 18px #ffc83d66!important}
+/* menu burger = square arcade key */
+body .menuBtn,body .sim.outside .menuBtn,body .sim.outside .top>.menuBtn{
+  border-radius:12px!important;background:linear-gradient(180deg,#2d6a47,#123a26)!important;border:3px solid #000!important;color:#fff;
+  box-shadow:inset 0 2px 0 #ffffff55,inset 0 -3px 0 #0006,0 4px 0 #000!important}
+body .menuBtn:active{transform:translateY(3px);box-shadow:inset 0 2px 0 #fff4,0 1px 0 #000!important}
+
+/* ---------- ROUND ACTION BUTTONS (car / taxi / fight / jump / sprint / cam) ---------- */
+body .cwBtn,body .sim.outside .cwBtn{
+  border:4px solid #000!important;
+  background:radial-gradient(circle at 35% 25%,#3a8f62 0%,#17492f 55%,#0b2a1b 100%)!important;
+  color:#fff;text-shadow:0 2px 0 #000;
+  box-shadow:inset 0 3px 0 #ffffff55,inset 0 -5px 0 #0007,0 5px 0 #000,0 10px 16px #0009!important;
+  transition:transform .07s,box-shadow .07s,filter .15s}
+body .cwBtn span,body .cwBtn small,body .cwBtn b{text-transform:uppercase;letter-spacing:.05em;font-size:.72em;text-shadow:0 2px 0 #000,0 0 6px #000}
+body .cwBtn:active,body .cwBtn.on{
+  transform:translateY(4px);
+  background:radial-gradient(circle at 35% 25%,#ffe28a 0%,#ffc83d 55%,#c98a12 100%)!important;color:#2a1a00;text-shadow:none;
+  box-shadow:inset 0 3px 0 #fff9,inset 0 -3px 0 #a76a0a,0 1px 0 #000,0 0 22px #ffc83d99!important}
+/* the main action (FIGHT / big button) gets a hot red face */
+body .cwBtn.big,body .sim.outside .cwBtn.big{
+  background:radial-gradient(circle at 35% 25%,#ff8a7a 0%,#e5352b 55%,#8e1510 100%)!important;
+  box-shadow:inset 0 3px 0 #ffffff66,inset 0 -5px 0 #0008,0 5px 0 #000,0 0 20px #ff4d4d55!important}
+body .cwBtn.cam,body .cwBtn.cam:active{background:radial-gradient(circle at 35% 25%,#4a5d7a,#1b2638)!important}
+
+/* small round utility buttons (sound, settings, players, emotes, quick missions) */
+body .cwMute,body .cwGear,body .cpOnline,body .cpEmoteBtn,body .mcQuick button{
+  border:3px solid #000!important;
+  background:linear-gradient(180deg,#26573b,#0f2c1d)!important;color:#fff;
+  box-shadow:inset 0 2px 0 #ffffff4d,inset 0 -3px 0 #0006,0 4px 0 #000,0 6px 12px #0007!important;
+  transition:transform .07s,box-shadow .07s}
+body .cwMute:active,body .cwGear:active,body .cpOnline:active,body .cpEmoteBtn:active,body .mcQuick button:active{transform:translateY(3px);box-shadow:inset 0 2px 0 #fff4,0 1px 0 #000!important}
+body .mcQuick button{border-radius:14px!important}
+/* online badge */
+body .cpOnline i{background:var(--gy-red)!important;border:2px solid #000;box-shadow:0 2px 0 #000;font-family:var(--gy-font)!important;font-weight:400!important}
+body .mcQuick kbd{background:#000;color:var(--gy-gold);border:0;border-radius:4px}
+
+/* ---------- MINIMAP: thick gold ring, compass-style ---------- */
+body .cwMapBtn .cwMap,body .cwMap{
+  border:5px solid #000!important;
+  box-shadow:0 0 0 3px var(--gy-gold),0 0 0 6px #000,0 8px 0 3px #000b,0 12px 20px #000a,inset 0 0 18px #000a!important}
+
+/* ---------- JOYSTICK ---------- */
+body .cwStick{border:4px solid #000!important;border-radius:50%!important;
+  background:radial-gradient(circle,#0d2418cc 0%,#0d2418aa 60%,#ffffff12 100%)!important;
+  box-shadow:inset 0 0 0 3px #ffffff30,inset 0 6px 14px #000a,0 5px 0 #000,0 0 0 3px #ffc83d55!important}
+body .cwKnob{border:4px solid #000!important;
+  background:radial-gradient(circle at 35% 28%,#fff6c9,#ffc83d 55%,#c98a12)!important;
+  box-shadow:inset 0 3px 0 #fff9,inset 0 -4px 0 #a76a0a,0 5px 0 #000,0 8px 12px #0009!important}
+
+/* ---------- "NEAR A PLACE" CARD + TOASTS + PROMPTS ---------- */
+body .nearCard,body .sim.outside .nearCard{
+  background:linear-gradient(180deg,#143024f5,#081a10f5)!important;
+  border:4px solid #000!important;border-radius:16px!important;backdrop-filter:none!important;
+  box-shadow:0 0 0 2px var(--gy-gold),0 6px 0 2px #000,0 14px 24px #000a!important;animation:gyPop .35s cubic-bezier(.2,1.4,.4,1)}
+body .nearCopy b,body .nearCard b{color:#fff;text-shadow:0 2px 0 #000;letter-spacing:.04em}
+body .nearCard button,body .nearActions button{
+  background:linear-gradient(180deg,#ffe28a,#ffc83d 55%,#d99a1a)!important;color:#2a1a00!important;
+  border:3px solid #000!important;border-radius:11px!important;text-transform:uppercase;letter-spacing:.06em;text-shadow:0 1px 0 #fff8;
+  box-shadow:inset 0 2px 0 #fff9,0 4px 0 #000!important}
+body .nearCard button:active{transform:translateY(3px);box-shadow:0 1px 0 #000!important}
+body .glToast,body .toast,body .mcNotice{
+  background:linear-gradient(180deg,#1d4531,#0a2014)!important;color:#fff!important;
+  border:3px solid #000!important;border-radius:12px!important;text-shadow:0 2px 0 #000;letter-spacing:.04em;
+  box-shadow:0 0 0 2px var(--gy-gold),0 5px 0 2px #000,0 10px 20px #0009!important;animation:gyPop .3s ease-out}
+
+/* ---------- SIDE DOCK / BIG PANELS / MODALS ---------- */
+body .dockGrid,body .glPanel,body .glBar,body .modal .box,body .inMenu,body .inTop,body .fam{
+  background:linear-gradient(180deg,#173828 0%,#0c2016 45%,#07150e 100%)!important;
+  border:4px solid #000!important;border-radius:16px!important;
+  box-shadow:0 0 0 2px var(--gy-gold),inset 0 2px 0 #ffffff30,0 7px 0 2px #000,0 18px 34px #000b!important}
+body .dockGrid button,body .inDock button,body .inAct,body .inTopActions button{
+  background:linear-gradient(180deg,#2d6a47,#123a26)!important;color:#fff!important;
+  border:3px solid #000!important;border-radius:11px!important;text-shadow:0 2px 0 #000;letter-spacing:.04em;
+  box-shadow:inset 0 2px 0 #ffffff4d,inset 0 -3px 0 #0006,0 4px 0 #000!important}
+body .dockGrid button:active,body .inDock button:active,body .inAct:active{transform:translateY(3px);box-shadow:0 1px 0 #000!important}
+body .dockToggle{background:linear-gradient(180deg,#ffe28a,#ffc83d,#d99a1a)!important;color:#2a1a00;border:3px solid #000!important;box-shadow:inset 0 2px 0 #fff9,0 4px 0 #000!important}
+body .modal .box h1,body .modal .box h2,body .glPanel h2,body .inMenu h2{color:var(--gy-gold)!important;text-shadow:0 3px 0 #000,0 0 14px #ffc83d55!important;letter-spacing:.08em}
+
+/* ---------- NEEDS / BARS: segmented game meters ---------- */
+body .needs{background:linear-gradient(180deg,#143024ee,#081a10ee)!important;border:3px solid #000!important;border-radius:12px!important;box-shadow:0 0 0 2px #ffffff22,0 4px 0 #000!important}
+body .bar,body .fbar,body .mcAmmo{border:2px solid #000!important;border-radius:6px!important;background:#02080488!important;box-shadow:inset 0 3px 5px #000c!important;overflow:hidden}
+body .bar i,body .fbar i,body .mcAmmo i{border-radius:3px!important;box-shadow:inset 0 3px 0 #ffffff55,inset 0 -3px 0 #0004!important}
+
+/* ================= MISSION CONTROL ================= */
+body .mcBackdrop{background:radial-gradient(ellipse at center,#06150ccc 0%,#010503f2 100%)!important}
+body .mcPanel{
+  position:relative;background:linear-gradient(180deg,#173828 0%,#0c2016 40%,#07150e 100%)!important;color:#fff;
+  border:5px solid #000!important;border-radius:20px!important;padding:0 14px 12px!important;gap:10px!important;
+  box-shadow:0 0 0 3px var(--gy-gold),0 0 0 6px #000,0 12px 0 6px #000,0 24px 50px #000c!important;
+  animation:gyPop .45s cubic-bezier(.2,1.4,.4,1)}
+/* header = angled gold ribbon with hazard-stripe edge */
+body .mcPanel header{
+  margin:0 -14px;padding:14px 62px 12px 18px;position:relative;
+  background:linear-gradient(180deg,#ffe28a 0%,#ffc83d 50%,#e0a21f 100%);
+  border-bottom:5px solid #000;border-radius:14px 14px 0 0;
+  box-shadow:inset 0 3px 0 #fff9}
+body .mcPanel header::after{content:"";position:absolute;left:0;right:0;bottom:-5px;height:5px;transform:translateY(100%);
+  background:repeating-linear-gradient(115deg,#ffc83d 0 14px,#000 14px 28px);background-size:28px 5px;animation:gyStripes 1.2s linear infinite}
+body .mcPanel header small{color:#5a3a00!important;font-size:11px!important;letter-spacing:.22em!important;text-shadow:0 1px 0 #fff8}
+body .mcPanel h2{margin:0!important;font-size:30px!important;line-height:1;color:#fff!important;text-transform:uppercase;letter-spacing:.06em;
+  -webkit-text-stroke:2px #000;paint-order:stroke fill;text-shadow:0 4px 0 #000!important}
+/* close = red key */
+body .mcClose{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:44px!important;height:44px!important;border-radius:12px!important;
+  background:linear-gradient(180deg,#ff7a6a,#e5352b 55%,#9c1c1c)!important;color:#fff!important;border:4px solid #000!important;font-size:26px!important;line-height:1;
+  box-shadow:inset 0 2px 0 #ffffff77,0 4px 0 #000!important;text-shadow:0 2px 0 #000;font-family:var(--gy-font)!important}
+body .mcClose:active{transform:translateY(calc(-50% + 3px));box-shadow:0 1px 0 #000!important}
+/* tabs = beveled toggle keys */
+body .mcPanel nav{margin-top:6px;gap:8px!important}
+body .mcPanel nav button{
+  background:linear-gradient(180deg,#26402f,#122419)!important;color:#9fc4ab!important;border:3px solid #000!important;border-radius:12px!important;
+  padding:11px!important;font-size:18px;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 0 #000;
+  box-shadow:inset 0 2px 0 #ffffff33,0 4px 0 #000;transition:transform .07s}
+body .mcPanel nav button.on{background:linear-gradient(180deg,#ffe28a,#ffc83d 55%,#d99a1a)!important;color:#2a1a00!important;text-shadow:0 1px 0 #fff8;box-shadow:inset 0 2px 0 #fff9,0 4px 0 #000,0 0 18px #ffc83d66}
+body .mcPanel nav button:active{transform:translateY(3px);box-shadow:0 1px 0 #000}
+/* mission cards = ticket cards with a difficulty-coloured spine */
+body .mcMission,body .mcWeapon{
+  position:relative;overflow:hidden;background:linear-gradient(180deg,#1c3b2a,#10261a)!important;
+  border:3px solid #000!important;border-left:10px solid #22c55e!important;border-radius:14px!important;
+  box-shadow:inset 0 2px 0 #ffffff22,0 4px 0 #000;transition:transform .1s,filter .15s}
+body .mcMission:hover,body .mcWeapon:hover{transform:translateY(-2px);filter:brightness(1.08)}
+body .mcMission:has(.diff.medium){border-left-color:#ffc83d!important}
+body .mcMission:has(.diff.hard){border-left-color:#ff4d4d!important}
+body .mcWeapon.selected{border-color:#000!important;border-left-color:#ffc83d!important;box-shadow:0 0 0 2px #ffc83d,0 4px 0 #000,0 0 18px #ffc83d55}
+body .mcMissionIcon,body .mcWeaponIcon{background:radial-gradient(circle at 35% 25%,#3f8a5f,#143a26)!important;border:3px solid #000;border-radius:14px!important;
+  box-shadow:inset 0 2px 0 #ffffff55,0 3px 0 #000;font-size:26px!important}
+body .mcMeta{font-size:11px!important;letter-spacing:.14em!important;color:#a9d6b8!important}
+body .diff{border:2px solid #000;border-radius:6px!important;padding:3px 8px!important;color:#fff;text-shadow:0 1px 0 #000;background:#2fa35a!important;box-shadow:0 2px 0 #000}
+body .diff.medium{background:#e0a21f!important;color:#2a1a00;text-shadow:none}
+body .diff.hard{background:#e5352b!important;color:#fff}
+body .mcMissionText b,body .mcWeapon b{font-size:19px!important;color:#fff;text-shadow:0 2px 0 #000;letter-spacing:.03em}
+body .mcMissionText p{color:#cfe3d5!important;font-size:12px!important}
+body .mcMissionText small{color:#ffe28a!important;font-size:12px!important;font-family:var(--gy-font)!important;letter-spacing:.04em;font-weight:400}
+/* START / EQUIP = big glossy gold key that pulses */
+body .mcMission>button,body .mcWeapon>button,body .mcReload{
+  background:linear-gradient(180deg,#ffe28a,#ffc83d 55%,#d99a1a)!important;color:#2a1a00!important;border:3px solid #000!important;border-radius:12px!important;
+  padding:11px 16px!important;font-size:16px!important;letter-spacing:.08em;text-shadow:0 1px 0 #fff8;
+  box-shadow:inset 0 2px 0 #fff9,0 4px 0 #000;position:relative;overflow:hidden;transition:transform .07s}
+body .mcMission>button:not(:disabled){animation:gyPulse 1.8s ease-in-out infinite}
+body .mcMission>button:not(:disabled)::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 40%,#fff8 50%,transparent 60%);animation:gyShine 3s ease-in-out infinite}
+body .mcMission>button:active,body .mcWeapon>button:active,body .mcReload:active{transform:translateY(3px);box-shadow:0 1px 0 #000}
+body .mcMission>button:disabled,body .mcWeapon>button:disabled{background:linear-gradient(180deg,#4a5b50,#2c3a31)!important;color:#9db3a4!important;text-shadow:0 1px 0 #000;box-shadow:inset 0 2px 0 #ffffff22,0 4px 0 #000;animation:none}
+body .mcPanel footer{border-top:3px dashed #ffffff22!important;color:#9fc4ab!important;font-family:var(--gy-font)!important;letter-spacing:.06em}
+/* mission tracker = objective banner */
+body .mcTracker{background:linear-gradient(180deg,#143024f5,#081a10f5)!important;border:4px solid #000!important;border-radius:14px!important;
+  box-shadow:0 0 0 2px var(--gy-gold),0 5px 0 2px #000,0 10px 20px #000a!important}
+body .mcTracker small{color:var(--gy-gold)!important;font-size:11px!important;letter-spacing:.16em}
+body .mcTracker b{color:#fff;text-shadow:0 2px 0 #000;font-size:15px!important}
+body .mcTracker span{color:#e1f3e7!important;font-weight:400!important}
+body .mcTracker button{color:#fff!important;background:linear-gradient(180deg,#ff7a6a,#c42a21)!important;border:3px solid #000!important;border-radius:8px;padding:3px 10px!important;box-shadow:0 3px 0 #000;font-size:11px!important}
+
+/* ---------- TABS / GENERIC BUTTONS INSIDE MODALS ---------- */
+body .tabs button{border:3px solid #000!important;box-shadow:inset 0 2px 0 #ffffff33,0 4px 0 #000!important}
+body .modal .box button:not(.go):not(.jbApply){border:3px solid #000;box-shadow:inset 0 2px 0 #ffffff33,0 4px 0 #000}
+body .go,body .jbApply{border:3px solid #000!important;box-shadow:inset 0 2px 0 #fff9,0 4px 0 #000!important}
+body .jbCard,body .huCard,body .carCard,body .lbRow,body .frow{border:3px solid #000!important;border-left:8px solid #22c55e!important;border-radius:12px!important;box-shadow:inset 0 2px 0 #ffffff1a,0 4px 0 #000!important}
+
+/* ---------- scrollbars: chunky ---------- */
+.mcMissionList::-webkit-scrollbar,.mcWeaponList::-webkit-scrollbar,.modal .box::-webkit-scrollbar{width:10px}
+.mcMissionList::-webkit-scrollbar-thumb,.mcWeaponList::-webkit-scrollbar-thumb,.modal .box::-webkit-scrollbar-thumb{background:var(--gy-gold);border:2px solid #000;border-radius:8px}
+.mcMissionList::-webkit-scrollbar-track,.mcWeaponList::-webkit-scrollbar-track,.modal .box::-webkit-scrollbar-track{background:#000a;border-radius:8px}
+
+@media (prefers-reduced-motion:reduce){body .top>.pill::after,body .mcMission>button::after,body .mcPanel header::after{animation:none}body .mcMission>button:not(:disabled){animation:none}}

@@ -701,10 +701,10 @@ model HomeRoom {
   id        String   @id
   homeId    String
   type      String
-  x         Int
-  z         Int
-  w         Int
-  d         Int
+  x         Float
+  z         Float
+  w         Float
+  d         Float
   cost      Int      @default(0)
   createdAt DateTime @default(now())
 

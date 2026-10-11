@@ -36,9 +36,9 @@ import { playScene } from './StreetEscort';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
-import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit, setPlan } from '../lib/collision';
+import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit, setPlan, PLAN } from '../lib/collision';
 import PlanHouse from './HomePlan';
-import { exteriorWalls, planBounds, type Room as PlanRoom } from '../lib/homeRooms';
+import { exteriorWalls, isStarter, planBounds, planMode, type Room as PlanRoom } from '../lib/homeRooms';
 import { USES } from '../lib/pantry';
 import { itemById } from '../lib/catalog';
 import FurnitureModel, { hasFurnitureModel } from './FurnitureModels';
@@ -130,62 +130,25 @@ const OBJ: Obj[] = [
 const GATE: Record<string, string> = { massage: 'massage', aquarium: 'aquarium', treadmill: 'treadmill', gbench: 'gym_room', gbag: 'gym_room', cinema: 'cinema_room', odesk: 'office_room', oshelf: 'office_room' };
 const LUX_IDS = new Set(Object.keys(GATE));
 const has = (id: string) => HOME.own.has(id);
-/* Build mode (BUILD-MODE.md, step 2): a house with saved rooms is drawn and walked from those rooms. The old fixed flat's fixtures stay hidden (until step 4 converts them) except the front door, which moves to the west edge of the plan. */
-const PLANR = { rooms: [] as PlanRoom[], ver: 0, door: null as null | { x: number; z: number; r: number }, spawn: [0, .5] as P };
+/* Build mode (BUILD-MODE.md): a house with saved rooms is walked from those rooms. Three modes (lib/homeRooms.ts planMode):
+   'none'    no saved rooms: the old fixed flat, exactly as before;
+   'starter' the original flat as rooms (old look, fixtures and wings stay put) with any rooms the player built around it;
+   'free'    only built rooms: the old flat's fixtures stay hidden except the front door, which moves to the west wall. */
+const PLANR = { rooms: [] as PlanRoom[], mode: 'none' as 'none' | 'starter' | 'free', ver: 0, door: null as null | { x: number; z: number; r: number }, spawn: [0, .5] as P };
 let legacyIds: Set<string> | null = null;
-const planHidden = (id: string) => { if (!PLANR.rooms.length || id === 'door') return false; legacyIds ??= new Set([...OBJ.map(o => o.id), ...DECOR.map(d => d.id), 'wall', 'swall']); return legacyIds.has(id); };
+const planHidden = (id: string) => { if (PLANR.mode !== 'free' || id === 'door') return false; legacyIds ??= new Set([...OBJ.map(o => o.id), ...DECOR.map(d => d.id), 'wall', 'swall']); return legacyIds.has(id); };
 const hasObj = (id: string) => !planHidden(id) && (!GATE[id] || HOME.own.has(GATE[id]));
 /** Take a house's saved rooms (empty = the old fixed flat): walkable area, front door, and where you appear. */
 function applyPlan(rooms: PlanRoom[]) {
-  PLANR.rooms = rooms; PLANR.ver++; setPlan(rooms.length ? rooms : null); PLANR.door = null; blKey = '\0';
-  if (!rooms.length) { PLANR.spawn = [0, .5]; return; }
-  const west = Math.min(...rooms.map(r => r.x)), seg = exteriorWalls(rooms).filter(w => w.axis === 'z' && w.x === west).sort((a, b) => a.z - b.z)[0];
+  PLANR.rooms = rooms; PLANR.mode = planMode(rooms); PLANR.ver++; PLANR.door = null; PLANR.spawn = [0, .5]; blKey = '\0';
+  const built = rooms.some(r => !isStarter(r));
+  setPlan(PLANR.mode === 'free' || (PLANR.mode === 'starter' && built) ? rooms : null);   // a plain starter flat keeps the old fixed walking box
+  if (PLANR.mode !== 'free') return;
+  const west = Math.min(...rooms.map(r => r.x)), seg = exteriorWalls(rooms).filter(w => w.axis === 'z' && Math.abs(w.x - west) < .01).sort((a, b) => a.z - b.z)[0];
   const dz = seg.z + seg.len / 2;
   PLANR.door = { x: seg.x - (-6.2), z: dz - 3.5, r: 0 }; PLANR.spawn = [seg.x + 1.4, dz];   // the door object is at (-6.2, 3.5) in the old flat; this shifts it onto the plan's west wall
   if (blocked([], S.pos as P, undefined, HARD)) { S.pos = [PLANR.spawn[0], PLANR.spawn[1]]; S.q = []; S.cur = null; }
 }
-const EMOTES: Act[] = [
-  { k: 'wave', label: 'Wave', e: '👋', dur: 6, fx: { social: 8 }, pose: 'stand', anim: 'wave' },
-  { k: 'edance', label: 'Dance', e: '🕺', dur: 20, fx: { fun: 22, energy: -6 }, pose: 'stand', anim: 'dance' },
-  { k: 'cheer', label: 'Cheer', e: '🙌', dur: 8, fx: { fun: 10 }, pose: 'stand', anim: 'cheer' },
-  { k: 'stretch', label: 'Stretch', e: '🤸', dur: 10, fx: { energy: 4, fun: 4 }, pose: 'stand', anim: 'stretch' },
-  { k: 'think', label: 'Think', e: '🤔', dur: 8, fx: { fun: 3 }, pose: 'stand', anim: 'think' },
-];
-const DECOR: { id: string; p: [number, number]; rot: number; boxes: Box[]; vis: string }[] = [
-  { id: 'coffee', p: [-4.75, 1.2], rot: 0, boxes: [[-5, -4.5, .75, 1.65]], vis: 'coffee' },
-  { id: 'fan', p: [5.5, -1.8], rot: -Math.PI / 2, boxes: [[5.3, 5.7, -2, -1.6]], vis: 'fan' },
-  { id: 'kbedA', p: [7.5, -3.4], rot: 0, boxes: [[6.85, 8.15, -4.4, -2.4]], vis: 'kbedA' },
-  { id: 'kbedB', p: [10.2, -3.4], rot: 0, boxes: [[9.55, 10.85, -4.4, -2.4]], vis: 'kbedB' },
-  { id: 'nstand', p: [8.85, -4.15], rot: 0, boxes: [[8.6, 9.1, -4.4, -3.9]], vis: 'nstand' },
-  { id: 'kwar', p: [11.0, -1.4], rot: -Math.PI / 2, boxes: [[10.7, 11.3, -2.1, -.7]], vis: 'kwar' },
-];
-// Half-height wall between the flat and the kids' wing, with a doorway at z 1.0 to 2.6.
-const SWALLS: Blk[] = [{ id: 'swall', b: [6.1, 11.4, 4.65, 9.3] }]; // fills the void south of the kids' wing and walls off the east side of the south wing
-const WALLS: Blk[] = [{ id: 'wall', b: [6.1, 6.3, -4.6, 1.0] }, { id: 'wall', b: [6.1, 6.3, 2.6, 4.6] }];
-
-// Every solid footprint in the flat. Walking is planned around these (see lib/collision.ts) and re-checked every frame.
-// What your home has: rooms and luxury items bought under Menu > Home upgrades (saved on the server, see /api/home).
-const HOME = { own: new Set<string>() };
-type HomeLayout = Record<string, { x: number; z: number; r: number }>;
-const HOME_LAYOUT: HomeLayout = {};
-// This player's home look (wall paint, floor, rug, sofa, bedding, bed frame). Every account starts with its own (lib/homeLook.ts); HL holds the concrete colours the room reads.
-let HLOOK: HomeLook = defaultHomeLook('guest');
-const HL = resolveHomeLook(HLOOK);
-const setHomeLook = (l: HomeLook) => { HLOOK = l; Object.assign(HL, resolveHomeLook(l)); };
-// What the house looked like when we last loaded or saved it. Sent with every save so the server only applies what THIS player changed and keeps housemates' edits (HOME-SAVE.md).
-let HOME_BASE: { layout: HomeLayout; look: unknown } = { layout: {}, look: null };
-const markHomeBase = () => { HOME_BASE = { layout: JSON.parse(JSON.stringify(HOME_LAYOUT)), look: packHomeLook(HLOOK) }; };
-// Home editor settings: how far one tap moves a piece, how far one tap turns it, which tab is open and which shelf of the inventory is showing.
-const HEDIT = { step: .25, rot: Math.PI / 12, tab: 'move' as 'move' | 'add' | 'style', cat: 'All' };
-const HOME_OWNED: { id:string; itemKey:string; name:string; e:string; cat:string; cost:number; condition:number; x:number; z:number; r:number; fp?:[number,number] }[] = [];
-const HOME_SOLD = new Set<string>();
-// Pieces of a bigger object that can be moved on their own (key = '<object>.<part>', value = pivot in the object's local frame).
-const PART_AT: Record<string, [number, number]> = { 'tv.cab': [0, 2.6], 'tv.side': [1.5, 0], 'desk.chair': [0, .85], 'odesk.chair': [0, .95], 'dining.c1': [0, .8], 'dining.c2': [-.5, .8], 'dining.c3': [-1, 0], 'dining.c4': [1, 0], 'bed.stand': [1.15, -1], 'fridge.counter': [1.34, -.19], 'toilet.sink': [.85, -.3], 'cinema.seats': [0, 1.3] };
-const PART_NAMES: Record<string, string> = { 'tv.cab': 'TV & TV stand', 'tv.side': 'Side table & lamp', 'desk.chair': 'Desk chair', 'odesk.chair': 'Office chair', 'dining.c1': 'Dining chair', 'dining.c2': 'Small dining chair', 'dining.c3': 'Dining chair (left)', 'dining.c4': 'Dining chair (right)', 'bed.stand': 'Bedside table & lamp', 'fridge.counter': 'Kitchen counter', 'toilet.sink': 'Sink & mirror', 'cinema.seats': 'Cinema seats' };
-const BASE_NAMES: Record<string, string> = { tv: 'Sofa', desk: 'Desk', odesk: 'Executive desk', bed: 'Bed', dining: 'Dining table', fridge: 'Fridge', toilet: 'Toilet', coffee: 'Coffee table', fan: 'Standing fan', kbedA: "Kids' bed (left)", kbedB: "Kids' bed (right)", nstand: "Kids' nightstand", kwar: "Kids' wardrobe" };
-const EDITABLE_HOME_IDS = new Set(OBJ.map(o => o.id).concat(DECOR.map(d => d.id), Object.keys(PART_AT)).filter(id => id !== 'door'));
-const homeName = (id: string) => HOME_OWNED.find(i => i.id === id)?.name || PART_NAMES[id] || BASE_NAMES[id] || OBJ.find(o => o.id === id)?.name || id;
-const rotXZ = (a: number, x: number, z: number): [number, number] => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
 const homeT = (id: string) => (id === 'door' && PLANR.door) || HOME_LAYOUT[id] || { x: 0, z: 0, r: 0 };
 const movedP = (p: P, id: string): P => { const t = homeT(id); return [p[0] + t.x, p[1] + t.z]; };
 const movedObj = (o: Obj): Obj => { const t = homeT(o.id); const sk = o.sp || o.id; const p = movedP(o.p, o.id); const spot = movedP(o.spot, sk); const appr = o.appr ? movedP(o.appr, sk) : undefined; const boxes = (o.boxes || []).map((b, i) => { const tb = homeT(o.bp?.[i] || o.id); return [b[0] + tb.x, b[1] + tb.x, b[2] + tb.z, b[3] + tb.z] as Box; }); return { ...o, p, rot: o.rot + t.r, spot, appr, boxes, face: o.face + homeT(sk).r }; };
@@ -197,13 +160,14 @@ const resetHomeLayout = () => { for (const k of Object.keys(HOME_LAYOUT)) delete
 function nudgeHome(id: string, dx: number, dz: number, dr = 0) {
   const t = HOME_LAYOUT[id] || { x: 0, z: 0, r: 0 }, cur = homePos(id);
   let nx = t.x + dx, nz = t.z + dz;
-  if (cur && !id.includes('.')) { const ax = cur[0] + dx, az = cur[1] + dz, lx = Math.min(Math.max(ax, -5.8), wingOn() ? 10.9 : 5.7), lz = Math.min(Math.max(az, -4.3), southOn() ? 8.9 : 4.3); nx += lx - ax; nz += lz - az; }
+  if (PLAN.rooms) { if (cur && !id.includes('.') && blocked([], [cur[0] + dx, cur[1] + dz], undefined, .15)) { dx = 0; dz = 0; nx = t.x; nz = t.z; } }   // build mode: a piece may go anywhere inside your rooms
+  else if (cur && !id.includes('.')) { const ax = cur[0] + dx, az = cur[1] + dz, lx = Math.min(Math.max(ax, -5.8), wingOn() ? 10.9 : 5.7), lz = Math.min(Math.max(az, -4.3), southOn() ? 8.9 : 4.3); nx += lx - ax; nz += lz - az; }
   HOME_LAYOUT[id] = { x: Math.round(nx * 1000) / 1000, z: Math.round(nz * 1000) / 1000, r: t.r + dr }; blKey = '\0';
 }
 const MOUNTED = new Set(['ceilfan', 'ac', 'tv']);
 // Push a piece flat against the nearest wall, back to the wall (air conditioners and wall TVs sit right on it).
 function snapToWall(id: string): boolean {
-  if (id.includes('.')) return false;
+  if (id.includes('.') || PLAN.rooms) return false;   // the wall-snap knows the old flat's walls only (step 5 teaches it doors and walls)
   const owned = HOME_OWNED.find(i => i.id === id), obj = OBJ.find(o => o.id === id), dec = DECOR.find(d => d.id === id);
   const base = owned ? { x: owned.x, z: owned.z, r: owned.r } : obj ? { x: obj.p[0], z: obj.p[1], r: obj.rot } : dec ? { x: dec.p[0], z: dec.p[1], r: dec.rot } : null; if (!base) return false;
   const cur = homePos(id); if (!cur) return false;
@@ -255,8 +219,8 @@ const BL = (): Blk[] => {
 // Apply what the server says you own: build/remove the wing, move the family in, show the luxury items.
 function applyHome(ids: string[]) {
   HOME.own = new Set(ids); setEastLimit(wingOn()); setSouthLimit(southOn());
-  if (!PLANR.rooms.length && !wingOn() && S.pos[0] > 5.5) { S.pos = [4.8, S.pos[1]]; S.q = []; S.cur = null; }
-  if (!PLANR.rooms.length && !southOn() && S.pos[1] > 4.1) { S.pos = [S.pos[0], 3.7]; S.q = []; S.cur = null; }
+  if (!PLAN.rooms && !wingOn() && S.pos[0] > 5.5) { S.pos = [4.8, S.pos[1]]; S.q = []; S.cur = null; }
+  if (!PLAN.rooms && !southOn() && S.pos[1] > 4.1) { S.pos = [S.pos[0], 3.7]; S.q = []; S.cur = null; }
   if (has('solar')) S.power = true;
   const fam = HOME.own.has('family') && wingOn(); if (fam !== F.on) F.setOn(fam);
 }
@@ -989,7 +953,7 @@ function Lights() {
     const h = (S.min / 60) % 24, s = Math.max(0, Math.sin((h - 6) / 12 * Math.PI));
     sun.current.intensity = .15 + 2.4 * s; amb.current.intensity = .25 + 1 * s;
     sun.current.color.set(h < 8 || h > 17 ? '#ffb27a' : '#fff4e0');
-    if (PLANR.rooms.length) { const b = planBounds(PLANR.rooms); lamp.current.position.set(b.cx, 3.2, b.cz); }
+    if (PLANR.mode === 'free') { const b = planBounds(PLANR.rooms); lamp.current.position.set(b.cx, 3.2, b.cz); }
     lamp.current.intensity = S.power ? (1 - s) * 70 : 0; lamp2.current.intensity = S.power && wingOn() ? (1 - s) * 55 : 0; lamp3.current.intensity = S.power && southOn() ? (1 - s) * 60 : 0;
     (scene.background as THREE.Color).copy(night).lerp(day, s);
   });
@@ -1028,7 +992,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
   const { camera, gl } = useThree();
   const drag = useRef<{ id: string; sx: number; sz: number; tx: number; tz: number; r: number } | null>(null), ctl = useRef<any>(null), lay = useRef(onLayout), plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   lay.current = onLayout;
-  const plan = PLANR.rooms.length > 0, PB = plan ? planBounds(PLANR.rooms) : { cx: 0, cz: 0 };   // build mode: draw the house from its saved rooms
+  const free = PLANR.mode === 'free', plan = PLANR.mode !== 'none', PB = plan ? planBounds(PLANR.rooms) : { cx: 0, cz: 0 }, built = PLANR.rooms.some(r => !isStarter(r));   // build mode: draw built rooms from the saved plan
   EDIT.on = editingHome;
   EDIT.pick = id => { setHomeSel(id); setSel(null); };
   EDIT.down = (id, e) => { e.stopPropagation(); const h = e.ray.intersectPlane(plane, new THREE.Vector3()); if (!h) return; const t = homeT(id); drag.current = { id, sx: h.x, sz: h.z, tx: t.x, tz: t.z, r: t.r }; if (ctl.current) ctl.current.enabled = false; setHomeSel(id); setSel(null); };
@@ -1112,17 +1076,17 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
   });
   return <>
     <Lights />
-    {tpOn && !plan && <TPWalls ui={ui} />}
+    {tpOn && !free && <TPWalls ui={ui} />}
     {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: coarse ? 'auto' : 'none' }}><div className="tpPrompt" onClick={() => TP.interact?.()}>{coarse ? <b>👆</b> : <b>E</b>} {near.name}</div></Html>}
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
-    {plan && <PlanHouse rooms={PLANR.rooms} tall={tpOn} wall={HL.w2} trim="#f4f0e6" door={PLANR.door ? { x: PLANR.door.x - 6.2, z: PLANR.door.z + 3.5 } : null}
+    {plan && (free || built) && <PlanHouse rooms={PLANR.rooms} skipStarter={!free} tall={tpOn} wall={HL.w2} trim="#f4f0e6" door={PLANR.door ? { x: PLANR.door.x - 6.2, z: PLANR.door.z + 3.5 } : null}
       floor={{ map: HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null, color: HL.floorTint, roughness: HL.floorKind === 'marble' ? .22 : .7, metalness: HL.floorKind === 'marble' ? .12 : 0 }}
       onFloor={(x, z) => { setSel(null); if (editingHome) { setHomeSel(null); return; } walk(x, z); }} />}
-    {!plan && <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
+    {!free && <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
       <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial key={HL.floorKind} map={HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null} color={HL.floorTint} roughness={HL.floorKind === 'marble' ? .22 : .7} metalness={HL.floorKind === 'marble' ? .12 : 0} /></mesh>}
-    {!plan && <Room />}
-    {!plan && ui.south && <SouthWing ui={ui} />}
-    {!plan && (ui.wing ? <Wing /> : <EastWall />)}
+    {!free && <Room />}
+    {!free && ui.south && <SouthWing ui={ui} />}
+    {!free && (ui.wing ? <Wing /> : <EastWall />)}
     <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
     {OBJ.filter(o => !planHidden(o.id) && !ui.homeSold.includes(o.id) && (!GATE[o.id] || ui.home.includes(GATE[o.id])) && (ui.famOn || o.acts.some(a => !a.all))).map(raw => { const o = movedObj(raw); return <group key={o.id} position={[o.p[0], 0, o.p[1]]} rotation-y={o.rot}
       onPointerDown={editingHome && EDITABLE_HOME_IDS.has(o.id) ? (e: any) => EDIT.down(o.id, e) : undefined}

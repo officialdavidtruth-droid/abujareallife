@@ -1,8 +1,9 @@
-/* Build mode, step 1: the floor plan as data. Pure functions (no React / three / database), shared by the server (app/api/home/rooms) and later by the 3D house.
+/* Build mode: the floor plan as data. (Positions may be tenths of a metre so new rooms can sit flush against the original flat, whose walls are not on whole metres; the size of a NEW room is always whole tiles.)
+   Step 1 notes: Pure functions (no React / three / database), shared by the server (app/api/home/rooms) and later by the 3D house.
    The house sits on a grid of 1 m tiles. A room is a rectangle of whole tiles; world metres = tile numbers (a room at x 2, w 3 covers world x 2 to 5).
    Houses with no saved rooms keep the old fixed floor plan until a later step converts them. */
-export const GRID = { x0: -20, x1: 20, z0: -20, z1: 20 };   // tiles allowed: x0 <= x < x1, z0 <= z < z1
-export const MIN_SIDE = 2, MAX_SIDE = 8, MAX_ROOMS = 24, MAX_TILES = 400;
+export const GRID = { x0: -30, x1: 30, z0: -30, z1: 30 };   // metres allowed: x0 <= x < x1, z0 <= z < z1
+export const MIN_SIDE = 2, MAX_SIDE = 8, MAX_ROOMS = 24, MAX_TILES = 600;
 export const PER_TILE = 120_000, REFUND = 0.6;   // naira per tile; demolishing returns 60% of what that room cost
 
 export type RoomType = 'bedroom' | 'kitchen' | 'bathroom' | 'living' | 'gym' | 'cinema' | 'office' | 'empty';
@@ -27,17 +28,20 @@ export const refundFor = (cost: number) => Math.round(cost * REFUND);
 /** World-metre footprint [x0, x1, z0, z1] (the same Box shape lib/collision.ts uses). */
 export const worldBox = (r: Pick<Room, 'x' | 'z' | 'w' | 'd'>): [number, number, number, number] => [r.x, r.x + r.w, r.z, r.z + r.d];
 
-const overlap = (a: NewRoom, b: NewRoom) => a.x < b.x + b.w && a.x + a.w > b.x && a.z < b.z + b.d && a.z + a.d > b.z;
-/** Do the two rectangles share a stretch of wall at least one tile long (touching, not overlapping)? */
+const q = (v: number) => Math.round(v * 10);   // everything is compared in tenths of a metre, so 6.2 + 5.2 never disagrees with 11.4 by rounding
+const isTenth = (v: number) => Number.isFinite(v) && Math.abs(v * 10 - Math.round(v * 10)) < 1e-6;
+const overlap = (a: NewRoom, b: NewRoom) => q(a.x) < q(b.x + b.w) && q(a.x + a.w) > q(b.x) && q(a.z) < q(b.z + b.d) && q(a.z + a.d) > q(b.z);
+export const hitsRoom = (rooms: Room[], n: NewRoom) => rooms.some(r => overlap(r, n));
+/** Do the two rectangles share a stretch of wall at least one metre long (touching, not overlapping)? */
 export function sharesWall(a: NewRoom, b: NewRoom): boolean {
-  const zov = Math.min(a.z + a.d, b.z + b.d) - Math.max(a.z, b.z), xov = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
-  return ((a.x + a.w === b.x || b.x + b.w === a.x) && zov >= 1) || ((a.z + a.d === b.z || b.z + b.d === a.z) && xov >= 1);
+  const zov = Math.min(q(a.z + a.d), q(b.z + b.d)) - Math.max(q(a.z), q(b.z)), xov = Math.min(q(a.x + a.w), q(b.x + b.w)) - Math.max(q(a.x), q(b.x));
+  return ((q(a.x + a.w) === q(b.x) || q(b.x + b.w) === q(a.x)) && zov >= 10) || ((q(a.z + a.d) === q(b.z) || q(b.z + b.d) === q(a.z)) && xov >= 10);
 }
 
 /** Why this room cannot be built here, or null when it can. */
 export function checkBuild(rooms: Room[], n: NewRoom): string | null {
   if (!isRoomType(n.type)) return 'Pick a room type.';
-  if (![n.x, n.z, n.w, n.d].every(Number.isInteger)) return 'Rooms are made of whole tiles.';
+  if (!isTenth(n.x) || !isTenth(n.z) || !Number.isInteger(n.w) || !Number.isInteger(n.d)) return 'Rooms are made of whole tiles.';
   if (n.w < MIN_SIDE || n.d < MIN_SIDE) return `A room must be at least ${MIN_SIDE} x ${MIN_SIDE} tiles.`;
   if (n.w > MAX_SIDE || n.d > MAX_SIDE) return `A room can be at most ${MAX_SIDE} x ${MAX_SIDE} tiles.`;
   const [mw, md] = ROOM_TYPES[n.type].min;
@@ -57,8 +61,20 @@ export function connected(rooms: Room[]): boolean {
   while (todo.length) { const c = todo.pop()!; for (const r of rooms) if (!seen.has(r.id) && sharesWall(c, r)) { seen.add(r.id); todo.push(r); } }
   return seen.size === rooms.length;
 }
+export const isStarter = (r: Pick<Room, 'id'>) => r.id.startsWith('legacy-');   // the three parts of the original flat
+/** How a house is drawn: 'none' = no saved rooms (old fixed flat), 'starter' = the original flat as rooms (old look and fixtures), possibly with new rooms around it, 'free' = only rooms the player built. */
+export const planMode = (rooms: Room[]): 'none' | 'starter' | 'free' => (!rooms.length ? 'none' : rooms.some(r => r.id === 'legacy-main') ? 'starter' : 'free');
+/** The original flat as rooms, exactly where its walls always were (so every fixture stays where it is). Wings exist only if the player owns them. */
+export function starterRooms(owns: (upgrade: string) => boolean): Room[] {
+  const out: Room[] = [{ id: 'legacy-main', type: 'living', x: -6.2, z: -4.6, w: 12.4, d: 9.2 }];
+  if (owns('kids_room')) out.push({ id: 'legacy-wing', type: 'bedroom', x: 6.2, z: -4.6, w: 5.2, d: 9.2 });
+  if (owns('south_wing')) out.push({ id: 'legacy-south', type: 'empty', x: -6.2, z: 4.6, w: 12.4, d: 4.7 });
+  return out;
+}
+export const STARTER_FOR: Record<string, string> = { kids_room: 'legacy-wing', south_wing: 'legacy-south' };
 export function checkDemolish(rooms: Room[], id: string): string | null {
   if (!rooms.some(r => r.id === id)) return 'Room not found.';
+  if (id.startsWith('legacy-')) return 'That is part of your original home and cannot be demolished.';
   if (!connected(rooms.filter(r => r.id !== id))) return 'Demolishing that would cut your house in two. Remove the rooms beyond it first.';
   return null;
 }
@@ -68,29 +84,27 @@ export const roomAt = (rooms: Room[], x: number, z: number): Room | null => room
 
 /* ───── step 2: what the 3D house draws ───── */
 export type WallSeg = { x: number; z: number; len: number; axis: 'x' | 'z' };   // (x, z) = start of the wall; it runs `len` metres along `axis`
-/** Outside walls: every tile edge with a room on one side and nothing on the other, merged into straight runs. (Walls between two rooms come with doors in step 5; until then rooms are open plan.) */
-export function exteriorWalls(rooms: Room[]): WallSeg[] {
-  const has = (x: number, z: number) => rooms.some(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
-  const horiz = new Map<number, number[]>(), vert = new Map<number, number[]>();   // z -> xs of tiles with an edge on that line, x -> zs
-  const add = (m: Map<number, number[]>, k: number, v: number) => { const a = m.get(k); if (a) a.push(v); else m.set(k, [v]); };
+/** Outside walls: every stretch of a room's edge with no room on the other side, merged into straight runs. `skip` leaves out edges of some rooms (the starter flat draws its own walls).
+    (Walls between two rooms come with doors in step 5; until then rooms are open plan.) */
+export function exteriorWalls(rooms: Room[], skip?: (r: Room) => boolean): WallSeg[] {
+  type Iv = [number, number];
+  const raw: { axis: 'x' | 'z'; line: number; a: number; b: number }[] = [];
+  const cut = (iv: Iv, others: Iv[]): Iv[] => { let parts: Iv[] = [iv]; for (const [c0, c1] of others) parts = parts.flatMap(([p0, p1]): Iv[] => (c1 <= p0 || c0 >= p1 ? [[p0, p1]] : [[p0, Math.min(p1, c0)], [Math.max(p0, c1), p1]].filter(([u, v]) => v > u) as Iv[])); return parts; };
   for (const r of rooms) {
-    for (let x = r.x; x < r.x + r.w; x++) { if (!has(x, r.z - 1)) add(horiz, r.z, x); if (!has(x, r.z + r.d)) add(horiz, r.z + r.d, x); }
-    for (let z = r.z; z < r.z + r.d; z++) { if (!has(r.x - 1, z)) add(vert, r.x, z); if (!has(r.x + r.w, z)) add(vert, r.x + r.w, z); }
+    if (skip?.(r)) continue;
+    const x0 = q(r.x), x1 = q(r.x + r.w), z0 = q(r.z), z1 = q(r.z + r.d);
+    const sides: { axis: 'x' | 'z'; line: number; iv: Iv; nb: (o: Room) => boolean; span: (o: Room) => Iv }[] = [
+      { axis: 'x', line: z0, iv: [x0, x1], nb: o => q(o.z + o.d) === z0, span: o => [q(o.x), q(o.x + o.w)] },
+      { axis: 'x', line: z1, iv: [x0, x1], nb: o => q(o.z) === z1, span: o => [q(o.x), q(o.x + o.w)] },
+      { axis: 'z', line: x0, iv: [z0, z1], nb: o => q(o.x + o.w) === x0, span: o => [q(o.z), q(o.z + o.d)] },
+      { axis: 'z', line: x1, iv: [z0, z1], nb: o => q(o.x) === x1, span: o => [q(o.z), q(o.z + o.d)] },
+    ];
+    for (const sd of sides) for (const [a, b] of cut(sd.iv, rooms.filter(o => o !== r && sd.nb(o)).map(sd.span))) raw.push({ axis: sd.axis, line: sd.line, a, b });
   }
-  const out: WallSeg[] = [];
-  const merge = (m: Map<number, number[]>, axis: 'x' | 'z') => {
-    for (const [line, vs] of m) {
-      vs.sort((a, b) => a - b);
-      let s = vs[0], p = vs[0];
-      for (let i = 1; i <= vs.length; i++) {
-        if (i < vs.length && vs[i] === p + 1) { p = vs[i]; continue; }
-        out.push(axis === 'x' ? { x: s, z: line, len: p + 1 - s, axis } : { x: line, z: s, len: p + 1 - s, axis });
-        if (i < vs.length) { s = vs[i]; p = vs[i]; }
-      }
-    }
-  };
-  merge(horiz, 'x'); merge(vert, 'z');
-  return out;
+  raw.sort((u, v) => (u.axis < v.axis ? -1 : u.axis > v.axis ? 1 : u.line - v.line || u.a - v.a));
+  const merged: typeof raw = [];
+  for (const e of raw) { const l = merged[merged.length - 1]; if (l && l.axis === e.axis && l.line === e.line && l.b === e.a) l.b = e.b; else merged.push({ ...e }); }
+  return merged.map(e => e.axis === 'x' ? { axis: 'x' as const, x: e.a / 10, z: e.line / 10, len: (e.b - e.a) / 10 } : { axis: 'z' as const, x: e.line / 10, z: e.a / 10, len: (e.b - e.a) / 10 });
 }
 /** Where to centre the camera and put the lights: the middle of the whole plan, and its size. */
 export function planBounds(rooms: Room[]) {

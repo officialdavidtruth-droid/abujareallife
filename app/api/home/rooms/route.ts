@@ -2,14 +2,16 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../../lib/auth';
 import { resolveHome, resolveView } from '../../../../lib/housemates';
-import { ROOM_TYPES, checkBuild, checkDemolish, isRoomType, refundFor, roomCost, worldBox, type Room } from '../../../../lib/homeRooms';
+import { ROOM_TYPES, checkBuild, checkDemolish, isRoomType, refundFor, roomCost, starterRooms, worldBox, type Room } from '../../../../lib/homeRooms';
+import { homeKey } from '../../../../lib/homeUpgrades';
 
 export const dynamic = 'force-dynamic';
 /* Build mode, step 1 (BUILD-MODE.md): the rooms of a house. GET is open to anyone who may be in the house (owner, housemates, welcomed visitors), so everybody sees the same floor plan.
    Only the owner builds or demolishes. Each change runs under a per-house database lock so two taps at once cannot overlap two rooms or charge twice. */
 class Stop extends Error { constructor(public msg: string, public code = 400) { super(msg); } }
 type Row = { id: string; type: string; x: number; z: number; w: number; d: number; cost: number };
-const toRoom = (r: Row): Room => ({ id: r.id, type: isRoomType(r.type) ? r.type : 'empty', x: r.x, z: r.z, w: r.w, d: r.d, cost: r.cost });
+const toRoom = (r: Row): Room => ({ id: r.id.includes('~') ? r.id.split('~')[1] : r.id,   // the original flat's rooms are stored as '<home>~legacy-main' (ids are unique across houses) and shown as 'legacy-main'
+   type: isRoomType(r.type) ? r.type : 'empty', x: r.x, z: r.z, w: r.w, d: r.d, cost: r.cost });
 const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const list = async (db: { homeRoom: typeof prisma.homeRoom }, homeId: string) => (await db.homeRoom.findMany({ where: { homeId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })).map(toRoom);
 
@@ -27,11 +29,17 @@ export async function POST(req: Request) {
     const b = await req.json().catch(() => ({})), action = String(b.action || '');
     const hm = await resolveHome(u.id, u.username);
     if (hm.shared) return err(`Only ${hm.username} can change the floor plan of this house.`, 403);
-    if (action !== 'build' && action !== 'demolish') return err('Unknown action.');
+    if (action !== 'build' && action !== 'demolish' && action !== 'convert') return err('Unknown action.');
     try {
       const out = await prisma.$transaction(async tx => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rooms:' + hm.id}))`;   // one change at a time per house
-        const rooms = await list(tx, hm.id);
+        let rooms = await list(tx, hm.id);
+        if (!rooms.length && action !== 'demolish') {   // first time: the original flat becomes real rooms, exactly where its walls were, so nothing already in the house moves
+          const owned = new Set((await tx.inventoryItem.findMany({ where: { userId: hm.id, itemKey: { startsWith: 'home_' }, quantity: { gt: 0 } }, select: { itemKey: true } })).map(r => r.itemKey));
+          for (const r of starterRooms(id => owned.has(homeKey(id)))) await tx.homeRoom.create({ data: { id: hm.id + '~' + r.id, homeId: hm.id, type: r.type, x: r.x, z: r.z, w: r.w, d: r.d, cost: 0 } });
+          rooms = await list(tx, hm.id);
+        }
+        if (action === 'convert') return { rooms };
         if (action === 'build') {
           const n = { type: b.type, x: Number(b.x), z: Number(b.z), w: Number(b.w), d: Number(b.d) };
           const why = checkBuild(rooms, n as never); if (why) throw new Stop(why);

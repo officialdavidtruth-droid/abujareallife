@@ -5,6 +5,7 @@ import { currentUser, err, serverError } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
 import { UPGRADES, homeKey, upgradeById } from '../../../lib/homeUpgrades';
 import { resolveHome, resolveView } from '../../../lib/housemates';
+import { STARTER_FOR, hitsRoom, starterRooms } from '../../../lib/homeRooms';
 // Home upgrades (rooms + luxury items). Permanent, bought once, paid on the server.
 export const dynamic = 'force-dynamic';
 class Stop extends Error { constructor(public msg: string, public code = 400) { super(msg); } }
@@ -29,6 +30,16 @@ export async function POST(req: Request) {
         if (up.needs && !(await tx.inventoryItem.findUnique({ where: { userId_itemKey: { userId: u.id, itemKey: homeKey(up.needs) } } }))) throw new Stop(`Build the ${upgradeById(up.needs)?.name || 'required room'} first.`, 409);
         const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: up.price } }, data: { cash: { decrement: up.price } } }); if (!r.count) throw new Stop("You can't afford that.", 402);
         await tx.inventoryItem.create({ data: { userId: u.id, itemKey: homeKey(up.id), name: up.name, quantity: 1 } });
+        const sid = STARTER_FOR[up.id];   // a house already on the room plan gets the wing as a real room too (lib/homeRooms.ts starterRooms)
+        if (sid) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rooms:' + u.id}))`;
+          const rows = await tx.homeRoom.findMany({ where: { homeId: u.id } });
+          if (rows.length) {
+            const wing = starterRooms(id => id === up.id).find(r => r.id === sid)!;
+            if (hitsRoom(rows.map(r => ({ id: r.id, type: 'empty' as const, x: r.x, z: r.z, w: r.w, d: r.d })), wing)) throw new Stop('Something you built is in the way. Demolish it first.', 409);
+            await tx.homeRoom.create({ data: { id: u.id + '~' + sid, homeId: u.id, type: wing.type, x: wing.x, z: wing.z, w: wing.w, d: wing.d, cost: 0 } });
+          }
+        }
         await tx.transaction.create({ data: { userId: u.id, type: 'SPEND', amount: -up.price, description: `home:${up.id}` } });
       });
     } catch (e) { if (e instanceof Stop) return err(e.msg, e.code); throw e; }

@@ -1,6 +1,6 @@
 'use client';
 import { useMemo } from 'react';
-import { ROOM_TYPES, exteriorWalls, type Room, type WallSeg } from '../lib/homeRooms';
+import { ROOM_TYPES, exteriorWalls, isStarter, type Room, type WallSeg } from '../lib/homeRooms';
 /* Build mode, step 2 (BUILD-MODE.md): draws a house from its saved rooms. Floors per room (with a faint colour per room type so you can tell them apart),
    outside walls (half-height cutaway like the rest of the house, full height in third person) and an opening where the front door is.
    Walls between rooms arrive with doors in step 5; until then the rooms are open plan. */
@@ -22,14 +22,14 @@ function withGap(segs: WallSeg[], door: { x: number; z: number } | null): WallSe
   return out;
 }
 
-export default function PlanHouse({ rooms, tall, wall, trim, floor, door, onFloor }: {
-  rooms: Room[]; tall: boolean; wall: string; trim: string; floor: FloorProps;
+export default function PlanHouse({ rooms, skipStarter, tall, wall, trim, floor, door, onFloor }: {
+  rooms: Room[]; skipStarter: boolean; tall: boolean; wall: string; trim: string; floor: FloorProps;
   door: { x: number; z: number } | null; onFloor: (x: number, z: number, e: { delta: number; stopPropagation: () => void }) => void;
 }) {
-  const segs = useMemo(() => withGap(exteriorWalls(rooms), door), [rooms, door]);
+  const segs = useMemo(() => withGap(exteriorWalls(rooms, skipStarter ? isStarter : undefined), door), [rooms, door, skipStarter]);   // skipStarter: the original flat draws its own floor and walls
   const H = tall ? 2.6 : 1.3;
   return <group>
-    {rooms.map(r => <group key={r.id}>
+    {rooms.filter(r => !(skipStarter && isStarter(r))).map(r => <group key={r.id}>
       <mesh rotation-x={-Math.PI / 2} position={[r.x + r.w / 2, .01, r.z + r.d / 2]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); onFloor(e.point.x, e.point.z, e); }}>
         <planeGeometry args={[r.w, r.d]} /><meshStandardMaterial map={floor.map as never} color={floor.color} roughness={floor.roughness} metalness={floor.metalness} /></mesh>
       <mesh rotation-x={-Math.PI / 2} position={[r.x + r.w / 2, .014, r.z + r.d / 2]} raycast={() => null}>

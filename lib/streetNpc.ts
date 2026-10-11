@@ -10,7 +10,7 @@ export const NPC_RANGE = 4;            // metres you must be within to talk to o
 export const NPC_DEALER_MARKUP = 1.25;  // street weed costs 25% more than Mama Put's price
 export const NPC_DEALER_HEAT = 3;       // heat per unit bought on the street (Mama Put is 2)
 export const NPC_ESCORT_HEAT = 5;       // heat for hiring an escort on the street
-export const NPC_ESCORT_COOLDOWN_MS = 5 * 60_000;
+export const NPC_ESCORT_COOLDOWN_MS = 0;       // no wait between visits (the 30-per-10-minutes rate limit in the route still applies)
 
 const base = (o: Partial<Look> & { name: string }): Look => ({ model: 'citizen', gender: 'm', hair: 'short', hairColor: '#0d0907', skin: '#8b552f', outfit: '#126c4b', pants: '#2b3a55', height: 1, ...o });
 

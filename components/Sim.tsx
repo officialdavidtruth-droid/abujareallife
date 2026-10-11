@@ -26,6 +26,8 @@ import { GAME, buildingExitPoint } from './CityWorld';
 import { HOUSES, loadHouses } from '../lib/houses';
 import Tutorial from './Tutorial';
 import { HomeCompanion, CompanionHud } from './ClubCompanion';
+import { COMPANION, endCompanion } from '../lib/clubNpc';
+import { playScene } from './StreetEscort';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
@@ -48,7 +50,8 @@ const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 const OBJ: Obj[] = [
   { id: 'bed', bp: ['', 'bed.stand'], name: 'Bed', p: [-4.6, -3.3], rot: 0, spot: [-3.3, -1.9], face: 0, boxes: [[-5.5, -3.7, -4.6, -2], [-3.7, -3.2, -4.55, -4.05]], acts: [
     { k: 'sleep', label: 'Sleep', e: '💤', dur: 120, fx: { energy: 100, hunger: -10 }, pose: 'sleep' },
-    { k: 'nap', label: 'Nap', e: '😴', dur: 60, fx: { energy: 35 }, pose: 'sleep' }] },
+    { k: 'nap', label: 'Nap', e: '😴', dur: 60, fx: { energy: 35 }, pose: 'sleep' },
+    { k: 'together', label: 'Go to bed together', e: '🌙', dur: 0, fx: {}, pose: 'stand' }] },   // only shown while a companion is at home with you
   { id: 'wardrobe', name: 'Wardrobe & mirror', p: [-2.25, -4.3], rot: 0, spot: [-2.25, -3.4], face: Math.PI, boxes: [[-2.95, -1.55, -4.6, -4]], acts: [
     { k: 'outfit', label: 'Change outfit', e: '👕', dur: 8, fx: { fun: 8 }, pose: 'stand', anim: 'wardrobe' },
     { k: 'mirror', label: 'Check the mirror', e: '🪞', dur: 10, fx: { fun: 10, social: 4 }, pose: 'stand', anim: 'groom' }] },
@@ -220,6 +223,12 @@ const NEW = () => ({ pos: [0, .5] as [number, number], rot: 0, pose: 'stand' as 
   min: worldMinute(), cash: 0, meals: 0, supplies: 0, power: true, speed: 1, free: true, q: [] as Task[], cur: null as Task | null, prog: 0, toast: '', toastT: 0, cool: 0, stuck: 0 });
 const S = NEW();
 const say = (m: string) => { S.toast = m; S.toastT = Date.now(); };
+/** The bedroom step: fade to black with one line of text, nothing is shown. Rest and company change your needs, and in the morning she has gone. */
+function spendNight() {
+  if (COMPANION.phase !== 'home') return; const nm = COMPANION.name || 'She';
+  S.q = []; S.cur = null; playScene(`🌙 ${nm} stays the night… Later…`);
+  setTimeout(() => { const fx: Partial<Record<N, number>> = { energy: 55, social: 12, fun: 10, hygiene: -15 }; for (const k of Object.keys(fx) as N[]) S.needs[k] = cl(S.needs[k] + (fx[k] || 0)); endCompanion(); say(`☀️ Morning. ${nm} left early.`); }, 1500);
+}
 AUTO.minNeed = () => Math.min(...Object.values(S.needs)); // free-will work: the building / city drivers read these
 AUTO.drain = () => { (['hunger', 'energy', 'hygiene', 'bladder', 'fun'] as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - (k === 'hunger' || k === 'energy' ? 7 : 4)); }); };
 const walk = (x: number, z: number) => { S.cur = null; S.q = route(S.pos as P, [x, z]); };
@@ -1054,7 +1063,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]} calculatePosition={keepMenuOnScreen}><div className="pie"><b>{sel.name}</b>
-      {sel.acts.map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : `${a.dur} min`}</small></button>)}</div></Html>}
+      {sel.acts.filter(a => a.k !== 'together' || COMPANION.phase === 'home').map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { if (a.k === 'together') spendNight(); else enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : a.k === 'together' ? 'tonight' : `${a.dur} min`}</small></button>)}</div></Html>}
     {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}
   </>;
 }

@@ -12,7 +12,7 @@ import { CLUB_LOOKS, COMPANION, endCompanion } from '../lib/clubNpc';
    Home: she walks in after you and follows you around the house. Walking out again takes her with you.
    The banner tells you where you are in the plan. Step 4 (bedroom) starts from phase 'home'. */
 const useIdx = () => { const [i, setI] = useState(COMPANION.idx); useEffect(() => { const t = setInterval(() => setI(COMPANION.idx), 400); return () => clearInterval(t); }, []); return i; };
-const lookOf = (i: number) => CLUB_LOOKS[i] || CLUB_LOOKS[5];
+const lookOf = (i: number) => (i < -1 && COMPANION.look) || CLUB_LOOKS[i] || CLUB_LOOKS[5];
 
 /** Follows a moving target at a polite distance. `free` lets the caller block steps (walls and furniture indoors). */
 function follow(q: { x: number; z: number; rot: number; mv: boolean }, tx: number, tz: number, dt: number, gap: number, speed: (d: number) => number, free?: (x: number, z: number) => boolean) {
@@ -66,7 +66,7 @@ export function CompanionHud({ outside }: { outside: boolean }) {
     return () => { clearInterval(t); window.removeEventListener('arl-respawn-home', ko); };
   }, []);
   if (phase !== 'outside' && phase !== 'home') return null;
-  return <div className="ccBar"><span>💋</span><div><b>{name} is with you</b><small>{phase === 'outside' ? 'Walk or drive her to your house. At your front door press E.' : 'You are home together. (The bedroom comes in the next step.)'}</small></div>
+  return <div className="ccBar"><span>💋</span><div><b>{name} is with you</b><small>{phase === 'outside' ? 'Walk or drive her to your house. At your front door press E.' : 'You are home together. Tap the bed to go to bed together.'}</small></div>
     <button onClick={() => { endCompanion(); setPhase('none'); }}>{phase === 'outside' ? 'Call it off' : 'Send her home'}</button>
     <RuntimeStyle id="arl-companion-hud" css={`.ccBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(64px + env(safe-area-inset-top,0px));z-index:20;display:flex;gap:10px;align-items:center;background:#100b1cf7;border:1px solid #e879f9aa;border-radius:14px;padding:8px 12px;color:#fff;box-shadow:0 8px 24px #000a;max-width:calc(100vw - 20px)}.ccBar span{font-size:24px}.ccBar b{display:block;font-size:13px;color:#f0abfc}.ccBar small{color:#c9bde0;font-size:11px;display:block;max-width:230px}.ccBar button{background:none;border:1px solid #ffffff33;color:#cdbfe6;border-radius:8px;padding:5px 8px;font:700 11px system-ui;cursor:pointer;flex:none}`} />
   </div>;

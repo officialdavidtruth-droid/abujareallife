@@ -9,6 +9,7 @@ import { playScene } from './StreetEscort';
 import { MAX_PER_DEAL } from '../lib/dealers';
 import { NPC_RANGE, STREET_NPCS, type StreetNpc } from '../lib/streetNpc';
 import { HOUSES, loadHouses } from '../lib/houses';
+import { COMPANION } from '../lib/clubNpc';
 
 /* Step 9: street NPCs. <StreetNpcScene/> goes inside the 3D city; <StreetNpcUI/> goes in the HUD. /api/street-npc decides everything. */
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
@@ -58,10 +59,13 @@ export function StreetNpcUI({ say, refresh }: { say: (m: string) => void; refres
     await pushPos();
     const r = await post({ action: 'hire', npc: near.id, ...pos() }); setBusy(false);
     if (!r.ok) return say(r.d.error || 'Nope.');
-    const name = near.name; setOpen(false); playScene(`🌙 You and ${name} head home… Later…`);
+    const name = near.name, nl = near.look, ni = STREET_NPCS.findIndex(x => x.id === near.id); setOpen(false); playScene(`🌙 You and ${name} head home… Later…`);
     window.dispatchEvent(new CustomEvent('arl-apply-fx', { detail: r.d.fx || {} }));
     say(`💃 ${naira(r.d.spent)} well spent.${r.d.wanted ? ' You are WANTED.' : ''}`); finish(r.d);
-    setTimeout(() => window.dispatchEvent(new CustomEvent('arl-enter-home')), 1400);   // screen is black by now: you wake up inside your own house
+    setTimeout(() => {   // screen is black by now: you and she are inside your own house, and she stays with you (follows you around, walks out with you; "Send her home" ends it)
+      COMPANION.idx = -100 - ni; COMPANION.name = name; COMPANION.look = nl; COMPANION.phase = 'home';
+      window.dispatchEvent(new CustomEvent('arl-enter-home'));
+    }, 1400);
   };
   const confirm18 = async () => {
     if (busy) return; setBusy(true); const r = await post({ action: 'adult', dateOfBirth: dob, accept: ok18 }); setBusy(false);
@@ -86,7 +90,7 @@ export function StreetNpcUI({ say, refresh }: { say: (m: string) => void; refres
         <p className="snRow"><span>Price</span><b>{naira(near.price)}</b></p><p className="snRow"><span>Your cash</span><b>{naira(info.cash)}</b></p>
         <button className="snGo" disabled={busy || info.cash < near.price} onClick={hire}>🏠 Take {near.name} home · {naira(near.price)}</button>
         {info.cash < near.price && <p className="snNote" style={{ color: '#fca5a5' }}>You need {naira(near.price - info.cash)} more.</p>}
-        <p className="snNote">The scene fades to black and you wake up in your house. It raises your fun and social, costs energy, and adds heat.</p>
+        <p className="snNote">The scene fades to black and you wake up in your house with her. It raises your fun and social, costs energy, and adds heat.</p>
       </>}
     </div>}
     <RuntimeStyle id="arl-street-npc" css={`.snBtn{pointer-events:auto;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom,0px));z-index:30;background:#14532df2;color:#fff;border:1px solid #86efacaa;border-radius:999px;min-height:44px;padding:11px 18px;font-size:14px;font-weight:900}

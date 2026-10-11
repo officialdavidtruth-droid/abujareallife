@@ -78,7 +78,7 @@ export async function POST(req: Request) {
 
     // hire an escort: pay, a short fade-to-black scene on the client, needs go up, heat goes up
     if (npc.role !== 'escort') return err(`${npc.name} is not that kind of company.`, 409);
-    if (await prisma.transaction.findFirst({ where: { userId: u.id, description: `street-npc:company:${npc.id}`, createdAt: { gt: new Date(Date.now() - NPC_ESCORT_COOLDOWN_MS) } }, select: { id: true } })) return err(`${npc.name} needs a break. Try again in a few minutes.`, 429);   // read from the transaction log, so it survives restarts
+    if (NPC_ESCORT_COOLDOWN_MS > 0 && await prisma.transaction.findFirst({ where: { userId: u.id, description: `street-npc:company:${npc.id}`, createdAt: { gt: new Date(Date.now() - NPC_ESCORT_COOLDOWN_MS) } }, select: { id: true } })) return err(`${npc.name} needs a break. Try again in a few minutes.`, 429);   // read from the transaction log, so it survives restarts
     try {
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const r = await tx.save.updateMany({ where: { userId: u.id, cash: { gte: npc.price } }, data: { cash: { decrement: npc.price }, heat: { increment: NPC_ESCORT_HEAT }, heatAt: new Date() } });

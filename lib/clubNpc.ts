@@ -17,8 +17,8 @@ export const CLUB_TALK = { idx: -1 };
 export const TALK_RANGE = 3.2;
 
 /* Step 2: the companion you paid. She follows you inside the club; when you walk out she goes with you ('outside' is picked up by the next step). */
-export const COMPANION = { idx: -1, name: '', phase: 'none' as 'none' | 'inside' | 'outside' | 'home' };   // inside = still in the club, outside = in the city with you, home = in your house
-export const endCompanion = () => { COMPANION.idx = -1; COMPANION.name = ''; COMPANION.phase = 'none'; };
+export const COMPANION = { idx: -1, name: '', phase: 'none' as 'none' | 'inside' | 'outside' | 'home', look: null as Look | null };   // look: a street escort brought home (idx < -1); club companions use CLUB_LOOKS[idx]   // inside = still in the club, outside = in the city with you, home = in your house
+export const endCompanion = () => { COMPANION.idx = -1; COMPANION.name = ''; COMPANION.phase = 'none'; COMPANION.look = null; };
 
 /* how the club NPCs look (index = CLUB_PEOPLE idx); the companion keeps her look in the city and at home */
 export const CLUB_LOOKS: Look[] = [

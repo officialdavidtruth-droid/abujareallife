@@ -497,6 +497,20 @@ const watchMode = (fam = true): ScreenMode => {
   if (a && (a.k === 'game' || a.k === 'cgame')) return 'game';
   return fam && F.mem.some(m => !m.away && m.pose === 'sit' && m.anim === 'tv') ? 'movie' : null;
 };
+// Keeps the "what do you want to do here" menu fully on screen. It is pinned above the object in 3D, so objects near the top or sides of
+// the view used to push it off the canvas and cut it. We project the anchor to the screen, then clamp the menu's centre inside the canvas.
+const _pv = new THREE.Vector3();
+const keepMenuOnScreen = (el: THREE.Object3D, camera: THREE.Camera, size: { width: number; height: number }): [number, number] => {
+  _pv.setFromMatrixPosition(el.matrixWorld).project(camera);
+  let x = _pv.x * size.width / 2 + size.width / 2, y = -(_pv.y * size.height / 2) + size.height / 2;
+  if (_pv.z > 1) y = size.height; // anchor is behind the camera: park the menu at the bottom instead of mirroring it
+  const box = typeof document !== 'undefined' ? document.querySelector('.pie') as HTMLElement | null : null;
+  const w = box?.offsetWidth || 230, h = box?.offsetHeight || 220;
+  const side = 12, top = 76, bottom = 12; // top margin keeps clear of the menu button in the corner
+  x = Math.max(w / 2 + side, Math.min(size.width - w / 2 - side, x));
+  y = Math.max(h / 2 + top, Math.min(size.height - h / 2 - bottom, y));
+  return [x, y];
+};
 // what a computer monitor shows: it follows whichever desk activity is running (freelance code, side-hustle ledger, social feed)
 const deskMode = (): ScreenMode => { const k = S.cur?.t === 'act' ? S.cur.a.k : ''; return k === 'work' ? 'work' : k === 'hustle' || k === 'bizplan' ? 'hustle' : k === 'browse' || k === 'obrowse' ? 'browse' : null; };
 const deskJob = (): JobInfo => S.cur?.t === 'act' ? { prog: Math.min(1, S.prog / S.cur.a.dur), pay: S.cur.a.pay || 0 } : { prog: 0, pay: 0 };
@@ -1036,7 +1050,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     {editingHome && homeSel && (() => { const q = homePos(homeSel); return q ? <mesh rotation-x={-Math.PI / 2} position={[q[0], .035, q[1]]}><ringGeometry args={[.62, .76, 40]} /><meshBasicMaterial color="#f0b94a" transparent opacity={.95} depthTest={false} /></mesh> : null; })()}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
-    {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]}><div className="pie"><b>{sel.name}</b>
+    {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]} calculatePosition={keepMenuOnScreen}><div className="pie"><b>{sel.name}</b>
       {sel.acts.map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : `${a.dur} min`}</small></button>)}</div></Html>}
     {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}
   </>;
@@ -1187,7 +1201,7 @@ const CSS = `.au{position:fixed;inset:0;z-index:60;display:grid;place-items:cent
 .tpBtns{display:none;position:absolute;right:72px;bottom:20px;gap:12px;align-items:flex-end;z-index:30}.tpB{width:58px;height:58px;border-radius:50%;border:2px solid #ffffff44;background:#10201aee;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0;touch-action:manipulation}.tpB span{font-size:21px;line-height:1}.tpB small{font-size:8px;font-weight:700;letter-spacing:.04em;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tpB.on{background:#1d7654}.tpB.use{width:74px;height:74px;border-color:#f0b94a88}.tpB.use.ready{background:#f0b94a;color:#1a1410;border-color:#fff}.tpB:active{transform:scale(.94)}
 .hint{position:absolute;right:12px;bottom:12px;font-size:10px;color:#ffffffaa;text-shadow:0 1px 3px #000;max-width:200px;text-align:right}
 .bubble{background:#fff;color:#000;border-radius:14px;padding:3px 9px;font-size:20px;box-shadow:0 2px 8px #0005}
-.pie{background:#10201af5;border:1px solid #ffffff33;border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:5px;min-width:170px}.pie b{font-size:11px;color:#f0b94a;text-transform:uppercase;letter-spacing:.1em;padding:0 4px}
+.pie{background:#10201af5;border:1px solid #ffffff33;border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:5px;min-width:170px;max-height:calc(100vh - 96px);overflow-y:auto}.pie b{font-size:11px;color:#f0b94a;text-transform:uppercase;letter-spacing:.1em;padding:0 4px}
 .pie button{display:flex;justify-content:space-between;gap:12px;background:#1b3329;border:1px solid #2f5143;color:#fff;border-radius:9px;padding:8px 10px;font-size:12px;cursor:pointer;text-align:left}.pie button:hover:not(:disabled){background:#27503f}.pie button:disabled{opacity:.4;cursor:not-allowed}.pie small{color:#9fb5aa}
 @media(max-width:620px){.needs{width:170px;padding:8px}.hint{display:none}.nrow>span{width:70px}}
 .famBtn{position:absolute;z-index:6;left:calc(10px + env(safe-area-inset-left,0px));top:calc(58px + env(safe-area-inset-top,0px));background:#10201ae6;color:#f0b94a;border:1px solid #ffffff2a;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(8px)}

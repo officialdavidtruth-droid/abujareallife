@@ -640,3 +640,18 @@ model PartyGuest {
   @@index([userId, status])
   @@index([partyId, status])
 }
+
+// Housemates: the owner of a house invites other players to live in it (HOUSEMATES.md). pending = invited, live = lives there.
+model HouseMate {
+  id        String   @id @default(cuid())
+  ownerId   String
+  ownerName String
+  mateId    String
+  mateName  String
+  status    String   @default("pending") // pending | live
+  createdAt DateTime @default(now())
+
+  @@unique([ownerId, mateId])
+  @@index([mateId, status])
+  @@index([ownerId, status])
+}

@@ -157,3 +157,17 @@ CREATE TABLE IF NOT EXISTS "Message" (
 CREATE INDEX IF NOT EXISTS "Message_toName_readAt_idx" ON "Message"("toName", "readAt");
 CREATE INDEX IF NOT EXISTS "Message_fromName_createdAt_idx" ON "Message"("fromName", "createdAt");
 CREATE INDEX IF NOT EXISTS "Message_toName_createdAt_idx" ON "Message"("toName", "createdAt");
+
+-- 0023_housemates (HOUSEMATES.md)
+CREATE TABLE IF NOT EXISTS "HouseMate" (
+  "id" TEXT PRIMARY KEY,
+  "ownerId" TEXT NOT NULL,
+  "ownerName" TEXT NOT NULL,
+  "mateId" TEXT NOT NULL,
+  "mateName" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "HouseMate_ownerId_mateId_key" ON "HouseMate"("ownerId","mateId");
+CREATE INDEX IF NOT EXISTS "HouseMate_mateId_status_idx" ON "HouseMate"("mateId","status");
+CREATE INDEX IF NOT EXISTS "HouseMate_ownerId_status_idx" ON "HouseMate"("ownerId","status");

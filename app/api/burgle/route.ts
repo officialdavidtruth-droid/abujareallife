@@ -8,6 +8,7 @@ import { ROB_ANY_COOLDOWN_MS } from '../../../lib/profile';
 import { ROBBERY_KINDS, robCooldownLeft, secs } from '../../../lib/robbery';
 import { BREAKIN, GUARDS, hasGuards, riskLabel, secFromRows, winChance, type Sec } from '../../../lib/security';
 import { burgleRoll, signBurgle, verifyBurgle } from '../../../lib/burgle';
+import { resolveHome } from '../../../lib/housemates';
 export const dynamic = 'force-dynamic';
 
 /* Break into another player's house. Two steps, like the shop hold-up:
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
 
   if (b.action === 'start') {
     const slot = Number(b.slot), owner = await ownerOf(slot); if (!owner) return err('There is nobody home to rob.', 404);
-    if (owner.id === u.id) return err("That's your own house.", 400);
+    if (owner.id === u.id || (await resolveHome(u.id, u.username)).id === owner.id) return err("That's your own house.", 400);
     const wait = await robCooldownLeft(u.id, 'burgle');
     if (wait > 0) return NextResponse.json({ error: `Lie low for ${secs(wait)}s before your next job.`, retryIn: wait }, { status: 429 });
     const sh = await shieldLeft(owner.id);
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
     const elapsed = now - t.start;
     if (elapsed < BREAKIN.secs * 1000 - 1500) return err('You are not done with the lock yet.', 409);
     if (elapsed > BREAKIN.maxAgeMs) return err('You hesitated too long. Start again.', 410);
-    const owner = await ownerOf(t.slot); if (!owner || owner.id === u.id) return err('There is nobody home to rob.', 404);
+    const owner = await ownerOf(t.slot); if (!owner || owner.id === u.id || (await resolveHome(u.id, u.username)).id === owner.id) return err('There is nobody home to rob.', 404);
     if (!(await atDoor(u.id, t.slot))) return err('You left the door.', 409);
     const sec = await secOf(owner.id), stealth = lvl(me.profile, 'stealth');
     const win = burgleRoll(t.jti, 'win') < winChance(sec, stealth);   // rolled here, from a key only the server knows

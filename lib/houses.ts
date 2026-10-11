@@ -97,7 +97,7 @@ export function decorate(slot: number, u: string, mine: boolean, nepo = false, c
 }
 
 /* ───────────── client store ───────────── */
-export const HOUSES = { list: [] as HouseInfo[], mine: null as HouseInfo | null, ver: 0, loading: false };
+export const HOUSES = { list: [] as HouseInfo[], mine: null as HouseInfo | null, shared: false, ver: 0, loading: false };   // mine = the house you LIVE in; shared = it is a housemate's (not yours)
 
 /** Fetch every player's house (and which one is yours). Safe to call often; it fails quietly when offline. */
 export async function loadHouses(): Promise<void> {
@@ -105,9 +105,9 @@ export async function loadHouses(): Promise<void> {
   HOUSES.loading = true;
   try {
     const r = await fetch('/api/houses', { cache: 'no-store' }); if (!r.ok) return;
-    const d = await r.json() as { houses?: { slot: number; u: string; o?: string; s?: string; g?: { d?: number; g?: number; a?: number } }[]; mine?: number };
+    const d = await r.json() as { houses?: { slot: number; u: string; o?: string; s?: string; g?: { d?: number; g?: number; a?: number } }[]; mine?: number; shared?: boolean };
     const list = (d.houses || []).map(h => decorate(h.slot, String(h.u), h.slot === d.mine, h.o === 'NEPO', h.s, unpackSec(h.g))).filter((h): h is HouseInfo => !!h);
-    HOUSES.list = list; HOUSES.mine = list.find(h => h.mine) ?? null; HOUSES.ver++;
+    HOUSES.list = list; HOUSES.mine = list.find(h => h.mine) ?? null; HOUSES.shared = !!d.shared; HOUSES.ver++;
     window.dispatchEvent(new CustomEvent('arl-houses'));
   } catch { /* offline: keep what we have */ } finally { HOUSES.loading = false; }
 }

@@ -4,22 +4,24 @@ import { prisma } from '../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
 import { UPGRADES, homeKey, upgradeById } from '../../../lib/homeUpgrades';
+import { resolveHome } from '../../../lib/housemates';
 // Home upgrades (rooms + luxury items). Permanent, bought once, paid on the server.
 export const dynamic = 'force-dynamic';
 class Stop extends Error { constructor(public msg: string, public code = 400) { super(msg); } }
-async function snapshot(userId: string) {
-  const [rows, save] = await Promise.all([prisma.inventoryItem.findMany({ where: { userId, itemKey: { startsWith: 'home_' }, quantity: { gt: 0 } }, select: { itemKey: true } }), prisma.save.findUnique({ where: { userId }, select: { cash: true } })]);
+async function snapshot(userId: string, homeId = userId) {   // rooms belong to the house (its owner); cash is always yours
+  const [rows, save] = await Promise.all([prisma.inventoryItem.findMany({ where: { userId: homeId, itemKey: { startsWith: 'home_' }, quantity: { gt: 0 } }, select: { itemKey: true } }), prisma.save.findUnique({ where: { userId }, select: { cash: true } })]);
   const keys = new Set((rows as { itemKey: string }[]).map(r => r.itemKey));
   return { owned: UPGRADES.filter(u => keys.has(homeKey(u.id))).map(u => u.id), cash: save?.cash ?? 0 };
 }
 export async function GET() {
-  try { const u = await currentUser(); if (!u) return err('Not signed in.', 401); return NextResponse.json({ catalog: UPGRADES, ...(await snapshot(u.id)) }); } catch (e) { return serverError(e); }
+  try { const u = await currentUser(); if (!u) return err('Not signed in.', 401); const h = await resolveHome(u.id, u.username); return NextResponse.json({ catalog: UPGRADES, shared: h.shared, owner: h.username, ...(await snapshot(u.id, h.id)) }); } catch (e) { return serverError(e); }
 }
 export async function POST(req: Request) {
   try {
     const u = await currentUser(); if (!u) return err('Not signed in.', 401);
     const st = await loadState(u.id); if (!st) return err('Create your character first.', 409);
     if (st.jailLeft) return err('You are in jail.', 403);
+    const hm = await resolveHome(u.id, u.username); if (hm.shared) return err(`Only ${hm.username} can build rooms in this house.`, 403);
     const b = await req.json().catch(() => ({})), up = upgradeById(String(b.id)); if (!up) return err('Unknown upgrade.', 404);
     try {
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {

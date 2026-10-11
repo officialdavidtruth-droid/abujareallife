@@ -306,3 +306,17 @@ CREATE INDEX IF NOT EXISTS "PartyGuest_partyId_status_idx" ON "PartyGuest"("part
 
 -- Session revocation (log out of all devices)
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionVersion" INTEGER NOT NULL DEFAULT 0;
+
+-- 0023_housemates (HOUSEMATES.md)
+CREATE TABLE IF NOT EXISTS "HouseMate" (
+  "id" TEXT PRIMARY KEY,
+  "ownerId" TEXT NOT NULL,
+  "ownerName" TEXT NOT NULL,
+  "mateId" TEXT NOT NULL,
+  "mateName" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "HouseMate_ownerId_mateId_key" ON "HouseMate"("ownerId","mateId");
+CREATE INDEX IF NOT EXISTS "HouseMate_mateId_status_idx" ON "HouseMate"("mateId","status");
+CREATE INDEX IF NOT EXISTS "HouseMate_ownerId_status_idx" ON "HouseMate"("ownerId","status");

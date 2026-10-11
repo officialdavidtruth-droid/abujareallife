@@ -223,7 +223,7 @@ export const ROB_RANGE = 3.5, ROB_PCT = 0.3, ROB_MAX = 150_000, ROB_MIN = 1_000;
 export const HOLDUP = { bagSecs: 20, minSecs: 5, maxSecs: 90, etaMin: 14, etaMax: 38, etaPerStealth: 1.5, etaStealthMax: 8, etaFloor: 8, officerCut: 0.25, officerCutMax: 0.5, heat: 45, caughtHeat: 20, userCooldownMs: 300_000, shopCooldownMs: 600_000,
   clerkArmedChance: 0.25, clerkAtMin: 6, clerkAtMax: 14 };   // step 7: a quarter of clerks keep a gun under the counter and pull it 6-14 s in (run before then or get shot)
 export const ROB_ANY_COOLDOWN_MS = 20_000;                              // after ANY robbery attempt (player or NPC) wait this long before the next
-export const ROB_KIND_COOLDOWN_MS: Record<string, number> = { rob_player: 30_000, pickpocket: 20_000, mug_npc: 60_000, demand_npc: 75_000, carjack: 120_000 };   // extra wait before repeating the same kind
+export const ROB_KIND_COOLDOWN_MS: Record<string, number> = { rob_player: 30_000, pickpocket: 20_000, mug_npc: 60_000, demand_npc: 75_000, carjack: 120_000, burgle: 120_000 };   // extra wait before repeating the same kind
 export const ROB_VICTIM_SHIELD_MS = 120_000;                            // a player who was just robbed cannot be robbed again for this long
 export const ROB_HEAT = 45, ROB_COOLDOWN_MS = 90_000;                   // heat for mugging; one mugging per victim per 90 s
 export const DEMAND_RANGE = 5;                                          // step 7: point a gun at a pedestrian this close to demand their cash

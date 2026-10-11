@@ -275,7 +275,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const doorH = (!VEH.drv && !GAME.ride) ? nearDoor(p.x, p.z) : null;   // GTA style: walk up to your front door and press E
       const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
       if (taxiI >= 0) ROAM.openSheet(taxiI);
-      else if (doorH) { if (doorH.mine) window.dispatchEvent(new CustomEvent('arl-enter-home')); else GAME.notice = `🔒 ${doorH.u}'s house is locked.`; }
+      else if (doorH) { if (doorH.mine) window.dispatchEvent(new CustomEvent('arl-enter-home')); else { GAME.notice = `🔒 ${doorH.u}'s house is locked.`; window.dispatchEvent(new CustomEvent('arl-break-in', { detail: { slot: doorH.slot } })); } }
       else if (!VEH.drv && !GAME.ride && planeNear(p.x, p.z)) { boardPlane(p); nearId.current = null; setN(null); setNear(null); }
       else if (VEH.drv) {
         VEH.drv = false; VEH.v = 0; engineStop();

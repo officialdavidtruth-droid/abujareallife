@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { HOUSES, HOUSE_D, HOUSE_W, FRONT, floorsFor, loadHouses, type HouseInfo } from '../lib/houses';
 import { DESIGNS, DOORS, ROOFS, TRIMS, WALLS, type Style } from '../lib/houseStyle';
 import { GAME, NIGHT } from './cityShared';
+import { NO_SEC, hasGuards, secLine, type GuardId } from '../lib/security';
 import { BL, SOLIDS } from './CityCollision';
 
 /* Every player's house, standing on the street (see lib/houses.ts for where, lib/houseStyle.ts for the looks: 4 designs, colours and 6 extras).
@@ -187,7 +188,7 @@ export function HouseMeshes({ list, ver = 0, forceNight }: { list: HouseInfo[]; 
 /** A free-standing house at the origin (front towards +z) for the customiser's preview. */
 export function previewHouse(style: Style, u: string, nepo: boolean): HouseInfo {
   return { slot: -1, x: 0, z: 0, rot: 0, nx: 0, nz: 1, lat: 0, door: { x: 0, z: HOUSE_D / 2 }, exit: { x: 0, z: HOUSE_D / 2 + .8, r: 0 }, car: { x: 0, z: HOUSE_D / 2 + 3.9, r: 0 }, solid: { x0: -HOUSE_W / 2, x1: HOUSE_W / 2, z0: -HOUSE_D / 2, z1: HOUSE_D / 2 },
-    u, mine: true, nepo, style, wall: WALLS[style.w] ?? WALLS[0], roof: ROOFS[style.r] ?? ROOFS[0], floors: floorsFor(style, u) };
+    u, mine: true, nepo, style, wall: WALLS[style.w] ?? WALLS[0], roof: ROOFS[style.r] ?? ROOFS[0], floors: floorsFor(style, u), sec: NO_SEC };
 }
 
 function Beacon({ h }: { h: HouseInfo }) {
@@ -216,8 +217,54 @@ function Signs() {
     const h = HOUSES.list.find(x => x.slot === id); if (!h) return null;
     return <group key={id} position={[h.x, 0, h.z]} rotation-y={h.rot}>
       <Text position={[0, h.style.d === 3 ? 3.5 : 2.7, HOUSE_D / 2 + (h.style.d === 1 ? 1 : .06)]} fontSize={h.mine ? .34 : .3} maxWidth={HOUSE_W - .4} color={h.mine ? '#ffe28a' : h.nepo ? '#ffd9a0' : '#ffffff'} outlineWidth={.035} outlineColor="#000000" anchorX="center" anchorY="middle" textAlign="center">{h.mine ? `${h.u} · YOUR HOUSE` : `${h.u}'s house`}</Text>
+      {hasGuards(h.sec) && <Text position={[0, (h.style.d === 3 ? 3.5 : 2.7) - .42, HOUSE_D / 2 + (h.style.d === 1 ? 1 : .06)]} fontSize={.27} color="#ffd9a0" outlineWidth={.035} outlineColor="#000000" anchorX="center" anchorY="middle">{secLine(h.sec)}</Text>}
     </group>;
   })}</>;
+}
+
+/* Guards and dogs on patrol (lib/security.ts). Only the nearest few watched houses get actors, so a phone stays smooth.
+   Dogs circle the house, guards pace the front yard, an armed guard stands at the door. All motion is a pure function of time (no state per actor). */
+const SKIN = '#c68642';
+function Actor({ h, kind, i }: { h: HouseInfo; kind: GuardId; i: number }) {
+  const g = useRef<THREE.Group>(null!), body = useRef<THREE.Group>(null!), ph = useMemo(() => i * 2.7 + (h.slot % 7) * .9, [i, h.slot]);
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime, o = g.current, b = body.current; if (!o || !b) return;
+    if (kind === 'dog') {   // circles the whole house
+      const rx = HOUSE_W / 2 + 1.5, rz = HOUSE_D / 2 + 1.5, a = t * 1.5 / 4.6 + ph, dx = -Math.sin(a) * rx, dz = Math.cos(a) * rz;
+      o.position.set(Math.cos(a) * rx, 0, Math.sin(a) * rz); o.rotation.y = Math.atan2(dx, dz); b.position.y = Math.abs(Math.sin(t * 9 + ph)) * .035;
+    } else if (kind === 'guard') {   // paces the front yard
+      const amp = HOUSE_W / 2 + 1, a = t * .7 / amp + ph;
+      o.position.set(amp * Math.sin(a), 0, HOUSE_D / 2 + 1.9); o.rotation.y = Math.cos(a) >= 0 ? Math.PI / 2 : -Math.PI / 2; b.position.y = Math.abs(Math.sin(t * 4 + ph)) * .02;
+    } else { o.position.set(1.5, 0, HOUSE_D / 2 + 1.1); o.rotation.y = Math.sin(t * .35 + ph) * .7; b.position.y = 0; }   // armed: stands watch by the door, scanning the street
+  });
+  return <group position={[h.x, 0, h.z]} rotation-y={h.rot}><group ref={g}><group ref={body}>
+    {kind === 'dog' ? <>
+      <mesh position={[0, .34, 0]}><boxGeometry args={[.26, .24, .6]} /><meshStandardMaterial color="#2a1c14" roughness={.9} /></mesh>
+      <mesh position={[0, .46, .36]}><boxGeometry args={[.19, .19, .24]} /><meshStandardMaterial color="#2a1c14" roughness={.9} /></mesh>
+      <mesh position={[0, .43, .49]}><boxGeometry args={[.1, .08, .08]} /><meshStandardMaterial color="#b9732f" roughness={.9} /></mesh>
+      <mesh position={[0, .13, .17]}><boxGeometry args={[.22, .26, .1]} /><meshStandardMaterial color="#b9732f" roughness={.9} /></mesh>
+      <mesh position={[0, .13, -.2]}><boxGeometry args={[.22, .26, .1]} /><meshStandardMaterial color="#b9732f" roughness={.9} /></mesh>
+      <mesh position={[0, .42, -.34]} rotation={[.6, 0, 0]}><boxGeometry args={[.06, .06, .2]} /><meshStandardMaterial color="#2a1c14" roughness={.9} /></mesh>
+    </> : <>
+      <mesh position={[0, .26, 0]}><boxGeometry args={[.32, .52, .2]} /><meshStandardMaterial color="#1b1b22" roughness={.8} /></mesh>
+      <mesh position={[0, .8, 0]}><boxGeometry args={[.44, .56, .26]} /><meshStandardMaterial color={kind === 'armed' ? '#0f172a' : '#2a4d8f'} roughness={.8} /></mesh>
+      <mesh position={[0, 1.2, 0]}><sphereGeometry args={[.14, 10, 8]} /><meshStandardMaterial color={SKIN} roughness={.8} /></mesh>
+      <mesh position={[0, 1.31, .02]}><boxGeometry args={[.3, .08, .3]} /><meshStandardMaterial color={kind === 'armed' ? '#0b0b0f' : '#1f3a6e'} roughness={.8} /></mesh>
+      <mesh position={[0, .9, .14]}><boxGeometry args={[.5, .06, .02]} /><meshStandardMaterial color="#ffd23f" emissive="#ffd23f" emissiveIntensity={.25} /></mesh>
+      {kind === 'armed' && <mesh position={[.3, .62, .1]} rotation={[.4, 0, 0]}><boxGeometry args={[.05, .05, .42]} /><meshStandardMaterial color="#111" roughness={.6} /></mesh>}
+    </>}
+  </group></group></group>;
+}
+function Patrols() {
+  const [rows, setRows] = useState<{ h: HouseInfo; kind: GuardId; i: number }[]>([]), t = useRef(0), key = useRef('');
+  useFrame((_, dt) => {
+    t.current += dt; if (t.current < .6) return; t.current = 0;
+    const p = GAME.player, near = HOUSES.list.filter(h => hasGuards(h.sec)).map(h => ({ h, d: Math.hypot(h.x - p.x, h.z - p.z) })).filter(e => e.d < 70 || (e.h.mine && e.d < 110)).sort((a, b) => a.d - b.d).slice(0, 8);
+    const out: { h: HouseInfo; kind: GuardId; i: number }[] = [];
+    for (const { h } of near) for (const kind of ['dog', 'guard', 'armed'] as GuardId[]) for (let i = 0; i < h.sec[kind]; i++) out.push({ h, kind, i });
+    const k = out.map(r => r.h.slot + r.kind + r.i).join('|'); if (k === key.current) return; key.current = k; setRows(out);
+  });
+  return <>{rows.map(r => <Actor key={r.h.slot + r.kind + r.i} h={r.h} kind={r.kind} i={r.i} />)}</>;
 }
 
 export default function PlayerHouses() {
@@ -243,5 +290,6 @@ export default function PlayerHouses() {
     <HouseMeshes list={list} ver={ver} />
     {HOUSES.mine && <Beacon h={HOUSES.mine} />}
     <Signs />
+    <Patrols />
   </>;
 }

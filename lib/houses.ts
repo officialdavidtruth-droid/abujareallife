@@ -10,6 +10,7 @@
 import { GRID, WS, halfW } from './roadRoute';
 import { YARDS } from './chopData';
 import { ROOFS, WALLS, defaultStyle, sanitizeStyle, type Style } from './houseStyle';
+import { NO_SEC, unpackSec, type Sec } from './security';
 
 export const HOUSE_W = 6, HOUSE_D = 8, FRONT = 6.2, LOTS_PER_GAP = 3;
 export const DOOR_R = 2.4;   // how close to the door you must stand to use it
@@ -27,7 +28,7 @@ export type Plot = {
   car: Pt & { r: number };                      // where your car is parked on the driveway (nose to the road)
   solid: Box;                                   // footprint of the house body
 };
-export type HouseInfo = Plot & { u: string; mine: boolean; wall: string; roof: string; floors: 1 | 2; nepo: boolean; style: Style };   // style: see lib/houseStyle.ts
+export type HouseInfo = Plot & { u: string; mine: boolean; wall: string; roof: string; floors: 1 | 2; nepo: boolean; style: Style; sec: Sec };   // style: see lib/houseStyle.ts
 
 const hsh = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
 
@@ -88,11 +89,11 @@ export const PLOT_COUNT = PLOTS.length;   // houses the street has room for; acc
 
 /** Classic keeps its old random height; Modern and Mansion are two storeys, Villa one. */
 export const floorsFor = (style: Style, u: string): 1 | 2 => (style.d === 0 ? (hsh(u + 'f') < .4 ? 2 : 1) : style.d === 2 ? 1 : 2);
-export function decorate(slot: number, u: string, mine: boolean, nepo = false, code?: string | null): HouseInfo | null {
+export function decorate(slot: number, u: string, mine: boolean, nepo = false, code?: string | null, sec: Sec = NO_SEC): HouseInfo | null {
   const p = PLOTS[slot]; if (!p) return null;
   const style = (code ? sanitizeStyle(code, nepo) : null) ?? defaultStyle(u, nepo);
   const floors = floorsFor(style, u);
-  return { ...p, u, mine, nepo, style, wall: WALLS[style.w] ?? WALLS[0], roof: ROOFS[style.r] ?? ROOFS[0], floors };
+  return { ...p, u, mine, nepo, style, wall: WALLS[style.w] ?? WALLS[0], roof: ROOFS[style.r] ?? ROOFS[0], floors, sec };
 }
 
 /* ───────────── client store ───────────── */
@@ -104,8 +105,8 @@ export async function loadHouses(): Promise<void> {
   HOUSES.loading = true;
   try {
     const r = await fetch('/api/houses', { cache: 'no-store' }); if (!r.ok) return;
-    const d = await r.json() as { houses?: { slot: number; u: string; o?: string; s?: string }[]; mine?: number };
-    const list = (d.houses || []).map(h => decorate(h.slot, String(h.u), h.slot === d.mine, h.o === 'NEPO', h.s)).filter((h): h is HouseInfo => !!h);
+    const d = await r.json() as { houses?: { slot: number; u: string; o?: string; s?: string; g?: { d?: number; g?: number; a?: number } }[]; mine?: number };
+    const list = (d.houses || []).map(h => decorate(h.slot, String(h.u), h.slot === d.mine, h.o === 'NEPO', h.s, unpackSec(h.g))).filter((h): h is HouseInfo => !!h);
     HOUSES.list = list; HOUSES.mine = list.find(h => h.mine) ?? null; HOUSES.ver++;
     window.dispatchEvent(new CustomEvent('arl-houses'));
   } catch { /* offline: keep what we have */ } finally { HOUSES.loading = false; }

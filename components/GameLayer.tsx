@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GAME, canDispatchRide, dispatchRide } from './CityWorld';
 import RideOrder from './RideOrder';
 import CrimeActions from './CrimeActions';
+import BreakIn from './BreakIn';
 import ChopShop from './ChopShop';
 import StreetEscort from './StreetEscort';
 import { StreetNpcUI } from './StreetNpcs';
@@ -164,6 +165,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
       {near && !st.jailLeft && <button className="enter" disabled={entering} onClick={tryEnter}>{entering ? '⏳ Entering…' : businessStatus(near.type as any, getMinute ? getMinute() : 0).open ? '🚪 Enter' : '🔒 Closed'}</button>}
       <IntoxOverlay drunk={Number(st.drunk) || 0} high={Number(st.high) || 0} />
       {!st.jailLeft && st.profile.profession !== 'police' && <CrimeActions username={username} say={say} refresh={refresh} />}
+      {!st.jailLeft && st.profile.profession !== 'police' && <BreakIn username={username} say={say} refresh={refresh} />}
       {!st.jailLeft && st.profile.profession !== 'police' && <ChopShop say={say} refresh={refresh} />}
       {!st.jailLeft && <StreetEscort say={say} refresh={refresh} />}
       {!st.jailLeft && <StreetNpcUI say={say} refresh={refresh} />}

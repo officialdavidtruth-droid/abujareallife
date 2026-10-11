@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
 import { weatherAt } from '../../../lib/worldClock';
+import { DRIVER_FARES, quoteEarn } from '../../../lib/earnCap';
 import { activeCityEvents, districtProfile } from '../../../lib/livingCity';
 
 // Base fares. Rain pushes taxi demand (price) up and bike demand down; traffic events add a surcharge.
@@ -38,19 +39,21 @@ async function postImpl(req: Request) {
     if (st.jailLeft) return err('You are in jail.', 403);
     const kind: Kind = b.kind === 'bike' ? 'bike' : 'taxi';
     const fare = await fareFor(kind, ch?.district);
-    const earn = Math.round(fare * 1.6);
-    // The 30 s cooldown is checked and the fare paid under a lock on the player's row, so parallel requests cannot each collect a fare.
+    const base = Math.round(fare * 1.6);
+    // The 30 s cooldown AND the daily limit (lib/earnCap.ts: diminishing pay, hard ceiling) are checked and the fare paid under a lock on the player's row, so parallel requests cannot each collect a fare.
     const paid = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT 1 FROM "Save" WHERE "userId" = ${u.id} FOR UPDATE`;
       const last = await tx.transaction.findFirst({ where: { userId: u.id, description: { startsWith: 'driver-fare' } }, orderBy: { createdAt: 'desc' } });
-      if (last && Date.now() - last.createdAt.getTime() < 30_000) return false;
-      await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: earn }, fame: { increment: 1 } } });
-      await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: earn, description: `driver-fare:${kind}` } });
+      if (last && Date.now() - last.createdAt.getTime() < 30_000) return { ok: false as const, why: 'wait' as const };
+      const q = await quoteEarn(tx, u.id, DRIVER_FARES, base);
+      if (q.pay <= 0) return { ok: false as const, why: 'cap' as const, note: q.note };
+      await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: q.pay }, fame: { increment: q.mult >= 1 ? 1 : 0 } } });
+      await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: q.pay, description: `driver-fare:${kind}` } });
       await tx.reputation.upsert({ where: { userId: u.id }, update: { trust: { increment: 1 }, score: { increment: 1 } }, create: { userId: u.id, score: 51, trust: 51 } });
-      return true;
+      return { ok: true as const, earned: q.pay, note: q.note };
     });
-    if (!paid) return err('No passenger waiting yet. Try again shortly.', 429);
-    return NextResponse.json({ ok: true, earned: earn });
+    if (!paid.ok) return paid.why === 'cap' ? err(paid.note, 429) : err('No passenger waiting yet. Try again shortly.', 429);
+    return NextResponse.json({ ok: true, earned: paid.earned, note: paid.note });
   }
 
   const kind = String(b.kind || '') as Kind;

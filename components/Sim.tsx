@@ -518,7 +518,7 @@ const econ = async (kind: 'start' | 'finish', a: Act) => {
     const r = await fetch('/api/economy/' + kind, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ act: a.k }) }), d = await r.json();
     if (typeof d.cash === 'number') S.cash = d.cash;
     if (!r.ok) { say(d.error || 'Payment problem.'); if (kind === 'start' && S.cur?.t === 'act' && S.cur.a.k === a.k) S.cur = null; }
-    else if (kind === 'finish' && d.paid) say(`Gig done: +${naira(d.paid)}`);
+    else if (kind === 'finish' && d.paid) say(`Gig done: +${naira(d.paid)}${d.note ? ' · ' + d.note : ''}`);
   } catch { say('Offline — payment not recorded.'); }
 };
 const saveNow = (look: Look) => fetch('/api/save', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look, state: { needs: S.needs, min: S.min, bonds: F.bonds(), family: F.on } }) }).catch(() => {});

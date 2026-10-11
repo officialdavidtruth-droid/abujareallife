@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { currentUser, err } from '../../../../lib/auth';
-import { ACTS } from '../../../../lib/economy';
+import { ACTS, capGroupFor } from '../../../../lib/economy';
+import { quoteEarn } from '../../../../lib/earnCap';
 import { downState } from '../../../../lib/downed';
 
 // Charges the cost of an action (atomically) and opens a job ticket for paid work.
@@ -14,6 +15,9 @@ export async function POST(req: Request) {
   if (!save) return err('Create your character first.', 409);
   if (save.jailUntil && save.jailUntil.getTime() > Date.now()) return err('You are in jail.', 403);
   if (downState(save.downUntil).down) return err('You are out cold.', 403);
+  // Paid work: refuse before opening a ticket when today's limit is already used up, so the player does not waste a whole gig for nothing.
+  const grp = a.pay ? capGroupFor(key) : undefined;
+  if (grp) { const q = await quoteEarn(prisma, u.id, grp, a.pay!); if (q.pay <= 0) return NextResponse.json({ error: q.note, cash: save.cash, capped: true }, { status: 429 }); }
   // charge + ticket + record in ONE transaction: a failure can no longer take the money without opening the job (or the reverse)
   const ok = await prisma.$transaction(async tx => {
     if (a.cost) {

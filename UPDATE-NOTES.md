@@ -79,3 +79,10 @@ No database migration. Copy the files over your project (same paths).
 - **Physical crime** (`components/CrimeActions.tsx`): buttons appear when you stand next to someone. Real player on foot: Rob (`/api/rob`, takes 30% of their cash, max ₦150k, +45 heat, 90 s cooldown per victim). Real player driving: Carjack (`/api/carjack`, their newest car changes owner, becomes stolen/unregistered/uninsured, they are thrown out, +70 heat). NPC pedestrian: Pickpocket. NPC driver: Carjack (both via `/api/crime`). The old Crime-menu buttons for those two are gone.
 - **Death**: a gunshot that takes HP to 0 now kills (punches still knock out). Victim loses ALL cash (`/api/death`), lies down ~2.5 s, wakes up inside their house with 8 s spawn protection. The killer gets +70 heat only if the server really accepted a shot from them at that victim in the last 30 s. Killers do not receive the victim's cash.
 - Known limits: death/arrest are reported by the client (a modified client can skip them; server-held HP would fix that); the "recent shot" memory is per server instance; NPC cops cannot be shot and walk straight at you (they slide around buildings); not run in a browser or against a database here.
+
+## Daily income caps (home jobs + driver fares)
+- NEW `lib/earnCap.ts`: pay is worked out on the server from the player's own EARN rows since midnight WAT (no migration). Tiers give diminishing returns, plus a hard daily ceiling. Tune `HOME_JOBS` / `DRIVER_FARES` there.
+- Home jobs (`work`, `hustle`, `bizplan`, shared pool): runs 1-6 full pay, 7-12 50%, 13-18 25%, then 10%; max ₦120,000/day.
+- Driver fares (`drive_fare`): fares 1-12 full, 13-24 50%, 25-36 25%, then 10%; max ₦120,000/day; fame only on full-rate fares.
+- `/api/economy/start` refuses (429) when the limit is used up; `/api/economy/finish` and `/api/transport` re-check under a row lock so parallel requests cannot beat the limit. Reduced pay is explained in the "Gig done" toast.
+- Not covered: shifts, autowork, bizjobs, quests and missions have their own rules.

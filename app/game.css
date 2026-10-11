@@ -6,7 +6,7 @@
 /* Display text: titles, labels, buttons, tabs, pills use the game font */
 h1,h2,h3,h4,.pill,.chip,.go,.tabs button,.pie button,.pie b,.cityActions button,.nearCard button,.dockGrid button,.dockToggle,
 .phoneSectionTitle,.panelTitleRow,.jbCard b,.jbApply,.huBuy button,.famBtn,.mood b,.cur>span,.toast,.tpPrompt,.glRow,.lbRow b,.owCard h1,.owCard h2,
-.modal .box h1,.modal .box h2,.modal .box h3,.modal button,.row button{font-family:var(--font-game),Inter,system-ui,sans-serif;font-weight:400;letter-spacing:.04em}
+.modal .box h1,.modal .box h2,.modal .box h3,.modal button,.row button{font-family:var(--font-game),Inter,system-ui,sans-serif;font-weight:400;letter-spacing:.02em}
 h1,h2,h3,.phoneSectionTitle,.panelTitleRow,.pie b{text-transform:uppercase;letter-spacing:.08em;text-shadow:0 2px 0 #0008}
 h1,h2,h3{color:#fff}
 .pill,.chip,.go,.tabs button,.cityActions button,.nearCard button,.modal button{text-shadow:0 1px 0 #0009}
@@ -52,3 +52,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--g-gold)!important;box
 
 /* Round action/emote buttons: gold ring */
 .emotes button,.dockToggle,.tpBtns button{border:2px solid var(--g-gold2);box-shadow:0 3px 0 #000a,0 0 10px #f0b94a33}
+
+/* ===== Phone safety: nothing may stack on the needs strip, joystick or action buttons ===== */
+@media (pointer:coarse),(max-width:820px){
+  .toast{top:calc(104px + env(safe-area-inset-top,0px))!important;pointer-events:none}
+  .famBtn{top:calc(104px + env(safe-area-inset-top,0px))}
+  .fam{max-height:max(110px,calc(100dvh - 140px - 170px - env(safe-area-inset-top,0px)))}
+  .needs{max-width:calc(100vw - 84px - env(safe-area-inset-left,0px))}
+}
+@media (max-width:400px){.needs{gap:5px;padding:4px 6px}.needs .bar{width:21px}.mood{padding-right:5px;font-size:16px}}
+/* Action queue (current task + queued chips): sits left of the emote column, never behind it */
+@media (pointer:coarse),(max-width:820px){
+  .sim .queue{top:calc(58px + env(safe-area-inset-top,0px))!important;bottom:auto!important;left:auto!important;right:calc(66px + env(safe-area-inset-right,0px))!important;transform:none!important;flex-direction:column;align-items:flex-end;max-width:min(240px,calc(100vw - 340px));z-index:56}
+  .sim .queue .cur{min-width:150px}
+}

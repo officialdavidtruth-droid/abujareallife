@@ -13,6 +13,8 @@ import Underworld from './Underworld';
 import { DrinksMenu } from './Intoxication';
 import Dealers from './Dealers';
 import ClubNightlife from './ClubNightlife';
+import ClubTalk from './ClubTalk';
+import { CLUB_REG, CLUB_TALK } from '../lib/clubNpc';
 import { dealerAt } from '../lib/dealers';
 import { BAR_TYPES } from '../lib/intoxication';
 import { sfx } from '../lib/audio';
@@ -28,7 +30,7 @@ import { AUTO, idleFor } from '../lib/autoState';
 import RuntimeStyle from './RuntimeStyle';
 import JobGame, { type Score } from './JobGames';
 import { gameFor, type GameKind } from '../lib/jobGames';
-type Go = { path: [number, number][]; i: number; stuck: number; open?: { kind: 'spot'; id: string } | { kind: 'npc'; idx: number } };
+type Go = { path: [number, number][]; i: number; stuck: number; open?: { kind: 'spot'; id: string } | { kind: 'npc'; idx: number } | { kind: 'club'; idx: number } };
 type Cam = { yaw: number; pitch: number; dist: number };
 /* Step 7: the scene of a hold-up in progress. The clerk (nearest staff member) puts their hands up; an armed clerk starts reaching under the counter 2.5 s before the gun comes out. */
 const HOLD = { on: false, idx: -1, armed: false, at: 0, start: 0 };
@@ -104,27 +106,31 @@ const CLUB_GUESTS: Look[] = [
   { name: 'Naya · Lounge Hostess', model: 'citizen', gender: 'f', hair: 'long', hairColor: '#2b1a12', skin: '#5e3a22', outfit: '#6b4a8a', pants: '#222831', height: 1.04, outfitModel: 'dress' },
   { name: 'Tee · Promoter', model: 'citizen', gender: 'f', hair: 'braids', hairColor: '#0d0907', skin: '#d9a577', outfit: '#d18a22', pants: '#222831', height: 1, outfitModel: 'ankara' },
   { name: 'Amara · Lounge Companion', model: 'citizen', gender: 'f', hair: 'ponytail', hairColor: '#0d0907', skin: '#3b2416', outfit: '#b43c35', pants: '#222831', height: 1.01, outfitModel: 'gown' },
+  { name: 'Chi · Companion', model: 'citizen', gender: 'f', hair: 'braids', hairColor: '#1b0f0a', skin: '#a8683a', outfit: '#c2185b', pants: '#222831', height: 1.0, outfitModel: 'dress' },
+  { name: 'Lola · Companion', model: 'citizen', gender: 'f', hair: 'long', hairColor: '#0d0907', skin: '#7a4a2a', outfit: '#1e293b', pants: '#222831', height: 1.03, outfitModel: 'gown' },
 ];
 function ClubGuest({ index, room }: { index: number; room: Room }) {
   const group = useRef<THREE.Group>(null!);
-  const state = useRef({ x: [-5.3, -2.6, 2.6, 5.1, 0][index], z: [-2.8, 2.5, -3.2, 2.2, 0.4][index], tx: [-2.5, 1.5, 4, -3.6, 2.8][index], tz: [2.8, -2.7, 2.5, -2.8, 3.2][index], wait: index * .65, dance: index % 2 === 0, rot: 0 });
+  const state = useRef({ x: [-5.3, -2.6, 2.6, 5.1, 0, -4.2, 4.4][index], z: [-2.8, 2.5, -3.2, 2.2, 0.4, 3.6, -1.2][index], tx: [-2.5, 1.5, 4, -3.6, 2.8, -3.4, 3.2][index], tz: [2.8, -2.7, 2.5, -2.8, 3.2, 2.9, -2][index], wait: index * .65, dance: index % 2 === 0, rot: 0 });
   const look = CLUB_GUESTS[index];
   useFrame((_, dtRaw) => {
     if (!group.current) return;
     const q = state.current, dt = Math.min(dtRaw, .05);
-    q.wait -= dt;
-    if (q.wait <= 0) {
+    const talking = CLUB_TALK.idx === index;
+    if (talking) { const fx = ROOM.me.x - q.x, fz = ROOM.me.z - q.z; let a = Math.atan2(fx, fz) - q.rot; a = Math.atan2(Math.sin(a), Math.cos(a)); q.rot += a * Math.min(1, dt * 6); q.dance = false; } // she stops, turns to you and listens
+    else q.wait -= dt;
+    if (!talking && q.wait <= 0) {
       const dx = q.tx - q.x, dz = q.tz - q.z, d = Math.hypot(dx, dz);
       if (d < .22) { q.tx = (Math.sin((index + 1) * (performance.now() / 2600 + 1.7)) * (room.w * .28)); q.tz = Math.cos((index + 2) * (performance.now() / 3100 + 1.2)) * (room.d * .27); q.wait = 1.4 + index * .25; q.dance = Math.random() > .35; }
       else { const step = Math.min(d, (q.dance ? .42 : .72) * dt); q.x += dx / d * step; q.z += dz / d * step; let a = Math.atan2(dx, dz) - q.rot; a = Math.atan2(Math.sin(a), Math.cos(a)); q.rot += a * Math.min(1, dt * 5); }
     }
     q.x = THREE.MathUtils.clamp(q.x, -room.w / 2 + 1.2, room.w / 2 - 1.2); q.z = THREE.MathUtils.clamp(q.z, -room.d / 2 + 1.2, room.d / 2 - 1.2);
-    group.current.position.set(q.x, 0, q.z); group.current.rotation.y = q.rot;
+    group.current.position.set(q.x, 0, q.z); group.current.rotation.y = q.rot; CLUB_REG[index] = { x: q.x, z: q.z };
   });
-  return <group ref={group} position={[state.current.x, 0, state.current.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-npc', { detail: { index, name: look.name } })); }}>
+  return <group ref={group} position={[state.current.x, 0, state.current.z]} onClick={e => { if (e.delta > 6) return; e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-talk', { detail: { index } })); }}>
     <mesh position={[0, 1, 0]}><cylinderGeometry args={[.48, .48, 2, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>
-    <Human look={look} getState={() => state.current.dance ? 'idle' : 'walk'} getAnim={() => state.current.dance ? 'dance' : undefined} />
-    <Html position={[0, 2.5, 0]} center distanceFactor={11} zIndexRange={[5, 0]}><button className="clubGuestTag" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-npc', { detail: { index, name: look.name } })); }}>💬 {look.name.split(' · ')[0]}</button></Html>
+    <Human look={look} getState={() => (state.current.dance || CLUB_TALK.idx === index) ? 'idle' : 'walk'} getAnim={() => state.current.dance ? 'dance' : undefined} />
+    <Html position={[0, 2.5, 0]} center distanceFactor={11} zIndexRange={[5, 0]}><button className="clubGuestTag" onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('arl-club-talk', { detail: { index } })); }}>{index > 4 ? '💋' : '💬'} {look.name.split(' · ')[0]}</button></Html>
   </group>;
 }
 function ClubGuests({ room }: { room: Room }) { return <>{CLUB_GUESTS.map((_, i) => <ClubGuest key={i} index={i} room={room} />)}</>; }
@@ -220,8 +226,9 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   const npcSpot = (idx: number): Spot | null => { const po = room.posts.find(x => x.idx === idx); if (!po) return null; const sp = STAFF_POS[idx] || po, nm = staff[idx]?.name || 'Staff', jobOpt = (room.spots.find(x => x.id === 'work')?.opts || []).filter(o => o.t === 'shift' && o.idx === idx);
     return { id: 'npc' + idx, x: sp.x, z: sp.z, e: '💬', label: `${nm} · ${po.title}`, opts: [{ t: 'info', text: `"Hi, I'm ${nm}, the ${po.title} here.${jobOpt.length ? ' Want this job? Apply below and you will be given a task for the shift.' : ''}"` }, ...jobOpt] }; };
   const talk = (idx: number) => { const sp = STAFF_POS[idx]; if (!sp) return; const dx = ROOM.me.x - sp.x, dz = ROOM.me.z - sp.z, d = Math.hypot(dx, dz); if (d < 3.2) { setMenu(npcSpot(idx)); return; } setMenu(null); walk(sp.x + dx / d * 1.4, sp.z + dz / d * 1.4, { kind: 'npc', idx }); };
+  useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail as { x: number; z: number; idx: number }; if (d) walk(d.x, d.z, { kind: 'club', idx: d.idx }); }; window.addEventListener('arl-club-walkto', f); return () => window.removeEventListener('arl-club-walkto', f); }); // club NPC panel: walk up to her
   const goSpot = (sp: Spot) => { if (Math.hypot(sp.x - ROOM.me.x, sp.z - ROOM.me.z) < 1.5) { setMenu(sp); return; } setMenu(null); walk(sp.x, sp.z, { kind: 'spot', id: sp.id }); };
-  const arrive = (o: NonNullable<Go['open']>) => { if (o.kind === 'spot') { const sp = room.spots.find(x => x.id === o.id); if (sp) setMenu(sp); } else setMenu(npcSpot(o.idx)); };
+  const arrive = (o: NonNullable<Go['open']>) => { if (o.kind === 'club') { window.dispatchEvent(new CustomEvent('arl-club-arrived', { detail: { idx: o.idx } })); return; } if (o.kind === 'spot') { const sp = room.spots.find(x => x.id === o.id); if (sp) setMenu(sp); } else setMenu(npcSpot(o.idx)); };
   const dist2 = () => { const a = [...pts.current.values()]; return a.length < 2 ? 1 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1; };
   const gDown = (e: React.PointerEvent) => { pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.current.size === 2) pinch.current = dist2(); };
   const gMove = (e: React.PointerEvent) => { const q = pts.current.get(e.pointerId); if (!q) return; const dx = e.clientX - q.x, dy = e.clientY - q.y; q.x = e.clientX; q.y = e.clientY; const c = cam.current;
@@ -338,7 +345,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
     {profile.profession === 'police' && near && <button className="inAct cop" onClick={arrest}>👮 Arrest {near}</button>}
     {(BAR_TYPES as string[]).includes(biz.type) && <DrinksMenu onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
     {dealerAt(biz.type) && <Dealers onCash={onCash} onFx={onFx} toast={toast} onBlackout={() => setTimeout(() => onExit(), 1800)} />}
-    {biz.type === 'Nightclub' && <><Underworld onCash={onCash} onFx={onFx} toast={toast} /><ClubNightlife /></>}
+    {biz.type === 'Nightclub' && <><Underworld onCash={onCash} onFx={onFx} toast={toast} /><ClubNightlife /><ClubTalk toast={toast} /></>}
     {gameOpen && job?.kind === 'shift' && gameKind && left > 5 && <JobGame kind={gameKind} initial={score} onClose={() => setGameOpen(false)} onStars={async (stars) => { const r = await post('/api/shift', { action: 'play', stars }); if (!r.ok) return null; const sc: Score = { pts: r.d.pts, rounds: r.d.rounds, bonus: r.d.bonus, capped: r.d.capped }; setScore(sc); return sc; }} />}
     <RuntimeStyle id="arl-jobopen" css={`.jgOpen{all:unset;cursor:pointer;margin-left:8px;padding:3px 9px;border-radius:99px;background:#d99a42;color:#1a1208;font-weight:900;font-size:11px;pointer-events:auto}`} />
     {store && <StoreModal bizName={biz.name} bizType={biz.type} onClose={() => setStore(false)} onCash={onCash} onFx={onFx} />}

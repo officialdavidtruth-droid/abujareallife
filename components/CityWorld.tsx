@@ -31,6 +31,7 @@ import { CAR_OFFS, CAR_R, JailCell, Rain, WeatherEffects, WorldEventVisuals } fr
 import { POLICE_CARS, PolicePatrol } from './CityPolice';
 import { pkit } from './CityCars';
 import { RemotePlayers } from './CityRemote';
+import { StreetNpcScene } from './StreetNpcs';
 import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
@@ -397,6 +398,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />
         <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
+      <StreetNpcScene />
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
       <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} touches={{ ONE: -1 as any, TWO: -1 as any }} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={1.45} target={[START.x, 1.62, START.z + 6]} />
     </>

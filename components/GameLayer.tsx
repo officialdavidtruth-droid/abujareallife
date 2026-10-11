@@ -5,6 +5,7 @@ import RideOrder from './RideOrder';
 import CrimeActions from './CrimeActions';
 import ChopShop from './ChopShop';
 import StreetEscort from './StreetEscort';
+import { StreetNpcUI } from './StreetNpcs';
 import { IntoxOverlay } from './Intoxication';
 import SendMoney from './SendMoney';
 import { VEHICLE_CATALOG } from '../lib/vehicles';
@@ -165,6 +166,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
       {!st.jailLeft && st.profile.profession !== 'police' && <CrimeActions username={username} say={say} refresh={refresh} />}
       {!st.jailLeft && st.profile.profession !== 'police' && <ChopShop say={say} refresh={refresh} />}
       {!st.jailLeft && <StreetEscort say={say} refresh={refresh} />}
+      {!st.jailLeft && <StreetNpcUI say={say} refresh={refresh} />}
       {(() => { const h = !st.jailLeft && helpNear(); return h ? <button className="help" onClick={() => help(h)}>🤝 Help {h}</button> : null; })()}
       {open && <div className="dockGrid">{items.map(([e, l, f]) => <button key={l} onClick={() => { f(); onToggle(); }}><span>{e}</span><small>{l}</small>{l === 'Phone' && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>)}</div>}
     </div>

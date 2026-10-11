@@ -1,4 +1,4 @@
-# Fashion step 4 (part 1): wear what you buy (clothes + shoes)
+ # Fashion step 4 (part 1): wear what you buy (clothes + shoes)
 No database migration (stored in the existing `look` JSON).
 Changed: lib/fashionWear.ts (new), lib/characterModels.ts, lib/humanRig.ts, lib/roomNet.ts, lib/cityNet.ts, components/Human.tsx, components/Wardrobe.tsx, app/api/save/route.ts.
 

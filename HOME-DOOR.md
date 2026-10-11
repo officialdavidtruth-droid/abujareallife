@@ -20,3 +20,19 @@ EDITED `prisma/schema.prisma`, `prisma/fix-database.sql`, `prisma/setup-database
 - A host who is outside does not get the knock; the guest sees "Nobody answers" after 60 s.
 - Chat bubbles at home are still missing.
 - Step 3 adds lock/unlock (unlocked = walk in without knocking).
+
+# Step 3: lock and unlock
+
+Menu → 🚪 Front door → **Unlock the door** / **Lock the door** (owner only; housemates see the state).
+
+- **Locked (default, as before):** visitors must knock or be invited.
+- **Unlocked:** the sign on the street reads "· 🔓 open", the button says **Enter**, and anyone can walk in without knocking. Good for parties. A player you ask to leave cannot walk back in for 10 minutes.
+- Enforced on the server: the house's rooms and furniture (`/api/home?visit=`) are only sent to players who may be there, and a guest's welcome is re-checked every few seconds, so locking the door or asking someone to leave puts them back on the street.
+- Break-in still works on any door.
+- The lock is a hidden inventory row (`home_open`), so there is **no new migration** for step 3.
+
+## Files (step 3)
+EDITED `lib/housemates.ts`, `lib/houses.ts`, `app/api/visit/route.ts`, `app/api/houses/route.ts`, `components/HomeDoor.tsx`, `components/PlayerHouses.tsx`
+
+## Known limit
+The live room itself (the Supabase channel `room:home-<slot>`) is not server-checked, so a modified client could still watch an empty house room. It cannot load the layout or furniture, and it only ever sees people who are really inside. Fixing that needs private realtime channels with a database rule.

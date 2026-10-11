@@ -216,7 +216,7 @@ function Signs() {
   return <>{ids.map(id => {
     const h = HOUSES.list.find(x => x.slot === id); if (!h) return null;
     return <group key={id} position={[h.x, 0, h.z]} rotation-y={h.rot}>
-      <Text position={[0, h.style.d === 3 ? 3.5 : 2.7, HOUSE_D / 2 + (h.style.d === 1 ? 1 : .06)]} fontSize={h.mine ? .34 : .3} maxWidth={HOUSE_W - .4} color={h.mine ? '#ffe28a' : h.nepo ? '#ffd9a0' : '#ffffff'} outlineWidth={.035} outlineColor="#000000" anchorX="center" anchorY="middle" textAlign="center">{h.mine ? (HOUSES.shared ? `${h.u}'s house · YOUR HOME` : `${h.u} · YOUR HOUSE`) : `${h.u}'s house`}</Text>
+      <Text position={[0, h.style.d === 3 ? 3.5 : 2.7, HOUSE_D / 2 + (h.style.d === 1 ? 1 : .06)]} fontSize={h.mine ? .34 : .3} maxWidth={HOUSE_W - .4} color={h.mine ? '#ffe28a' : h.nepo ? '#ffd9a0' : '#ffffff'} outlineWidth={.035} outlineColor="#000000" anchorX="center" anchorY="middle" textAlign="center">{h.mine ? (HOUSES.shared ? `${h.u}'s house · YOUR HOME` : `${h.u} · YOUR HOUSE`) : `${h.u}'s house${HOUSES.open.has(h.slot) ? ' · 🔓 open' : ''}`}</Text>
       {hasGuards(h.sec) && <Text position={[0, (h.style.d === 3 ? 3.5 : 2.7) - .42, HOUSE_D / 2 + (h.style.d === 1 ? 1 : .06)]} fontSize={.27} color="#ffd9a0" outlineWidth={.035} outlineColor="#000000" anchorX="center" anchorY="middle">{secLine(h.sec)}</Text>}
     </group>;
   })}</>;

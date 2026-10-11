@@ -19,7 +19,9 @@ export async function GET() {
     const guardRows: { userId: string; itemKey: string; quantity: number }[] = await prisma.inventoryItem.findMany({ where: { itemKey: { startsWith: 'sec_' }, quantity: { gt: 0 }, userId: { in: rows.map(r => r.id) } }, select: { userId: true, itemKey: true, quantity: true } });
     const sec = new Map<string, { itemKey: string; quantity: number }[]>();
     for (const g of guardRows) sec.set(g.userId, [...(sec.get(g.userId) || []), g]);
+    const openRows: { userId: string }[] = await prisma.inventoryItem.findMany({ where: { itemKey: 'home_open', quantity: { gt: 0 }, userId: { in: rows.map(r => r.id) } }, select: { userId: true } });   // unlocked doors (HOME-DOOR.md)
+    const openSet = new Set(openRows.map(r => r.userId));
     const home = await resolveHome(u.id, u.username);   // your own house, or the owner's when you live with a housemate (lib/housemates.ts)
-    return NextResponse.json({ houses: rows.map(r => ({ slot: r.houseSlot as number, u: r.username, o: r.origin === 'NEPO' ? 'NEPO' : 'LAPO', s: typeof code.get(r.id) === 'string' ? code.get(r.id) : undefined, g: packSec(secFromRows(sec.get(r.id) || [])) })), mine: rows.find(r => r.id === home.id)?.houseSlot ?? -1, shared: home.shared, capacity: PLOT_COUNT });
+    return NextResponse.json({ houses: rows.map(r => ({ slot: r.houseSlot as number, u: r.username, o: r.origin === 'NEPO' ? 'NEPO' : 'LAPO', s: typeof code.get(r.id) === 'string' ? code.get(r.id) : undefined, g: packSec(secFromRows(sec.get(r.id) || [])), k: openSet.has(r.id) ? 1 : undefined })), mine: rows.find(r => r.id === home.id)?.houseSlot ?? -1, shared: home.shared, capacity: PLOT_COUNT });
   } catch (e) { return serverError(e); }
 }

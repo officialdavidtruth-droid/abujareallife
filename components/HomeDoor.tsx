@@ -3,14 +3,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GAME } from './CityWorld';
 import RuntimeStyle from './RuntimeStyle';
 import { NET } from '../lib/cityNet';
-import { HOUSES, nearDoor } from '../lib/houses';
+import { HOUSES, loadHouses, nearDoor } from '../lib/houses';
 import { ROOM } from '../lib/roomNet';
 
 /* The front door (server: app/api/visit, see HOME-DOOR.md).
    Outside: stand at a stranger's door and tap 🚪 Knock. Inside: whoever is home (owner or housemate) gets "X is at the door" with Let in / Turn away,
    and the 🚪 Door panel invites players in and asks guests to leave. A guest who is let in (or invited) gets a "Come in" card and walks into the house. */
 type Card = { owner: string; slot: number | null; invited: boolean };
-type Poll = { knocks: string[]; cards: Card[]; knock: { owner: string; status: string } | null; welcome?: boolean };
+type Poll = { knocks: string[]; cards: Card[]; knock: { owner: string; status: string } | null; welcome?: boolean; open?: boolean; owner?: boolean };
 const post = async (body: object) => { const r = await fetch('/api/visit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { ok: r.ok, d: await r.json().catch(() => ({})) as any }; }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export default function HomeDoor({ outside, visiting, panel, onClosePanel, onVisit, onLeaveVisit, say }: {
@@ -60,12 +60,13 @@ export default function HomeDoor({ outside, visiting, panel, onClosePanel, onVis
   };
   const answer = async (guest: string, allow: boolean) => { const r = await post({ action: 'answer', name: guest, allow }); if (!r.ok) say(r.d.error || 'Could not answer.'); else say(allow ? `🚪 ${guest} is coming in.` : `🚪 You turned ${guest} away.`); setPoll(p => ({ ...p, knocks: p.knocks.filter(k => k !== guest) })); };
   const invite = async () => { const n = name.trim(); if (!n || busy) return; setBusy(true); const r = await post({ action: 'invite', name: n }).finally(() => setBusy(false)); if (!r.ok) say(r.d.error || 'Could not invite.'); else { say(`🚪 ${n} is invited in.`); setName(''); } };
+  const lock = async (open: boolean) => { if (busy) return; setBusy(true); const r = await post({ action: 'lock', open }).finally(() => setBusy(false)); if (!r.ok) return say(r.d.error || 'Could not change the lock.'); setPoll(p => ({ ...p, open })); say(open ? '🔓 Your door is unlocked: anyone can walk in.' : '🔒 Your door is locked: people must knock.'); loadHouses(); };
   const kick = async (g: string) => { if (!confirm(`Ask ${g} to leave?`)) return; const r = await post({ action: 'kick', name: g }); say(r.ok ? `🚪 ${g} was asked to leave.` : r.d.error || 'Could not do that.'); };
 
   const cards = poll.cards.filter(c => !dismissed.includes(c.owner) && c.owner !== visiting);
   return <>
     <RuntimeStyle id="arl-homedoor" css={CSS} />
-    {outside && !visiting && near && !waiting && <button className="hdKnock" aria-label={`Knock on ${near.u}'s door`} disabled={busy} onPointerDown={e => { e.preventDefault(); knock(near); }}><span>🚪</span><small>Knock</small></button>}
+    {outside && !visiting && near && !waiting && <button className="hdKnock" aria-label={`Knock on ${near.u}'s door`} disabled={busy} onPointerDown={e => { e.preventDefault(); knock(near); }}><span>{HOUSES.open.has(near.slot) ? '🔓' : '🚪'}</span><small>{HOUSES.open.has(near.slot) ? 'Enter' : 'Knock'}</small></button>}
     {waiting && <div className="hdWait"><b>🚪 Waiting for {waiting.owner}…</b><button onClick={() => setWaiting(null)}>Cancel</button></div>}
     <div className="hdStack">
       {!outside && !visiting && poll.knocks.map(k => <div key={k} className="hdCard"><span>🚪 <b>{k}</b> is at the door</span><button className="go" onClick={() => answer(k, true)}>Let in</button><button onClick={() => answer(k, false)}>Turn away</button></div>)}
@@ -73,6 +74,9 @@ export default function HomeDoor({ outside, visiting, panel, onClosePanel, onVis
     </div>
     {panel && !outside && !visiting && <div className="hdWrap" onClick={onClosePanel}><div className="hdBox" onClick={e => e.stopPropagation()}>
       <div className="hdHead"><h3>🚪 Front door</h3><button onClick={onClosePanel} aria-label="Close">×</button></div>
+      <div className="hdSec"><b>{poll.open ? '🔓 Door unlocked' : '🔒 Door locked'}</b>
+        {poll.owner === false ? <small>Only the owner can lock or unlock this door.</small> : <><button className={poll.open ? 'bad' : 'go'} disabled={busy} onClick={() => lock(!poll.open)}>{poll.open ? 'Lock the door' : 'Unlock the door'}</button>
+          <small>{poll.open ? 'Anyone can walk in without knocking, great for parties. Players you ask to leave cannot come straight back for 10 minutes.' : 'Visitors have to knock or be invited. A burglar can still try to pick the lock.'}</small></>}</div>
       <div className="hdSec"><b>Invite someone in</b><div className="hdAdd"><input value={name} maxLength={30} placeholder="Player name" onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') invite(); }} /><button className="go" disabled={busy || !name.trim()} onClick={invite}>Invite</button></div>
         <small>They get a message and a Come in button. Anyone who knocks while you are home shows up as a card you can answer.</small></div>
       <div className="hdSec"><b>In the house now</b>{!inside.length && <small>Nobody else is here.</small>}{inside.map(g => <div key={g} className="hdRow"><span>🧍 {g}</span><button className="bad" onClick={() => kick(g)}>Ask to leave</button></div>)}</div>
@@ -88,4 +92,5 @@ const CSS = `.hdKnock{position:fixed;right:96px;bottom:calc(252px + env(safe-are
 .hdHead{display:flex;justify-content:space-between;align-items:center}.hdHead h3{margin:0;font-size:18px}.hdHead button{background:#20372d;border:0;color:#fff;border-radius:50%;width:32px;height:32px;font-size:18px}
 .hdSec{display:flex;flex-direction:column;gap:7px;background:#10201a;border:1px solid #ffffff14;border-radius:14px;padding:10px}.hdSec>b{font-size:13px}.hdSec small{color:#9fb5aa;font-size:11px;line-height:1.35}
 .hdRow{display:flex;align-items:center;gap:8px;font-size:12px}.hdRow>span{flex:1}.hdRow button,.hdAdd button{background:#20372d;color:#fff;border:0;border-radius:10px;padding:7px 12px;font-weight:800;font-size:12px}.hdRow button.bad{background:#4a1f22}.hdAdd button.go{background:#d99a42;color:#1a1208}.hdAdd button:disabled{opacity:.5}
+.hdSec>button{align-self:flex-start;background:#20372d;color:#fff;border:0;border-radius:10px;padding:8px 14px;font-weight:800;font-size:12px}.hdSec>button.go{background:#d99a42;color:#1a1208}.hdSec>button.bad{background:#4a1f22}
 .hdAdd{display:flex;gap:8px}.hdAdd input{flex:1;min-width:0;background:#0b1511;color:#fff;border:1px solid #ffffff22;border-radius:10px;padding:8px 10px;font-size:13px}`;

@@ -10,7 +10,7 @@ export type RoomPeer = { look: Look; mv: number; w: number; init: boolean; x: nu
 export const ROOM = { me: { x: 0, z: 0, r: 0, mv: 0, w: 0 }, peers: {} as Record<string, RoomPeer> };
 export const ROOM_MAX = 30;
 const num = (v: unknown, lim: number, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : d);
-const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height, l.outfitModel].join('|');
+const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height, l.outfitModel, l.shoeColor, l.shoeStyle, (l.acc || []).join(',')].join('|');
 export type RoomMsg = { id: number; u: string; t: string };
 
 export function useRoomNet(roomId: string, look: Look) {

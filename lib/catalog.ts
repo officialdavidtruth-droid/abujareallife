@@ -5,16 +5,17 @@ import type { BusinessType } from './cityTypes';
 import { WEAPONS, weaponItemId } from './weapons';
 import { PARTS } from './chopData';
 
-export type CatId = 'food' | 'grocery' | 'toiletry' | 'household' | 'kitchen' | 'furniture' | 'decor' | 'tech' | 'style' | 'luxury' | 'kids' | 'arms' | 'parts';
+export type CatId = 'food' | 'grocery' | 'toiletry' | 'household' | 'kitchen' | 'furniture' | 'decor' | 'tech' | 'style' | 'fashion' | 'luxury' | 'kids' | 'arms' | 'parts';
 export const CATS: { id: CatId; label: string; e: string }[] = [
   { id: 'food', label: 'Food & Drinks', e: '🍲' }, { id: 'grocery', label: 'Groceries', e: '🛒' }, { id: 'toiletry', label: 'Toiletries', e: '🧼' }, { id: 'household', label: 'Household', e: '🧺' }, { id: 'kitchen', label: 'Kitchen', e: '🍳' },
   { id: 'furniture', label: 'Furniture', e: '🛋️' }, { id: 'decor', label: 'Decor & Lights', e: '🪴' }, { id: 'tech', label: 'Tech', e: '📱' },
-  { id: 'style', label: 'Accessories', e: '⌚' }, { id: 'luxury', label: 'Luxury & Fancy', e: '💎' }, { id: 'kids', label: 'Kids & Baby', e: '🧸' }, { id: 'arms', label: 'Firearms', e: '🔫' }, { id: 'parts', label: 'Car Parts', e: '🔩' },
+  { id: 'fashion', label: 'Clothes', e: '👕' }, { id: 'style', label: 'Accessories', e: '⌚' }, { id: 'luxury', label: 'Luxury & Fancy', e: '💎' }, { id: 'kids', label: 'Kids & Baby', e: '🧸' }, { id: 'arms', label: 'Firearms', e: '🔫' }, { id: 'parts', label: 'Car Parts', e: '🔩' },
 ];
 export type Needs = Partial<Record<'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social', number>>;
 export type Item = { id: string; cat: CatId; name: string; e: string; cost: number; fx?: Needs; fp?: [number, number]; use?: boolean; tag?: string; units?: number; pantry?: 'meals' | 'supplies';
   /** Furniture varieties: `sub` = shelf label (Beds, Sofas…), `kind`/`style` = which 3D model + design, `col` = main colour. `variant` items live in the Online Mall / player market only. */
-  sub?: string; kind?: string; style?: string; col?: string; colName?: string; variant?: boolean };
+  sub?: string; kind?: string; style?: string; col?: string; colName?: string; variant?: boolean;
+  /** Fashion: who it is cut for ('m' men, 'w' women). */ g?: 'm' | 'w' | 'u' };
 /** Groceries and toiletries are not carried as items: they fill your pantry (meals / supplies), which cooking, showering etc. use up. */
 export const PANTRY_CATS: CatId[] = ['grocery', 'toiletry'];
 export const isStaple = (i: { cat: string }) => i.cat === 'food' || i.cat === 'grocery' || i.cat === 'toiletry';
@@ -259,6 +260,81 @@ addV('kitchen', 'Kitchen Gadgets', 'gadget', '☕', APPL, [
   ['Air Fryer', 85000, [.35, .35], 'airfryer'], ['Blender', 45000, [.25, .25], 'blender'], ['Toaster', 28000, [.3, .2], 'toaster'], ['Electric Kettle', 22000, [.25, .2], 'kettle'], ['Coffee Machine', 190000, [.3, .35], 'coffee'], ['Stand Mixer', 130000, [.3, .25], 'mixer'],
 ]);
 
+/* ───────── Fashion Boutique: clothes (garments × colours) ─────────
+   Sold ONLY in person at a Fashion Boutique (never in the Online Mall). Ids are `fas_<colour>_<garment>`; stable, never rename.
+   Step 1 = clothes, step 2 = shoes, step 3 = jewellery & accessories (same generator, new rows). */
+const CLOTH_COLS: Pal = [['Black', '#1a1b20'], ['White', '#f2f2f0'], ['Navy Blue', '#1d2a4a'], ['Royal Blue', '#2a4fa3'], ['Sky Blue', '#79b4d8'], ['Emerald Green', '#1f7d5a'], ['Olive Green', '#5a6b3a'],
+  ['Burgundy', '#7d1f33'], ['Red', '#c0262e'], ['Blush Pink', '#e0a3b3'], ['Mustard Yellow', '#c9992b'], ['Burnt Orange', '#d4702a'], ['Royal Purple', '#6b3fa0'], ['Chocolate Brown', '#6b4a2f'], ['Ash Grey', '#8c8d8a'], ['Cream', '#e6dcc6']];
+type G = [label: string, emoji: string, cost: number, sub: string];
+function addF(g: 'm' | 'w' | 'u', rows: G[], pal: Pal = CLOTH_COLS) {
+  rows.forEach(([label, e, cost, sub]) => pal.forEach(([cn, hex]) => {
+    const name = `${cn} ${label}`, id = 'fas_' + slug(name);
+    if (taken.has(id)) return; taken.add(id);
+    out.push({ id, cat: 'fashion', name, e, cost, sub, col: hex, colName: cn, g });
+  }));
+}
+addF('m', [
+  ["Men's T-Shirt", '👕', 9000, 'Tops'], ["Men's Polo Shirt", '👕', 16000, 'Tops'], ["Men's Button-Up Shirt", '👔', 24000, 'Tops'], ["Men's Long-Sleeve Tee", '👕', 13000, 'Tops'], ["Men's Singlet", '🎽', 6000, 'Tops'],
+  ["Men's Hoodie", '🧥', 38000, 'Jackets & Hoodies'], ["Men's Sweatshirt", '🧥', 30000, 'Jackets & Hoodies'], ["Men's Bomber Jacket", '🧥', 95000, 'Jackets & Hoodies'], ["Men's Denim Jacket", '🧥', 80000, 'Jackets & Hoodies'], ["Men's Leather Jacket", '🧥', 180000, 'Jackets & Hoodies'], ["Men's Blazer", '🧥', 140000, 'Jackets & Hoodies'],
+  ["Men's Slim Jeans", '👖', 42000, 'Trousers & Shorts'], ["Men's Chinos", '👖', 38000, 'Trousers & Shorts'], ["Men's Joggers", '👖', 28000, 'Trousers & Shorts'], ["Men's Cargo Pants", '👖', 45000, 'Trousers & Shorts'], ["Men's Shorts", '🩳', 18000, 'Trousers & Shorts'], ["Men's Corporate Slacks", '👖', 48000, 'Trousers & Shorts'],
+  ["Senator Kaftan Set", '👘', 85000, 'Native Wear'], ["Agbada (3-piece)", '👘', 320000, 'Native Wear'], ["Dashiki Top", '👘', 32000, 'Native Wear'], ["Ankara Shirt", '👕', 28000, 'Native Wear'], ["Aso-Oke Set (Men)", '🧵', 280000, 'Native Wear'], ["Buba & Sokoto", '👘', 65000, 'Native Wear'],
+  ["Two-Piece Suit (Men)", '🤵', 380000, 'Suits & Formal'], ["Three-Piece Suit (Men)", '🤵', 520000, 'Suits & Formal'], ["Tuxedo (Men)", '🤵', 620000, 'Suits & Formal'], ["Waistcoat", '🦺', 55000, 'Suits & Formal'],
+  ["Men's Tracksuit", '🏃', 55000, 'Sports & Casual'], ["Football Jersey (Men)", '⚽', 22000, 'Sports & Casual'], ["Men's Gym Tank", '🎽', 12000, 'Sports & Casual'], ["Men's Swim Trunks", '🩳', 15000, 'Sports & Casual'], ["Men's Pyjamas", '🛌', 20000, 'Sports & Casual'],
+]);
+addF('w', [
+  ["Women's Crop Top", '👚', 10000, 'Tops'], ["Women's Blouse", '👚', 22000, 'Tops'], ["Women's Tank Top", '🎽', 8000, 'Tops'], ["Women's Off-Shoulder Top", '👚', 18000, 'Tops'], ["Women's Corset Top", '👚', 35000, 'Tops'], ["Women's Bodysuit", '👚', 20000, 'Tops'],
+  ["Women's Hoodie", '🧥', 38000, 'Jackets & Hoodies'], ["Women's Denim Jacket", '🧥', 80000, 'Jackets & Hoodies'], ["Women's Leather Jacket", '🧥', 180000, 'Jackets & Hoodies'], ["Women's Blazer", '🧥', 120000, 'Jackets & Hoodies'], ["Long Cardigan", '🧥', 45000, 'Jackets & Hoodies'], ["Faux Fur Coat", '🧥', 340000, 'Jackets & Hoodies'],
+  ["Women's High-Waist Jeans", '👖', 45000, 'Trousers & Skirts'], ["Women's Leggings", '👖', 15000, 'Trousers & Skirts'], ["Palazzo Trousers", '👖', 35000, 'Trousers & Skirts'], ["Mini Skirt", '👗', 20000, 'Trousers & Skirts'], ["Pencil Skirt", '👗', 28000, 'Trousers & Skirts'], ["Pleated Maxi Skirt", '👗', 38000, 'Trousers & Skirts'], ["Women's Shorts", '🩳', 16000, 'Trousers & Skirts'],
+  ["Bodycon Dress", '👗', 45000, 'Dresses & Gowns'], ["Midi Dress", '👗', 55000, 'Dresses & Gowns'], ["Maxi Dress", '👗', 65000, 'Dresses & Gowns'], ["Mini Party Dress", '👗', 48000, 'Dresses & Gowns'], ["Wrap Dress", '👗', 52000, 'Dresses & Gowns'], ["Evening Gown", '👗', 520000, 'Dresses & Gowns'], ["Mermaid Gown", '👗', 680000, 'Dresses & Gowns'], ["Wedding Gown", '👰', 1400000, 'Dresses & Gowns'],
+  ["Ankara Dress", '👗', 45000, 'Native Wear'], ["Iro & Buba Set", '👘', 90000, 'Native Wear'], ["Lace Aso-Ebi Gown", '👗', 140000, 'Native Wear'], ["Aso-Oke Set (Women)", '🧵', 260000, 'Native Wear'], ["Ankara Peplum Top", '👚', 30000, 'Native Wear'], ["Kaftan Gown", '👘', 60000, 'Native Wear'], ["Boubou Gown", '👘', 75000, 'Native Wear'],
+  ["Women's Pantsuit", '🥼', 160000, 'Suits & Formal'], ["Designer Jumpsuit", '👗', 120000, 'Suits & Formal'], ["Skirt Suit", '🥼', 150000, 'Suits & Formal'],
+  ["Activewear Set", '🏃‍♀️', 42000, 'Sports & Casual'], ["Sports Bra & Leggings", '🏃‍♀️', 30000, 'Sports & Casual'], ["Women's Tracksuit", '🏃‍♀️', 55000, 'Sports & Casual'], ["Swimsuit", '🩱', 30000, 'Sports & Casual'], ["Bikini Set", '👙', 24000, 'Sports & Casual'], ["Satin Nightgown", '🛌', 26000, 'Sports & Casual'],
+]);
+
+/* Step 2: shoes (styles × colours) */
+const SHOE_COLS: Pal = [['Black', '#1a1b20'], ['White', '#f2f2f0'], ['Brown', '#6b4a2f'], ['Tan', '#a8703d'], ['Navy Blue', '#1d2a4a'], ['Burgundy', '#7d1f33'], ['Red', '#c0262e'], ['Nude Beige', '#d9b99b'],
+  ['Gold', '#c9a23a'], ['Silver', '#b9bec4'], ['Blush Pink', '#e0a3b3'], ['Royal Blue', '#2a4fa3'], ['Emerald Green', '#1f7d5a'], ['Ash Grey', '#8c8d8a'], ['Royal Purple', '#6b3fa0'], ['Cream', '#e6dcc6']];
+addF('m', [
+  ["Men's Oxford Shoes", '👞', 95000, 'Shoes: Formal'], ["Men's Derby Shoes", '👞', 85000, 'Shoes: Formal'], ["Men's Loafers", '👞', 70000, 'Shoes: Formal'], ["Men's Monk-Strap Shoes", '👞', 110000, 'Shoes: Formal'], ["Men's Crocodile-Skin Shoes", '👞', 780000, 'Shoes: Formal'],
+  ["Men's Sneakers", '👟', 65000, 'Shoes: Sneakers'], ["Men's Designer Sneakers", '👟', 480000, 'Shoes: Sneakers'], ["Men's High-Top Sneakers", '👟', 85000, 'Shoes: Sneakers'], ["Men's Running Shoes", '👟', 75000, 'Shoes: Sneakers'], ["Men's Canvas Shoes", '👟', 28000, 'Shoes: Sneakers'], ["Men's Limited-Edition Sneakers", '👟', 950000, 'Shoes: Sneakers'],
+  ["Men's Chelsea Boots", '🥾', 120000, 'Shoes: Boots'], ["Men's Combat Boots", '🥾', 95000, 'Shoes: Boots'], ["Men's Timberland-Style Boots", '🥾', 140000, 'Shoes: Boots'],
+  ["Men's Leather Sandals", '🩴', 20000, 'Shoes: Sandals & Slides'], ["Men's Slides", '🩴', 9000, 'Shoes: Sandals & Slides'], ["Men's Palm Slippers", '🩴', 12000, 'Shoes: Sandals & Slides'], ["Men's Flip-Flops", '🩴', 5000, 'Shoes: Sandals & Slides'], ["Men's Football Boots", '⚽', 70000, 'Shoes: Sandals & Slides'],
+], SHOE_COLS);
+addF('w', [
+  ["Women's High Heels", '👠', 70000, 'Shoes: Heels'], ["Women's Stiletto Pumps", '👠', 85000, 'Shoes: Heels'], ["Women's Block Heels", '👠', 60000, 'Shoes: Heels'], ["Women's Platform Heels", '👠', 95000, 'Shoes: Heels'], ["Women's Wedge Heels", '👠', 55000, 'Shoes: Heels'], ["Women's Kitten Heels", '👠', 50000, 'Shoes: Heels'], ["Women's Designer Heels", '👠', 650000, 'Shoes: Heels'],
+  ["Women's Ballet Flats", '🥿', 35000, 'Shoes: Flats'], ["Women's Loafers", '🥿', 48000, 'Shoes: Flats'], ["Women's Pointed Flats", '🥿', 40000, 'Shoes: Flats'], ["Women's Mules", '🥿', 45000, 'Shoes: Flats'],
+  ["Women's Sneakers", '👟', 60000, 'Shoes: Sneakers'], ["Women's Designer Sneakers", '👟', 480000, 'Shoes: Sneakers'], ["Women's Running Shoes", '👟', 70000, 'Shoes: Sneakers'], ["Women's Chunky Platform Sneakers", '👟', 90000, 'Shoes: Sneakers'],
+  ["Women's Ankle Boots", '👢', 110000, 'Shoes: Boots'], ["Women's Knee-High Boots", '👢', 160000, 'Shoes: Boots'], ["Women's Chelsea Boots", '👢', 120000, 'Shoes: Boots'],
+  ["Women's Strappy Sandals", '👡', 38000, 'Shoes: Sandals & Slides'], ["Women's Gladiator Sandals", '👡', 45000, 'Shoes: Sandals & Slides'], ["Women's Slides", '🩴', 9000, 'Shoes: Sandals & Slides'], ["Women's Beaded Slippers", '🩴', 30000, 'Shoes: Sandals & Slides'], ["Women's Flip-Flops", '🩴', 5000, 'Shoes: Sandals & Slides'],
+], SHOE_COLS);
+
+/* Step 3: jewellery & accessories (pieces × metals / stones / colours) */
+const METALS: Pal = [['Yellow Gold', '#d4af37'], ['White Gold', '#e8e6df'], ['Rose Gold', '#c98e83'], ['Sterling Silver', '#b9bec4'], ['Platinum', '#d9dde2'], ['Black Steel', '#26282c'], ['Antique Bronze', '#8a5a32']];
+const GEMS: Pal = [['Diamond', '#e9f4ff'], ['Ruby', '#b3122f'], ['Sapphire', '#1f3f9a'], ['Emerald', '#12875a'], ['Pearl', '#f3ece0'], ['Amethyst', '#8a4fc2'], ['Topaz', '#e0a32b'], ['Onyx', '#16161a']];
+const BEADS: Pal = [['Coral Red', '#d6452f'], ['Gold & Black', '#3a2f1a'], ['Royal Blue', '#2a4fa3'], ['Turquoise', '#2ab5b0'], ['White Pearl', '#f3ece0'], ['Amber', '#d98a1c'], ['Emerald Green', '#1f7d5a'], ['Purple', '#6b3fa0']];
+const jw = (g: 'm' | 'w' | 'u', pal: Pal, rows: G[]) => addF(g, rows, pal);
+// Necklaces, rings, bracelets, earrings (metals)
+jw('w', METALS, [["Women's Chain Necklace", '📿', 180000, 'Jewellery: Necklaces'], ["Pendant Necklace", '📿', 240000, 'Jewellery: Necklaces'], ["Choker Necklace", '📿', 150000, 'Jewellery: Necklaces'], ["Layered Necklace Set", '📿', 320000, 'Jewellery: Necklaces'],
+  ["Hoop Earrings", '💎', 90000, 'Jewellery: Earrings'], ["Stud Earrings", '💎', 60000, 'Jewellery: Earrings'], ["Drop Earrings", '💎', 140000, 'Jewellery: Earrings'], ["Chandelier Earrings", '💎', 220000, 'Jewellery: Earrings'],
+  ["Women's Ring", '💍', 160000, 'Jewellery: Rings'], ["Band Ring Set", '💍', 120000, 'Jewellery: Rings'], ["Women's Bangle", '📿', 130000, 'Jewellery: Bracelets'], ["Charm Bracelet", '📿', 110000, 'Jewellery: Bracelets'], ["Anklet", '📿', 45000, 'Jewellery: Bracelets'],
+  ["Women's Wristwatch", '⌚', 380000, 'Watches'], ["Women's Luxury Watch", '⌚', 2100000, 'Watches']]);
+jw('m', METALS, [["Men's Chain", '⛓️', 220000, 'Jewellery: Necklaces'], ["Cuban Link Chain", '⛓️', 650000, 'Jewellery: Necklaces'], ["Dog-Tag Pendant", '📿', 130000, 'Jewellery: Necklaces'],
+  ["Men's Signet Ring", '💍', 280000, 'Jewellery: Rings'], ["Men's Band Ring", '💍', 170000, 'Jewellery: Rings'], ["Men's Bracelet", '📿', 120000, 'Jewellery: Bracelets'], ["Men's Cuff Bangle", '📿', 160000, 'Jewellery: Bracelets'], ["Men's Stud Earring", '💎', 70000, 'Jewellery: Earrings'],
+  ["Cufflinks", '🔗', 160000, 'Jewellery: Pins & Cufflinks'], ["Tie Pin", '📌', 60000, 'Jewellery: Pins & Cufflinks'], ["Lapel Pin", '📌', 45000, 'Jewellery: Pins & Cufflinks'],
+  ["Men's Wristwatch", '⌚', 420000, 'Watches'], ["Men's Luxury Watch", '⌚', 1800000, 'Watches'], ["Pocket Watch", '🕰️', 540000, 'Watches']]);
+// Gemstone pieces
+jw('w', GEMS, [["Gemstone Necklace", '📿', 650000, 'Jewellery: Gemstones'], ["Gemstone Earrings", '💎', 520000, 'Jewellery: Gemstones'], ["Gemstone Ring", '💍', 780000, 'Jewellery: Gemstones'], ["Gemstone Bracelet", '📿', 590000, 'Jewellery: Gemstones'], ["Tiara", '👑', 1500000, 'Jewellery: Gemstones']]);
+jw('m', GEMS, [["Men's Gemstone Ring", '💍', 720000, 'Jewellery: Gemstones'], ["Men's Gemstone Cufflinks", '🔗', 380000, 'Jewellery: Gemstones']]);
+// Traditional beads
+jw('u', BEADS, [["Beaded Necklace", '📿', 55000, 'Jewellery: Beads'], ["Beaded Bracelet", '📿', 25000, 'Jewellery: Beads'], ["Beaded Anklet", '📿', 20000, 'Jewellery: Beads'], ["Chief's Coral Beads", '📿', 280000, 'Jewellery: Beads'], ["Beaded Crown", '👑', 160000, 'Jewellery: Beads']]);
+// Bags, hats, eyewear, belts, scarves (colours)
+jw('w', SHOE_COLS, [["Handbag", '👜', 85000, 'Bags'], ["Designer Handbag", '👜', 1500000, 'Bags'], ["Clutch Bag", '👛', 60000, 'Bags'], ["Tote Bag", '👜', 55000, 'Bags'], ["Crossbody Bag", '👜', 70000, 'Bags'], ["Mini Bag", '👜', 95000, 'Bags'],
+  ["Gele (Head Tie)", '🧕', 30000, 'Hats & Headwear'], ["Wide-Brim Hat", '👒', 35000, 'Hats & Headwear'], ["Fascinator", '🎩', 60000, 'Hats & Headwear'], ["Silk Headscarf", '🧣', 20000, 'Hats & Headwear'], ["Hair Band Set", '🎀', 8000, 'Hats & Headwear'],
+  ["Cat-Eye Sunglasses", '🕶️', 45000, 'Eyewear'], ["Oversized Sunglasses", '🕶️', 60000, 'Eyewear'], ["Designer Sunglasses", '🕶️', 380000, 'Eyewear'], ["Women's Waist Belt", '🪢', 30000, 'Belts & Scarves'], ["Silk Scarf", '🧣', 20000, 'Belts & Scarves'], ["Designer Scarf", '🧣', 180000, 'Belts & Scarves'], ["Shawl", '🧣', 40000, 'Belts & Scarves']]);
+jw('m', SHOE_COLS, [["Men's Backpack", '🎒', 35000, 'Bags'], ["Leather Briefcase", '💼', 120000, 'Bags'], ["Messenger Bag", '👜', 65000, 'Bags'], ["Duffel Bag", '🧳', 70000, 'Bags'], ["Leather Wallet", '👛', 25000, 'Bags'],
+  ["Fila Cap (Yoruba)", '🎩', 20000, 'Hats & Headwear'], ["Baseball Cap", '🧢', 9000, 'Hats & Headwear'], ["Beanie", '🧶', 6500, 'Hats & Headwear'], ["Fedora Hat", '🎩', 45000, 'Hats & Headwear'], ["Bucket Hat", '👒', 12000, 'Hats & Headwear'], ["Kufi Cap", '🧢', 15000, 'Hats & Headwear'],
+  ["Aviator Sunglasses", '🕶️', 55000, 'Eyewear'], ["Wayfarer Sunglasses", '🕶️', 40000, 'Eyewear'], ["Designer Shades", '🕶️', 160000, 'Eyewear'], ["Leather Belt", '🪢', 18000, 'Belts & Ties'], ["Designer Belt", '🪢', 220000, 'Belts & Ties'], ["Necktie", '👔', 12000, 'Belts & Ties'], ["Bow Tie", '🎀', 8000, 'Belts & Ties'], ["Pocket Square", '🧣', 10000, 'Belts & Ties'], ["Suspenders", '🪢', 14000, 'Belts & Ties']]);
+
 WEAPONS.forEach(w => out.push({ id: weaponItemId(w.id), cat: 'arms', name: w.name, e: w.icon, cost: w.price, tag: 'weapon' }));
 /* Car parts come ONLY from a chop shop job (lib/chop.ts). No store lists the 'parts' category and the Online Mall refuses tag 'part'. */
 PARTS.forEach(p => out.push({ id: p.id, cat: 'parts', name: p.name, e: p.e, cost: p.cost, tag: 'part' }));
@@ -272,6 +348,7 @@ export const STORE_CATS: Partial<Record<BusinessType, CatId[]>> = {
   Supermarket: ['food', 'grocery', 'toiletry', 'household', 'kitchen', 'kids', 'decor'],
   'Petrol Station': ['food'],
   Pharmacy: ['toiletry', 'household', 'kids'],
+  'Fashion Boutique': ['fashion', 'style'],
   Salon: ['style', 'toiletry'],
   Barber: ['style', 'toiletry'],
   'Gun Shop': ['arms'],
@@ -279,4 +356,6 @@ export const STORE_CATS: Partial<Record<BusinessType, CatId[]>> = {
 export const storeCats = (type: string): CatId[] => STORE_CATS[type as BusinessType] || [];
 export const storeItems = (type: string): Item[] => { const c = storeCats(type); return CATALOG.filter(i => c.includes(i.cat) && !i.variant); };
 export const storeItem = (type: string, id: string): Item | undefined => { const i = BY_ID.get(id); return i && !i.variant && storeCats(type).includes(i.cat) ? i : undefined; };
+/** Things you can only buy in person at a shop that stocks them: never in the Online Mall. */
+export const inPersonOnly = (i: { cat: string; tag?: string }) => i.tag === 'part' || i.cat === 'fashion';
 export const MAX_STACK = 99;

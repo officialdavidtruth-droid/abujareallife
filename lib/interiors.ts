@@ -30,7 +30,7 @@ export const SKILL_FOR: Record<string, SkillId> = { Bank: 'business', Office: 'b
 export const shiftPay = (pay: number) => Math.round(pay / 10); // a ~50-minute shift = a tenth of the monthly salary
 export const shiftPayFor = (pay: number, mins: number) => Math.round(shiftPay(pay) * mins / 10); // longer tasks pay a little more
 
-const ARCH: Record<string, string> = { Bank: 'hall', Government: 'hall', Office: 'hall', 'Tech Company': 'hall', 'Estate Agency': 'hall', Logistics: 'hall', Restaurant: 'dining', Hotel: 'dining', Nightclub: 'club', Supermarket: 'store', Pharmacy: 'store', Market: 'store', 'Petrol Station': 'store', 'Car Dealer': 'store', Mechanic: 'store', 'Gun Shop': 'store', Hospital: 'service', Salon: 'service', Barber: 'service', Gym: 'service', School: 'service', Cinema: 'service', 'Police Station': 'station', Jail: 'station', Airport: 'terminal', 'Rail Station': 'terminal' };
+const ARCH: Record<string, string> = { Bank: 'hall', Government: 'hall', Office: 'hall', 'Tech Company': 'hall', 'Estate Agency': 'hall', Logistics: 'hall', Restaurant: 'dining', Hotel: 'dining', Nightclub: 'club', Supermarket: 'store', Pharmacy: 'store', Market: 'store', 'Petrol Station': 'store', 'Car Dealer': 'store', Mechanic: 'store', 'Gun Shop': 'store', 'Fashion Boutique': 'store', Hospital: 'service', Salon: 'service', Barber: 'service', Gym: 'service', School: 'service', Cinema: 'service', 'Police Station': 'station', Jail: 'station', Airport: 'terminal', 'Rail Station': 'terminal' };
 const PAL: Record<string, [string, string]> = { Bank: ['#cfc9bd', '#2f4a63'], Government: ['#d8d2c4', '#3f5a40'], Hospital: ['#eef3f5', '#4aa3b5'], Restaurant: ['#caa77a', '#7a3b2e'], Hotel: ['#d9c7a3', '#5a3a2e'], Nightclub: ['#1a1330', '#2a1650'], Gym: ['#3a3f45', '#222831'], Cinema: ['#2b1d22', '#4a1d2a'], 'Police Station': ['#b9bfc8', '#1e3a8a'], Jail: ['#8a8d92', '#4b4f55'], Airport: ['#e3e5e8', '#3d5a80'], 'Rail Station': ['#d4cdbf', '#6b4a8a'], Supermarket: ['#e8e4da', '#2f7d4f'], School: ['#e8dcc0', '#3d5a80'] };
 const F = (x: number, z: number, w: number, d: number, h: number, c: string, o: Partial<Item> = {}): Item => ({ x, z, w, d, h, c, solid: true, ...o });
 
@@ -109,6 +109,10 @@ export function buildInterior(b: Business): Interior {
     frames(-4, -hz + .2, 4);
     if (type === 'Market') [-3.6, 0, 3.6].forEach((z, zi) => { items.push(F(-hx + 1.3, z, 1.4, 1.4, .5, '#9b7b4a')); for (let k = 0; k < 9; k++) dc(-hx + .9 + (k % 3) * .4, z - .4 + ((k / 3) | 0) * .4, .32, .32, .32, pick(['#e76f51', '#f4a261', '#8ac926', '#ffca3a', '#c1121f'], k + zi), { y: .5, sphere: true }); });
     if (type === 'Petrol Station') { items.push(F(hx - .9, -1, .8, 5, 2.1, '#cfe3ee')); for (let r = 0; r < 3; r++) for (let k = 0; k < 10; k++) dc(hx - 1.35, -3.1 + k * .45, .15, .3, .3, pick(['#e63946', '#2a9d8f', '#ffd166', '#4cc9f0'], k + r), { y: .25 + r * .6 }); }
+    if (type === 'Fashion Boutique') { // clothing rails along the left wall + folded stacks, mannequins by the door
+      [-3.6, 0, 3.6].forEach((z, zi) => { dc(-hx + .8, z, .12, 2.2, .04, '#c9ccd1', { y: 1.5 }); for (let k = 0; k < 9; k++) dc(-hx + .8, z - .95 + k * .24, .5, .1, .9, pick(['#1a1b20', '#c0262e', '#2a4fa3', '#e0a3b3', '#c9992b', '#1f7d5a', '#f2f2f0'], k + zi * 3), { y: .95 }); });
+      [-1.6, 1.6].forEach((x, xi) => { items.push(F(x, hz - 2.6, .9, .9, .55, '#e9e3d6')); dc(x, hz - 2.6, .6, .6, .22, pick(['#6b3fa0', '#d4702a'], xi), { y: .55 }); dc(x, hz - 4, .3, .3, 1.5, '#d8d2c4', { y: .1, round: true }); dc(x, hz - 4, .5, .4, .8, pick(['#7d1f33', '#1d2a4a'], xi), { y: .75 }); });
+    }
     if (type === 'Pharmacy') { dc(0, -hz + .2, 1.4, .05, .35, '#2f9e6a', { y: 2.1 }); dc(0, -hz + .2, .35, .05, 1.2, '#2f9e6a', { y: 1.5 }); }
     dc(hx - 3, hz - 2.4, .5, .4, .35, '#222', { y: counterTop }); dc(hx - 3 + .9, hz - 2.4, .35, .3, .1, '#4ade80', { y: counterTop });
   } else if (arch === 'service') {

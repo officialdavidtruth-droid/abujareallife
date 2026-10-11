@@ -97,7 +97,9 @@ export function pedSoleGeometry(): THREE.BufferGeometry { const g = new RoundedB
 export function buildHuman(look: Look): Rig {
   const f = look.gender === 'f';
   const M = outfitOk(look.outfitModel || '', f ? 'f' : 'm') ? (look.outfitModel as string) : defaultOutfitModel(f ? 'f' : 'm');
-  const sp = specOf(M, f, look);
+  const sp0 = specOf(M, f, look), sp: Spec = { ...sp0, shoe: look.shoeStyle || sp0.shoe, shoeC: look.shoeColor || sp0.shoeC }; // bought shoes override the outfit's default pair
+  const acc = (slot: string) => { const a = look.acc?.find(x => x.startsWith(slot + ':')); return a ? a.slice(slot.length + 1) : undefined; }; // bought accessories: 'kind:#hex' -> colour of that kind
+  const accK = (kinds: string[]) => { for (const k of kinds) { const c = acc(k); if (c) return { k, c }; } return null; };
   const jump = M === 'designer' && f;                       // women's designer fit = tailored jumpsuit
   const topC = look.outfit;
   const botC = jump || M === 'dress' || M === 'gown' ? look.outfit : look.pants;
@@ -255,7 +257,9 @@ export function buildHuman(look: Look): Rig {
   const smile = add(head, mesh(new THREE.TorusGeometry(.021, .0045, 8, 20, Math.PI), lip), 0, .062, .12); smile.rotation.z = Math.PI; smile.scale.set(1.22, .85, 1);
   if (f) add(head, mesh(new THREE.SphereGeometry(.017, 14, 10), std('#b3394a', .45)), 0, .058, .121).scale.set(1.5, .38, .5); // lipstick
   // ---- accessories on the head ----
-  const hat = M === 'agbada' || M === 'uniform', gele = M === 'ankara';
+  const headA = accK(['cap', 'fila', 'beanie', 'fedora', 'bucket', 'kufi', 'brim', 'wrap', 'gele', 'fascinator', 'band', 'tiara', 'crown']);
+  const hat = M === 'agbada' || M === 'uniform' || (!!headA && ['cap', 'fila', 'beanie', 'fedora', 'bucket', 'kufi', 'brim'].includes(headA.k)), gele = M === 'ankara' || headA?.k === 'gele' || headA?.k === 'wrap';
+  const geleC = headA && (headA.k === 'gele' || headA.k === 'wrap') ? headA.c : topC;
   if (M === 'designer') { // sunglasses
     const gl = metal('#0a0a0a', .15);
     for (const s of [-1, 1]) add(head, mesh(new RoundedBoxGeometry(.052, .036, .012, 2, .008), gl), s * .038, .115, .106);
@@ -265,6 +269,54 @@ export function buildHuman(look: Look): Rig {
     const big = M === 'designer' || M === 'gown' || M === 'ankara';
     for (const s of [-1, 1]) { if (big) { const h = add(head, mesh(new THREE.TorusGeometry(.024, .0045, 8, 20), gold), s * .11, .07, 0); h.rotation.y = Math.PI / 2; } else add(head, mesh(new THREE.SphereGeometry(.009, 8, 6), gold), s * .109, .085, .004); }
   }
+  // ---- bought accessories (fashion step 4 part 2). Colours come from the item you bought. ----
+  const ac = (c: string, r = .6) => clm(c, r), mt = (c: string) => metal(c, .25);
+  const ha = headA;
+  if (ha) {
+    const c = ha.c, cl = ac(c), dk = ac(shade(c, .6));
+    const dome = (r: number, y: number, z = -.004, sy = 1.05) => { const m = mesh(new THREE.SphereGeometry(r, 28, 18, 0, Math.PI * 2, 0, Math.PI * .56), cl); m.scale.set(1, sy, 1.04); return add(head, m, 0, y, z); };
+    switch (ha.k) {
+      case 'cap': dome(.112, .168, -.004, .82); add(head, mesh(new THREE.CylinderGeometry(.075, .075, .012, 20, 1, false, 0, Math.PI), dk), 0, .172, .105).rotation.x = -.1; break;
+      case 'beanie': dome(.116, .165, -.004, 1.05); add(head, mesh(new THREE.TorusGeometry(.108, .012, 8, 28), dk), 0, .172, -.003).rotation.x = Math.PI / 2; add(head, mesh(new THREE.SphereGeometry(.022, 10, 8), dk), 0, .272, 0); break;
+      case 'kufi': add(head, mesh(new THREE.CylinderGeometry(.1, .118, .075, 28), cl), 0, .2, -.004); add(head, mesh(new THREE.TorusGeometry(.109, .006, 6, 28), mt(GOLD)), 0, .17, -.004).rotation.x = Math.PI / 2; break;
+      case 'fila': { const fm = add(head, mesh(new THREE.CylinderGeometry(.095, .122, .13, 28), cl), 0, .225, -.004); fm.rotation.x = -.12; add(head, mesh(new THREE.TorusGeometry(.117, .008, 6, 28), dk), 0, .165, .0).rotation.x = Math.PI / 2 - .12; break; }
+      case 'fedora': add(head, mesh(new THREE.CylinderGeometry(.2, .2, .01, 32), cl), 0, .155, -.004); add(head, mesh(new THREE.CylinderGeometry(.095, .115, .1, 26), cl), 0, .2, -.004); add(head, mesh(new THREE.CylinderGeometry(.117, .117, .028, 26), dk), 0, .172, -.004); break;
+      case 'brim': add(head, mesh(new THREE.CylinderGeometry(.26, .26, .008, 36), cl), 0, .16, -.004); dome(.12, .15, -.004, .85); add(head, mesh(new THREE.TorusGeometry(.12, .008, 6, 28), dk), 0, .165, -.004).rotation.x = Math.PI / 2; break;
+      case 'bucket': add(head, mesh(new THREE.CylinderGeometry(.115, .19, .05, 30, 1, true), cl), 0, .17, -.004); dome(.115, .16, -.004, .85); break;
+      case 'fascinator': { const d = add(head, mesh(new THREE.SphereGeometry(.05, 16, 10), cl), .07, .225, .05); d.scale.set(1.3, .35, 1); d.rotation.z = -.4; add(head, mesh(new THREE.ConeGeometry(.012, .11, 8), dk), .11, .26, .05).rotation.z = -1.0; break; }
+      case 'band': add(head, mesh(new THREE.TorusGeometry(.112, .008, 8, 28), cl), 0, .17, -.004).rotation.x = Math.PI / 2 - .25; break;
+      case 'tiara': for (let i = -2; i <= 2; i++) { const t = i * .04; add(head, mesh(new THREE.ConeGeometry(.011, .03 + (2 - Math.abs(i)) * .012, 6), mt(c)), Math.sin(t * 5) * .1, .205 + Math.cos(t * 5) * .03, Math.cos(t * 5) * .06 + .02); } break;
+      case 'crown': add(head, mesh(new THREE.TorusGeometry(.11, .01, 8, 28), mt(c)), 0, .185, -.004).rotation.x = Math.PI / 2; for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; add(head, mesh(new THREE.ConeGeometry(.012, .045, 6), mt(c)), Math.sin(a) * .11, .215, Math.cos(a) * .11 - .004); } break;
+    }
+  }
+  const eyeA = acc('shades');
+  if (eyeA) { // sunglasses in your colour
+    const lens = metal('#0a0a0a', .12), fr = mt(eyeA);
+    for (const s of [-1, 1]) { add(head, mesh(new RoundedBoxGeometry(.062, .046, .01, 2, .009), fr), s * .04, .12, .13); add(head, mesh(new RoundedBoxGeometry(.052, .036, .01, 2, .008), lens), s * .04, .12, .136); add(head, mesh(new THREE.BoxGeometry(.006, .006, .14), fr), s * .076, .124, .062); }
+    add(head, mesh(new THREE.BoxGeometry(.03, .006, .008), fr), 0, .126, .132);
+  }
+  const earA = accK(['hoop', 'stud', 'drop']);
+  if (earA) for (const s of [-1, 1]) {
+    const em = mt(earA.c);
+    if (earA.k === 'hoop') { const h = add(head, mesh(new THREE.TorusGeometry(.024, .0045, 8, 20), em), s * .11, .07, 0); h.rotation.y = Math.PI / 2; }
+    else { add(head, mesh(new THREE.SphereGeometry(.009, 10, 8), em), s * .11, .088, .004); if (earA.k === 'drop') { add(head, mesh(new THREE.CylinderGeometry(.0025, .0025, .03, 6), em), s * .11, .07, .004); add(head, mesh(new THREE.SphereGeometry(.012, 10, 8), em), s * .11, .05, .004); } }
+  }
+  const neckA = accK(['chain', 'cuban', 'choker', 'beads', 'pendant', 'gem', 'scarf']);
+  if (neckA) {
+    const m = neckA.k === 'scarf' ? ac(neckA.c, .8) : neckA.k === 'beads' ? ac(neckA.c, .4) : mt(neckA.k === 'gem' ? GOLD : neckA.c);
+    if (neckA.k === 'choker') add(spine, mesh(new THREE.TorusGeometry(f ? .057 : .075, .006, 8, 28), m), 0, .49, 0).rotation.x = Math.PI / 2;
+    else if (neckA.k === 'scarf') add(spine, mesh(new THREE.TorusGeometry(f ? .075 : .095, .024, 10, 28), m), 0, .475, 0).rotation.x = Math.PI / 2;
+    else { ring(.43, .006, neckA.k === 'cuban' ? .009 : neckA.k === 'beads' ? .013 : .004, m); if (neckA.k === 'pendant' || neckA.k === 'gem') add(spine, mesh(new THREE.SphereGeometry(neckA.k === 'gem' ? .02 : .014, 12, 10), neckA.k === 'gem' ? metal(neckA.c, .1) : m), 0, .33, front(.33) + .016); }
+  }
+  const beltC = acc('belt');
+  if (beltC) { ring(.06, .004, .012, ac(beltC, .5)); add(spine, mesh(new THREE.BoxGeometry(.04, .034, .012), mt(GOLD)), 0, .06, front(.06) + .014); }
+  const tieC = acc('tie'), bowC = acc('bowtie'), pinC = acc('pin');
+  if (tieC) { add(spine, mesh(new THREE.BoxGeometry(.04, .24, .008), ac(tieC, .5)), 0, .33, front(.33) + .026); add(spine, mesh(new THREE.BoxGeometry(.05, .04, .012), ac(shade(tieC, .8), .5)), 0, .45, front(.45) + .024); }
+  if (bowC) { for (const s of [-1, 1]) add(spine, mesh(new THREE.ConeGeometry(.026, .04, 8), ac(bowC, .5)), s * .03, .455, front(.455) + .024).rotation.z = -s * Math.PI / 2; add(spine, mesh(new THREE.SphereGeometry(.01, 8, 6), ac(shade(bowC, .8))), 0, .455, front(.455) + .026); }
+  if (pinC) add(spine, mesh(new THREE.SphereGeometry(.008, 8, 6), mt(pinC)), f ? -.085 : -.1, .4, front(.4) + .02);
+  const bagA = accK(['handbag', 'clutch', 'tote', 'case']);
+  const packC = acc('backpack');
+  if (packC) { add(spine, mesh(new RoundedBoxGeometry(.26, .32, .1, 3, .03), ac(packC, .7)), 0, .27, -(rad(.27) * zs + .07)); for (const s of [-1, 1]) add(spine, mesh(new THREE.BoxGeometry(.035, .3, .012), ac(shade(packC, .75), .8)), s * .07, .32, rad(.32) * zs - .01); }
   // ---- hair ----
   const volumed = ['afro', 'puffs', 'locs', 'twists', 'knotless', 'braids', 'long', 'ponytail', 'bun', 'bob'];
   let hair = look.hair as string;
@@ -352,7 +404,7 @@ export function buildHuman(look: Look): Rig {
     add(hairG, mesh(new THREE.CircleGeometry(.018, 5), gold), 0, .1, .131);
   }
   if (gele) { // headwrap
-    const gc = std(shade(topC, 1.08), .6), gd = std(shade(topC, .75), .7);
+    const gc = std(shade(geleC, 1.08), .6), gd = std(shade(geleC, .75), .7);
     add(hairG, mesh(new THREE.SphereGeometry(.14, 24, 16), gc), 0, .075, -.005).scale.set(1.12, .78, 1.1);
     const f1 = add(hairG, mesh(new THREE.SphereGeometry(.1, 20, 14), gc), .05, .17, -.01); f1.scale.set(1.5, .55, 1.0); f1.rotation.z = .4;
     const f2 = add(hairG, mesh(new THREE.SphereGeometry(.09, 20, 14), gd), -.06, .21, .0); f2.scale.set(1.4, .5, .9); f2.rotation.z = -.5;
@@ -374,6 +426,7 @@ export function buildHuman(look: Look): Rig {
       if (sp.leg === 'bag') add(kn, mesh(new THREE.TorusGeometry(kR + .004, .011, 8, 16), std(shade(botC, .72), .9)), 0, -.355, 0).rotation.x = Math.PI / 2;
       if (sp.shoe === 'boot') add(kn, mesh(new THREE.CylinderGeometry(kR + .008, kR + .01, .17, 16), shoe), 0, -.32, 0);
     }
+    const ankA = acc('anklet'); if (ankA) add(kn, mesh(new THREE.TorusGeometry(f ? .042 : .05, .004, 8, 18), mt(ankA)), 0, -.37, 0).rotation.x = Math.PI / 2;
     const ft = add(kn, new THREE.Group(), 0, -.41, 0);
     if (sp.shoe === 'sneaker') {
       add(ft, mesh(new RoundedBoxGeometry(f ? .088 : .105, .075, f ? .25 : .275, 3, .03), shoe), 0, -.005, .05);
@@ -416,6 +469,15 @@ export function buildHuman(look: Look): Rig {
     add(el, mesh(handGeometry(f, s), skin), 0, -.3, 0);   // a real hand: palm, four fingers and a thumb
     if (M === 'designer' || (M === 'gown' && f) || M === 'ankara') add(el, mesh(new THREE.TorusGeometry(f ? .036 : .05, .005, 6, 18), gold), 0, -.27, 0).rotation.x = Math.PI / 2; // bracelet
     if (M === 'designer' && !f && s === 1) add(el, mesh(new THREE.CylinderGeometry(.052, .052, .03, 16), metal('#c9ced1')), 0, -.285, 0); // watch
+    const wr = (y: number, rr: number, tube: number, m: THREE.Material) => add(el, mesh(new THREE.TorusGeometry(rr, tube, 8, 18), m), 0, y, 0).rotation.x = Math.PI / 2;
+    const wA = acc('watch'), bA = acc('bangle'), cA = acc('cuff'), rA2 = acc('ring');
+    if (s === 1 && wA) { const wr0 = f ? .037 : .051; wr(-.275, wr0, .006, ac('#22252a', .5)); add(el, mesh(new THREE.CylinderGeometry(.026, .026, .012, 18), mt(wA)), s * wr0, -.275, 0).rotation.z = Math.PI / 2; add(el, mesh(new THREE.CylinderGeometry(.02, .02, .006, 18), metal('#101418', .1)), s * (wr0 + .006), -.275, 0).rotation.z = Math.PI / 2; }
+    if (s === -1 && bA) { wr(-.272, f ? .037 : .051, .007, mt(bA)); wr(-.285, f ? .037 : .051, .005, mt(bA)); }
+    if (s === 1 && bA && !wA) wr(-.272, f ? .037 : .051, .007, mt(bA));
+    if (cA) add(el, mesh(new THREE.SphereGeometry(.009, 8, 6), mt(cA)), s * .045, -.262, 0);
+    if (s === -1 && rA2) add(el, mesh(new THREE.TorusGeometry(f ? .0105 : .013, .004, 8, 14), mt(rA2)), -.012 * s - .006 * s, -.382, f ? .003 : .004).rotation.y = Math.PI / 2;
+    if (s === -1 && bagA) { const k = bagA.k, bc = ac(bagA.c, .55), bd = ac(shade(bagA.c, .7), .6), sz: [number, number, number] = k === 'clutch' ? [.2, .12, .035] : k === 'tote' ? [.24, .24, .1] : k === 'case' ? [.38, .28, .09] : [.22, .17, .08], hy = -.34 - sz[1] / 2 - (k === 'clutch' ? 0 : .06);
+      add(el, mesh(new RoundedBoxGeometry(sz[0], sz[1], sz[2], 3, .02), bc), 0, hy, .01).rotation.y = Math.PI / 2; if (k !== 'clutch') { const h = add(el, mesh(new THREE.TorusGeometry(.055, .006, 6, 16, Math.PI), bd), 0, hy + sz[1] / 2, .01); h.rotation.y = Math.PI / 2; } add(el, mesh(new THREE.BoxGeometry(.012, .02, sz[0] * .3), mt(GOLD)), -.0, hy + sz[1] * .32, .01 + sz[2] / 2 * 0).rotation.y = 0; }
     return { sh, el };
   };
   const A = mkArm(1), B = mkArm(-1);

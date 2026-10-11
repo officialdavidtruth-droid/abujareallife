@@ -6,6 +6,10 @@ export type Hair =
 export type Look = {
   name: string; model: string; gender: 'm' | 'f'; hair: Hair; hairColor: string;
   skin: string; outfit: string; pants: string; height: number; outfitModel?: string;
+  /** Fashion step 4: bought shoes you are wearing (colour + style), and the ids of the bought items you have on (the server checks you own them). */
+  shoeColor?: string; shoeStyle?: 'sneaker' | 'dress' | 'heel' | 'sandal' | 'boot'; worn?: string[];
+  /** Accessories you wear, as 'kind:#hex' (see lib/fashionWear.ts); the server only keeps the ones backed by `worn` items you own. */
+  acc?: string[];
 };
 // for: 'm' men, 'f' women, 'b' both
 export const HAIRS: { id: Hair; label: string; for: 'm' | 'f' | 'b' }[] = [
@@ -27,6 +31,7 @@ export const HAIR_COLORS = ['#0d0907', '#2b1a12', '#5a3a22', '#9a6a3a', '#c9a25a
 
 export const DEFAULT_LOOK: Look = { name: 'David', model: 'citizen', gender: 'm', hair: 'short', hairColor: '#0d0907', skin: '#8b552f', outfit: '#126c4b', pants: '#2b3a55', height: 1 };
 
+const SHOE_STYLES = ['sneaker', 'dress', 'heel', 'sandal', 'boot'];
 const HEX = /^#[0-9a-f]{6}$/i;
 const hex = (v: unknown, d: string) => (typeof v === 'string' && HEX.test(v) ? v : d);
 // Used on the server (save route) and for other players' looks: never trust raw input.
@@ -38,6 +43,9 @@ export function sanitizeLook(l: Partial<Look> | undefined | null, name: string):
     hair: hairOk(x.hair, x.gender === 'f' ? 'f' : 'm') ? (x.hair as Hair) : defaultHair(x.gender === 'f' ? 'f' : 'm'),
     hairColor: hex(x.hairColor, DEFAULT_LOOK.hairColor), skin: hex(x.skin, DEFAULT_LOOK.skin),
     outfit: hex(x.outfit, DEFAULT_LOOK.outfit), pants: hex(x.pants, DEFAULT_LOOK.pants),
+    ...(typeof x.shoeColor === 'string' && HEX.test(x.shoeColor) && SHOE_STYLES.includes(x.shoeStyle as string) ? { shoeColor: x.shoeColor, shoeStyle: x.shoeStyle } : {}),
+    ...(Array.isArray(x.worn) ? { worn: x.worn.filter((i): i is string => typeof i === 'string' && /^fas_[a-z0-9_]{1,90}$/.test(i)).slice(0, 8) } : {}),
+    ...(Array.isArray(x.acc) ? { acc: x.acc.filter((a): a is string => typeof a === 'string' && /^[a-z]{3,10}:#[0-9a-f]{6}$/i.test(a)).slice(0, 12) } : {}),
     height: typeof x.height === 'number' && isFinite(x.height) ? Math.max(0.9, Math.min(1.1, x.height)) : 1,
   };
 }

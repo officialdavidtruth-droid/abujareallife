@@ -32,11 +32,11 @@ const SIGN_MATS: THREE.MeshStandardMaterial[] = []; // every shop sign / blade s
 
 const NEON: Record<string, string> = {
   Nightclub: '#ff2bd6', Cinema: '#ffb300', Restaurant: '#ff7a2a', Pharmacy: '#27e07a', Hotel: '#ff4d6d', Barber: '#4f8cff', Salon: '#ff5fb0', Gym: '#22d3ee',
-  Bank: '#60a5fa', 'Petrol Station': '#ffd23f', Market: '#ffa726', Supermarket: '#ff5252', 'Car Dealer': '#7cc4ff', 'Tech Company': '#a78bfa', 'Gun Shop': '#ff3b3b',
+  Bank: '#60a5fa', 'Petrol Station': '#ffd23f', Market: '#ffa726', Supermarket: '#ff5252', 'Car Dealer': '#7cc4ff', 'Tech Company': '#a78bfa', 'Gun Shop': '#ff3b3b', 'Fashion Boutique': '#ff6ec7',
 };
 const neonOf = (type: string) => NEON[type] ?? '#ffd9a0';
-const BLADE = new Set(['Nightclub', 'Cinema', 'Restaurant', 'Pharmacy', 'Hotel', 'Barber', 'Salon', 'Gym', 'Bank', 'Market', 'Petrol Station', 'Gun Shop']);
-const STRIPED = new Set(['Restaurant', 'Supermarket', 'Market', 'Salon', 'Pharmacy', 'Barber', 'Cinema']);
+const BLADE = new Set(['Nightclub', 'Cinema', 'Restaurant', 'Pharmacy', 'Hotel', 'Barber', 'Salon', 'Gym', 'Bank', 'Market', 'Petrol Station', 'Gun Shop', 'Fashion Boutique']);
+const STRIPED = new Set(['Restaurant', 'Supermarket', 'Market', 'Fashion Boutique', 'Salon', 'Pharmacy', 'Barber', 'Cinema']);
 
 /* ───────────── canvas textures ───────────── */
 const TX = new Map<string, THREE.CanvasTexture>();

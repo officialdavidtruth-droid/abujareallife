@@ -23,6 +23,7 @@ export const PROFILE: Record<string, Prof> = {
   Market: { kind: 'brick', f: [2, 3], sign: '#7a4a12' },
   Restaurant: { kind: 'brick', f: [2, 4], sign: '#8a2b12' },
   Salon: { kind: 'plaster', f: [2, 3], sign: '#8a1f6b' },
+  'Fashion Boutique': { kind: 'glass', f: [2, 3], sign: '#a3125f' },
   Barber: { kind: 'plaster', f: [2, 3], sign: '#1f3a8a' },
   Gym: { kind: 'concrete', f: [2, 4], sign: '#222a33' },
   Mechanic: { kind: 'brick', f: [2, 2], sign: '#44484d' },

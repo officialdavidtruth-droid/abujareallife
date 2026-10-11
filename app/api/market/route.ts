@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
-import { MAX_STACK, isStaple, itemById } from '../../../lib/catalog';
+import { MAX_STACK, inPersonOnly, isStaple, itemById } from '../../../lib/catalog';
 import { mallPrice } from '../../../lib/sell';
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         await tx.listing.create({ data: { sellerId: u.id, sellerName: u.username, itemKey: it.id, qty, price } });
       });
     } else if (action === 'shop') { // the Abuja Online Mall: always in stock, delivered to your bag
-      const it = itemById(String(b.itemKey)); if (!it || it.use || isStaple(it) || it.tag === 'part') throw new Stop('The mall does not sell that. Groceries and toiletries are bought in person at the Market, Supermarket or Pharmacy.');
+      const it = itemById(String(b.itemKey)); if (!it || it.use || isStaple(it) || inPersonOnly(it)) throw new Stop('The mall does not sell that. Groceries, toiletries and clothes are bought in person (Market, Supermarket, Pharmacy, Fashion Boutique).');
       const n = Math.floor(Number(b.qty) || 1); if (!(n >= 1 && n <= 20)) throw new Stop('Choose how many to buy.');
       const total = mallPrice(it.cost) * n;
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {

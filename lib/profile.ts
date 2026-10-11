@@ -130,7 +130,7 @@ export const CRIMES: Record<'pickpocket' | 'mug_npc' | 'demand_npc' | 'rob_shop'
   pickpocket: { label: 'Pickpocket someone', loot: [8_000, 40_000], heat: 20, skill: 'stealth' as SkillId, base: 0.35 },
   mug_npc: { label: 'Mug a pedestrian', loot: [20_000, 90_000], heat: 35, skill: 'combat' as SkillId, base: 0.45 },
   demand_npc: { label: 'Hold up a pedestrian at gunpoint', loot: [60_000, 180_000], heat: 50, skill: 'combat' as SkillId, base: 0.2 },   // step 7: needs a gun in your inventory; bigger take, but the heat is higher
-  rob_shop: { at: ['Supermarket', 'Pharmacy', 'Market', 'Petrol Station', 'Restaurant', 'Salon', 'Barber', 'Car Dealer', 'Cinema', 'Gym'], label: 'Rob the till', loot: [40_000, 160_000], heat: 45, skill: 'stealth' as SkillId, base: 0.5 },
+  rob_shop: { at: ['Supermarket', 'Pharmacy', 'Market', 'Petrol Station', 'Restaurant', 'Salon', 'Barber', 'Fashion Boutique', 'Car Dealer', 'Cinema', 'Gym'], label: 'Rob the till', loot: [40_000, 160_000], heat: 45, skill: 'stealth' as SkillId, base: 0.5 },
   carjack: { label: 'Carjack a vehicle', loot: [60_000, 200_000], heat: 55, skill: 'combat' as SkillId, base: 0.55 },
   rob_bank: { at: ['Bank'], label: 'Break into the vault', loot: [300_000, 900_000], heat: 90, skill: 'stealth' as SkillId, base: 0.8 },
 };
@@ -153,7 +153,7 @@ export type AccessRule = { rank?: number; profession?: ProfessionId[]; inviteOnl
 const OPEN: AccessRule = { open: true };
 export const ACCESS_BY_TYPE: Record<string, AccessRule> = {
   Bank: { rank: 1 }, Restaurant: OPEN, Hotel: OPEN, Hospital: OPEN, Supermarket: OPEN, Salon: OPEN, Barber: OPEN, Gym: OPEN, Mechanic: OPEN,
-  'Car Dealer': OPEN, School: OPEN, Office: { rank: 2 }, Nightclub: { minCash: 20_000 }, Market: OPEN, 'Petrol Station': OPEN, Pharmacy: OPEN, 'Gun Shop': OPEN,
+  'Car Dealer': OPEN, School: OPEN, Office: { rank: 2 }, Nightclub: { minCash: 20_000 }, Market: OPEN, 'Petrol Station': OPEN, Pharmacy: OPEN, 'Gun Shop': OPEN, 'Fashion Boutique': OPEN,
   Cinema: OPEN, 'Tech Company': { rank: 2 }, 'Estate Agency': { rank: 2 }, Logistics: { rank: 2 }, Government: { rank: 3 },
   Airport: OPEN, 'Rail Station': OPEN, 'Police Station': { open: true }, Jail: { profession: ['police'], rank: 2 }, Mansion: { inviteOnly: true },
 };

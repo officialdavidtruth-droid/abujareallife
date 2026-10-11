@@ -7,7 +7,7 @@ import { activeCityEvents, districtProfile } from '../../../lib/livingCity';
 import { ACCRUE_CAP_MINS, MAX_SHIFT_MS, cleanMarkup, cleanPrices, maxStaff, priceFactor, priceIndex, priceOf, sellable, settle } from '../../../lib/bizEconomy';
 const ROLE_COST:Record<string,number>={manager:400000,chef:250000,waiter:120000,cashier:100000,security:110000,staff:150000};
 const distMul=(d:string)=>0.7+districtProfile(d).wealth/160; // Maitama costs more, Kubwa less
-const PRICE:Record<string,number>={Restaurant:85000000,Hotel:250000000,Supermarket:65000000,Salon:18000000,Barber:12000000,Gym:30000000,Mechanic:45000000,'Car Dealer':150000000,Nightclub:95000000,Market:55000000,Pharmacy:30000000,Cinema:180000000,'Tech Company':120000000,'Estate Agency':45000000,Logistics:80000000};
+const PRICE:Record<string,number>={Restaurant:85000000,Hotel:250000000,Supermarket:65000000,Salon:18000000,Barber:12000000,Gym:30000000,Mechanic:45000000,'Car Dealer':150000000,Nightclub:95000000,Market:55000000,Pharmacy:30000000,Cinema:180000000,'Tech Company':120000000,'Estate Agency':45000000,Logistics:80000000,'Fashion Boutique':35000000};
 export const dynamic='force-dynamic';
 type Biz=PlayerBusiness;
 const cfg=(b:{markup:number;prices:unknown})=>({markup:b.markup,prices:b.prices});

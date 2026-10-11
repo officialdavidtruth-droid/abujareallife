@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CATALOG, CATS, isStaple, itemById, type CatId } from '../lib/catalog';
+import { CATALOG, CATS, inPersonOnly, isStaple, itemById, type CatId } from '../lib/catalog';
 import { itemSellValue, mallPrice } from '../lib/sell';
 import RuntimeStyle from './RuntimeStyle';
 import FurniturePreview from './FurniturePreview';
@@ -32,8 +32,8 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
   const sellable = useMemo(() => inv.map(x => ({ ...x, it: itemById(x.id) })).filter(x => x.it && !x.it.use && !isStaple(x.it) && x.qty > 0), [inv]);
   const chosen = sellable.find(x => x.id === pick), range = data?.bounds?.[pick] || (chosen?.it ? { min: Math.max(1, Math.floor(chosen.it.cost * .1)), max: Math.floor(chosen.it.cost * 5) } : null);
   const price = Math.floor(Number(sp) || 0);
-  const mallCats = useMemo(() => CATS.filter(c => !isStaple({ cat: c.id }) && c.id !== 'parts'), []);
-  const mallBase = useMemo(() => CATALOG.filter(i => !i.use && !isStaple(i) && i.tag !== 'part' && (!shopCat || i.cat === shopCat)), [shopCat]);
+  const mallCats = useMemo(() => CATS.filter(c => !isStaple({ cat: c.id }) && c.id !== 'parts' && c.id !== 'fashion'), []);
+  const mallBase = useMemo(() => CATALOG.filter(i => !i.use && !isStaple(i) && !inPersonOnly(i) && (!shopCat || i.cat === shopCat)), [shopCat]);
   const subs = useMemo(() => { const m = new Map<string, number>(); mallBase.forEach(i => i.sub && m.set(i.sub, (m.get(i.sub) || 0) + 1)); return [...m.entries()]; }, [mallBase]);
   const swatches = useMemo(() => { const m = new Map<string, string>(); mallBase.filter(i => i.sub === shopSub).forEach(i => i.colName && i.col && m.set(i.colName, i.col)); return [...m.entries()]; }, [mallBase, shopSub]);
   const mall = useMemo(() => {

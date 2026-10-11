@@ -5,11 +5,11 @@ import { sfx } from '../lib/audio';
 
 import RuntimeStyle from './RuntimeStyle';
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString('en-NG');
-const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kitchen: '#ff5a4d', furniture: '#a96bff', decor: '#2fc66b', tech: '#28c7d9', style: '#ffb81c', kids: '#ff7eb6', grocery: '#7bd34a', toiletry: '#5ad1e6', luxury: '#e7b34a', arms: '#ff3b30', parts: '#9aa4b2' };
+const TINT: Record<CatId, string> = { food: '#ff8a3d', household: '#4aa8ff', kitchen: '#ff5a4d', furniture: '#a96bff', decor: '#2fc66b', tech: '#28c7d9', style: '#ffb81c', fashion: '#e8559f', kids: '#ff7eb6', grocery: '#7bd34a', toiletry: '#5ad1e6', luxury: '#e7b34a', arms: '#ff3b30', parts: '#9aa4b2' };
 
 export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: { bizName: string; bizType: string; onClose: () => void; onCash: (n: number) => void; onFx: (fx: Record<string, number>) => void }) {
   const cats = useMemo(() => CATS.filter(c => storeCats(bizType).includes(c.id)), [bizType]), all = useMemo(() => storeItems(bizType), [bizType]);
-  const [tab, setTab] = useState<CatId | 'all' | 'owned'>('all'), [q, setQ] = useState(''), [sort, setSort] = useState<'cheap' | 'pricey' | 'az'>('cheap'), [qty, setQty] = useState(1);
+  const [tab, setTab] = useState<CatId | 'all' | 'owned'>('all'), [q, setQ] = useState(''), [sort, setSort] = useState<'cheap' | 'pricey' | 'az'>('cheap'), [qty, setQty] = useState(1), [gen, setGen] = useState<'' | 'm' | 'w'>(''), [sub, setSub] = useState(''), [colF, setColF] = useState('');
   const [shop, setShop] = useState<{ owner: string | null; prices?: Record<string, number> } | null>(null), [cmp, setCmp] = useState<{ name: string; list: number | null; shops: { businessId: string; name: string; district: string; owner: string; price: number }[] } | null>(null);
   const [pantry, setPantry] = useState<{ meals: number; supplies: number } | null>(null), [cash, setCash] = useState<number | null>(null), [owned, setOwned] = useState<Record<string, number>>({}), [note, setNote] = useState<{ t: string; bad?: boolean } | null>(null), [busy, setBusy] = useState('');
   useEffect(() => { sfx('open'); return () => sfx('close'); }, []);
@@ -32,10 +32,14 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let l: Item[] = tab === 'owned' ? Object.keys(owned).map(id => itemById(id)).filter((x): x is Item => !!x) : tab === 'all' ? all : all.filter(i => i.cat === tab);
+    if (tab === 'fashion') l = l.filter(i => (!gen || i.g === gen || i.g === 'u') && (!sub || i.sub === sub) && (!colF || i.colName === colF));
     if (needle) l = l.filter(i => i.name.toLowerCase().includes(needle) || (CATS.find(c => c.id === i.cat)?.label || '').toLowerCase().includes(needle));
     return [...l].sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? priceOf(a) - priceOf(b) : priceOf(b) - priceOf(a));
-  }, [tab, q, sort, all, owned, shop]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, q, sort, all, owned, shop, gen, sub, colF]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const fashion = useMemo(() => all.filter(i => i.cat === 'fashion' && (!gen || i.g === gen || i.g === 'u')), [all, gen]);
+  const subs = useMemo(() => [...new Set(fashion.map(i => i.sub!))], [fashion]);
+  const swatches = useMemo(() => { const m = new Map<string, string>(); fashion.filter(i => !sub || i.sub === sub).forEach(i => i.colName && i.col && m.set(i.colName, i.col)); return [...m.entries()]; }, [fashion, sub]);
   async function buy(it: Item) {
     if (busy) return; const n = it.use ? qty : Math.min(qty, 20);
     if (cash != null && cash < priceOf(it) * n) { sfx('error'); return say(`Not enough cash for ${n > 1 ? n + '× ' : ''}${it.name}`, true); }
@@ -64,6 +68,11 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
         <div className="stoSeg">{([['cheap', '₦↑'], ['pricey', '₦↓'], ['az', 'A–Z']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}</div>
         {tab !== 'owned' && <div className="stoSeg qty" title="How many to buy">{[1, 5, 10].map(n => <button key={n} className={qty === n ? 'on' : ''} onClick={() => setQty(n)}>×{n}</button>)}</div>}
       </div>
+      {tab === 'fashion' && <div className="stoFash">
+        <div className="stoSeg">{([['', '👥 All'], ['m', '👔 Men'], ['w', '👗 Women']] as const).map(([k, l]) => <button key={k} className={gen === k ? 'on' : ''} onClick={() => { setGen(k); setSub(''); setColF(''); }}>{l}</button>)}</div>
+        <div className="stoChips"><button className={!sub ? 'on' : ''} onClick={() => { setSub(''); setColF(''); }}>Everything</button>{subs.map(s => <button key={s} className={sub === s ? 'on' : ''} onClick={() => setSub(sub === s ? '' : s)}>{s}</button>)}</div>
+        <div className="stoDots"><button className={'any' + (!colF ? ' on' : '')} onClick={() => setColF('')}>Any colour</button>{swatches.map(([n, h]) => <button key={n} title={n} aria-label={n} className={colF === n ? 'on' : ''} style={{ background: h }} onClick={() => setColF(colF === n ? '' : n)} />)}</div>
+      </div>}
       {shop?.owner && <div className="stoOwner">🏪 Run by <b>{shop.owner}</b> · prices are set by the owner</div>}
       {cmp && <div className="stoCmpBox"><b>{cmp.name}</b> · list {naira(cmp.list || 0)} <button onClick={() => setCmp(null)} aria-label="Close comparison">✕</button>{cmp.shops.length ? cmp.shops.slice(0, 5).map(s => <div key={s.businessId}><span>{s.name} <small>{s.district} · {s.owner}</small></span><em>{naira(s.price)}</em></div>) : <div><span>No player-run shop sells this yet.</span></div>}</div>}
       {note && <div className={'stoNote' + (note.bad ? ' bad' : '')} key={note.t}>{note.t}</div>}
@@ -71,8 +80,8 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
         {shown.length === 0 && <p className="stoEmpty">{tab === 'owned' ? 'Your bag is empty. Go shopping! 🛒' : 'Nothing matches that search.'}</p>}
         {shown.map(it => { const have = owned[it.id] || 0, n = it.use ? qty : qty, poor = cash != null && cash < priceOf(it) * n;
           return <div key={it.id} className={'stoCard' + (poor && tab !== 'owned' ? ' poor' : '')} style={{ ['--t' as string]: TINT[it.cat] }}>
-            <div className="stoTile"><span>{it.e}</span>{have > 0 && <i className="stoOwn">×{have}</i>}</div>
-            <b className="stoName">{it.name}</b>
+            <div className="stoTile" style={it.col ? { background: it.col } : undefined}><span>{it.e}</span>{have > 0 && <i className="stoOwn">×{have}</i>}</div>
+            <b className="stoName">{it.name}</b>{it.g && <small className="stoUnits">{it.g === 'm' ? 'Men' : it.g === 'w' ? 'Women' : 'Unisex'} · {it.sub}</small>}
             {it.pantry && <small className="stoUnits">+{it.units} {it.pantry === 'meals' ? 'meals' : 'uses'}</small>}
             {tab === 'owned' ? <div className="stoPrice">worth {naira(it.cost)}</div>
               : <><div className="stoPrice">{naira(priceOf(it))}{n > 1 ? <small> ×{n}</small> : null}</div>
@@ -86,6 +95,8 @@ export default function StoreModal({ bizName, bizType, onClose, onCash, onFx }: 
 
 const CSS = `
 .stoOwner{margin:0 12px 6px;font-size:13px;color:var(--cream);opacity:.9}.stoCmp{all:unset;cursor:pointer;font-size:12px;opacity:.8;text-decoration:underline}.stoCmpBox{margin:0 12px 6px;padding:8px 12px;background:var(--plum2);border:3px solid var(--ink);border-radius:12px;font-size:14px}.stoCmpBox>button{all:unset;cursor:pointer;float:right}.stoCmpBox>div{display:flex;justify-content:space-between;gap:8px;margin-top:4px}.stoCmpBox small{opacity:.7}.stoCmpBox em{font-style:normal;color:var(--gold)}
+.stoFash{display:flex;flex-direction:column;gap:6px;padding:0 12px 6px;flex:none}.stoChips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin}.stoChips button{all:unset;box-sizing:border-box;flex:none;cursor:pointer;padding:3px 10px;background:var(--plum2);border:3px solid var(--ink);border-radius:999px;font-size:13px;white-space:nowrap}.stoChips button.on{background:var(--gold);color:#fff;-webkit-text-stroke:4px var(--ink);paint-order:stroke fill}
+.stoDots{display:flex;gap:6px;align-items:center;overflow-x:auto;padding:2px 2px 4px}.stoDots button{all:unset;box-sizing:border-box;flex:none;cursor:pointer;width:24px;height:24px;border-radius:50%;border:3px solid var(--ink)}.stoDots button.on{outline:3px solid var(--gold);transform:scale(1.12)}.stoDots button.any{width:auto;height:auto;border-radius:999px;padding:2px 10px;font-size:13px;background:var(--plum2)}.stoDots button.any.on{background:var(--gold);color:#fff;outline:0;transform:none}
 .stoPan{font-size:13px;padding:4px 10px}.stoUnits{display:block;text-align:center;font-size:11px;color:var(--cream);opacity:.85;margin-top:-2px}
 .stoBack{position:absolute;inset:0;z-index:60;background:#0a0612cc;display:grid;place-items:center;padding:10px;backdrop-filter:blur(3px);font-family:var(--gf)}
 .stoBox{width:min(900px,100%);height:min(640px,calc(100% - 4px));display:flex;flex-direction:column;background:var(--plum);color:var(--cream);border:4px solid var(--ink);border-radius:22px;box-shadow:0 7px 0 var(--ink),0 24px 50px #000a;overflow:hidden;animation:glPop .22s cubic-bezier(.3,1.5,.5,1)}

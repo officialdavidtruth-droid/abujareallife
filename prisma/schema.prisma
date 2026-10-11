@@ -696,3 +696,17 @@ model HomeFurniture {
 
   @@index([homeId, createdAt])
 }
+
+model HomeRoom {
+  id        String   @id
+  homeId    String
+  type      String
+  x         Int
+  z         Int
+  w         Int
+  d         Int
+  cost      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([homeId, createdAt])
+}

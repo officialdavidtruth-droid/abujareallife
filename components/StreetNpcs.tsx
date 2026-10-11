@@ -8,6 +8,7 @@ import { GAME } from './cityShared';
 import { playScene } from './StreetEscort';
 import { MAX_PER_DEAL } from '../lib/dealers';
 import { NPC_RANGE, STREET_NPCS, type StreetNpc } from '../lib/streetNpc';
+import { HOUSES, loadHouses } from '../lib/houses';
 
 /* Step 9: street NPCs. <StreetNpcScene/> goes inside the 3D city; <StreetNpcUI/> goes in the HUD. /api/street-npc decides everything. */
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
@@ -41,7 +42,7 @@ export function StreetNpcUI({ say, refresh }: { say: (m: string) => void; refres
   }, []);
   useEffect(() => { if (!near) setOpen(false); }, [near]);
   const load = async () => { const r = await post({ action: 'poll' }); if (r.ok) setInfo(r.d); };
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => { if (open) { load(); if (!HOUSES.mine) loadHouses(); } }, [open]);
   const pos = () => ({ sx: GAME.player.x, sz: GAME.player.z });
   const finish = (d: any) => { if (typeof d.cash === 'number') window.dispatchEvent(new CustomEvent('arl-cash-update', { detail: { cash: d.cash } })); if (typeof d.heat === 'number') GAME.heat = d.heat; load(); refresh(); }; // eslint-disable-line @typescript-eslint/no-explicit-any
   const buy = async () => {
@@ -49,12 +50,18 @@ export function StreetNpcUI({ say, refresh }: { say: (m: string) => void; refres
     if (!r.ok) return say(r.d.error || 'Nope.');
     say(`🌿 Bought ${r.d.qty} for ${naira(r.d.spent)}${r.d.wanted ? ' · you are WANTED' : ''}`); finish(r.d);
   };
+  const pushPos = () => { const p = GAME.player; return fetch('/api/position', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ x: p.x, z: p.z, r: p.r, driving: false }) }).catch(() => {}); };   // fresh position so the server's "are you next to her" check never fails on a stale one
   const hire = async () => {
-    if (!near || busy) return; setBusy(true); const r = await post({ action: 'hire', npc: near.id, ...pos() }); setBusy(false);
+    if (!near || busy) return; setBusy(true);
+    if (!HOUSES.mine) await loadHouses();
+    if (!HOUSES.mine) { setBusy(false); return say('🏠 You need a house to take someone home.'); }
+    await pushPos();
+    const r = await post({ action: 'hire', npc: near.id, ...pos() }); setBusy(false);
     if (!r.ok) return say(r.d.error || 'Nope.');
-    setOpen(false); playScene(`🌙 You and ${near.name} head home… Later…`);
+    const name = near.name; setOpen(false); playScene(`🌙 You and ${name} head home… Later…`);
     window.dispatchEvent(new CustomEvent('arl-apply-fx', { detail: r.d.fx || {} }));
     say(`💃 ${naira(r.d.spent)} well spent.${r.d.wanted ? ' You are WANTED.' : ''}`); finish(r.d);
+    setTimeout(() => window.dispatchEvent(new CustomEvent('arl-enter-home')), 1400);   // screen is black by now: you wake up inside your own house
   };
   const confirm18 = async () => {
     if (busy) return; setBusy(true); const r = await post({ action: 'adult', dateOfBirth: dob, accept: ok18 }); setBusy(false);
@@ -78,11 +85,12 @@ export function StreetNpcUI({ say, refresh }: { say: (m: string) => void; refres
       </> : <>
         <p className="snRow"><span>Price</span><b>{naira(near.price)}</b></p><p className="snRow"><span>Your cash</span><b>{naira(info.cash)}</b></p>
         <button className="snGo" disabled={busy || info.cash < near.price} onClick={hire}>🏠 Take {near.name} home · {naira(near.price)}</button>
-        <p className="snNote">The scene fades to black. It raises your fun and social, costs energy, and adds heat.</p>
+        {info.cash < near.price && <p className="snNote" style={{ color: '#fca5a5' }}>You need {naira(near.price - info.cash)} more.</p>}
+        <p className="snNote">The scene fades to black and you wake up in your house. It raises your fun and social, costs energy, and adds heat.</p>
       </>}
     </div>}
-    <RuntimeStyle id="arl-street-npc" css={`.snBtn{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom,0px));z-index:30;background:#14532df2;color:#fff;border:1px solid #86efacaa;border-radius:999px;min-height:44px;padding:11px 18px;font-size:14px;font-weight:900}
-.snSheet{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;width:min(320px,calc(100vw - 24px));background:#0d1511f7;color:#fff;border:1px solid #86efac66;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;max-height:86vh;overflow:auto}
+    <RuntimeStyle id="arl-street-npc" css={`.snBtn{pointer-events:auto;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom,0px));z-index:30;background:#14532df2;color:#fff;border:1px solid #86efacaa;border-radius:999px;min-height:44px;padding:11px 18px;font-size:14px;font-weight:900}
+.snSheet{pointer-events:auto;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;width:min(320px,calc(100vw - 24px));background:#0d1511f7;color:#fff;border:1px solid #86efac66;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;max-height:86vh;overflow:auto}
 .snSheet h3{margin:0;font-size:18px}.snSheet .x{position:absolute;right:10px;top:10px;background:none;border:0;color:#fff;font-size:18px}.snLine{margin:0;color:#cfe;font-style:italic;font-size:13px}.snNote{margin:0;color:#9db;font-size:11px}
 .snRow{display:flex;justify-content:space-between;gap:8px;margin:0;font-size:13px}.snQty{display:flex;align-items:center;justify-content:center;gap:14px}.snQty button{width:36px;height:36px;border-radius:50%;background:#1f3a2c;color:#fff;border:1px solid #ffffff33;font-size:18px}.snQty b{min-width:24px;text-align:center}
 .snChk{display:flex;gap:8px;font-size:12px;align-items:flex-start}.snGo{background:#16a34a;color:#fff;border:0;border-radius:12px;min-height:44px;font-weight:900;font-size:14px}.snGo:disabled{opacity:.5}`} />

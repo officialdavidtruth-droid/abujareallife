@@ -20,6 +20,7 @@ import { setMusicMood, sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import GameLayer from './GameLayer';
 import Interior from './Interior';
+import MovieScreen, { type ScreenMode } from './MovieScreen';
 import { CITY } from '../lib/cityData';
 import { GAME, buildingExitPoint } from './CityWorld';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
@@ -96,7 +97,7 @@ const OBJ: Obj[] = [
   { id: 'gbag', name: 'Punching bag', p: [-3.0, 8.2], rot: 0, spot: [-3.0, 7.5], face: 0, boxes: [[-3.3, -2.7, 7.95, 8.5]], acts: [
     { k: 'box', label: 'Box the punching bag', e: '🥊', dur: 35, fx: { energy: -20, hygiene: -12, fun: 22, hunger: -8 }, pose: 'stand', anim: 'cheer' }] },
   { id: 'cinema', bp: ['', 'cinema.seats'], sp: 'cinema.seats', name: 'Home cinema', p: [.3, 6.3], rot: 0, spot: [.3, 7.6], face: Math.PI, boxes: [[-1.3, 1.9, 4.75, 5.15], [-1.3, 1.9, 7.1, 8.1]], appr: [.3, 6.6], acts: [
-    { k: 'movie', label: 'Movie night', e: '🎬', dur: 55, fx: { fun: 60, energy: -4, social: 4 }, pose: 'sit', pow: true, anim: 'tv' },
+    { k: 'movie', label: 'Movie night', e: '🎬', dur: 55, fx: { fun: 60, energy: -4, social: 4 }, pose: 'sit', pow: true, anim: 'movie' },
     { k: 'cgame', label: 'Big-screen gaming', e: '🎮', dur: 45, fx: { fun: 58, energy: -8, hunger: -6 }, pose: 'sit', pow: true, anim: 'game' }] },
   { id: 'odesk', bp: ['', 'odesk.chair'], sp: 'odesk.chair', name: 'Executive desk', p: [4.4, 5.4], rot: 0, spot: [4.4, 6.2], face: Math.PI, boxes: [[3.5, 5.3, 5.0, 5.8], [4.15, 4.65, 5.95, 6.5]], appr: [4.4, 7.0], acts: [
     { k: 'bizplan', label: 'Run the business', e: '📈', dur: 160, fx: { energy: -22, fun: -12, hunger: -8 }, pose: 'sit', pay: 14000, pow: true, anim: 'work' },
@@ -487,6 +488,13 @@ const Sp = ({ p, r, c, sc = [1, 1, 1], ro = .85, rot }: { p: V3; r: number; c: s
   <mesh position={p} rotation={rot} scale={sc} castShadow receiveShadow><sphereGeometry args={[r, 18, 14]} /><meshStandardMaterial color={c} roughness={ro} /></mesh>;
 const Screen = ({ p, w, h, on, col, ry = 0 }: { p: V3; w: number; h: number; on: boolean; col: string; ry?: number }) =>
   <mesh position={p} rotation-y={ry}><planeGeometry args={[w, h]} /><meshStandardMaterial color="#05070a" emissive={on ? col : '#000'} emissiveIntensity={on ? .9 : 0} roughness={.2} /></mesh>;
+// what the living-room / cinema screen should be showing right now: the player's own activity, or the family watching TV
+const watchMode = (fam = true): ScreenMode => {
+  const a = S.cur?.t === 'act' ? S.cur.a : null;
+  if (a && (a.k === 'tv' || a.k === 'movie')) return 'movie';
+  if (a && (a.k === 'game' || a.k === 'cgame')) return 'game';
+  return fam && F.mem.some(m => !m.away && m.pose === 'sit' && m.anim === 'tv') ? 'movie' : null;
+};
 const Chair = ({ p, ry = 0, c = '#6b4a2f', pad = '#8c3a2f' }: { p: V3; ry?: number; c?: string; pad?: string }) => <group position={p} rotation-y={ry}>
   <B p={[0, .4, 0]} s={[.44, .05, .44]} c={c} /><B p={[0, .445, 0]} s={[.4, .04, .4]} c={pad} ro={.95} r={.02} />
   {[[-.19, -.19], [.19, -.19], [-.19, .19], [.19, .19]].map(([x, z]) => <B key={x + '' + z} p={[x, .19, z]} s={[.04, .38, .04]} c={c} r={.01} />)}
@@ -632,7 +640,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <C p={[-.05, .3, 2.325]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} /><C p={[.05, .3, 2.325]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} />
     {[[-.7, -.2], [.7, -.2], [-.7, .2], [.7, .2]].map(([x, z]) => <B key={x + '' + z} p={[x, .03, 2.6 + z]} s={[.06, .06, .06]} c="#222" />)}
     <B p={[0, .67, 2.6]} s={[.7, .05, .12]} c="#15171a" m={.5} ro={.3} /><B p={[0, .98, 2.62]} s={[1.3, .74, .05]} c="#0d0e10" ro={.25} r={.015} />
-    <Screen p={[0, .98, 2.59]} w={1.24} h={.68} on={ui.power} col="#4a9fe8" ry={Math.PI} /><B p={[0, .64, 2.6]} s={[.3, .04, .2]} c="#15171a" m={.5} />
+    <MovieScreen p={[0, .98, 2.59]} w={1.24} h={.68} on={ui.power} ry={Math.PI} watch={watchMode} light /><B p={[0, .64, 2.6]} s={[.3, .04, .2]} c="#15171a" m={.5} />
     <C p={[.55, .74, 2.5]} r={.06} rt={.04} h={.14} c="#e8e2d2" ro={.4} /><Sp p={[.55, .86, 2.5]} r={.08} c="#2f8a3a" /></Part></>,
   desk: ui => <>
     <B p={[0, .75, 0]} s={[1.6, .045, .8]} c="#8a6240" ro={.45} r={.015} />
@@ -684,8 +692,8 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <C p={[0, 2.2, .1]} r={.012} h={.4} c="#555" /><C p={[0, 1.35, .1]} r={.17} h={1.0} c="#b3302b" ro={.55} /><C p={[0, 1.88, .1]} r={.18} h={.06} c="#222" /><C p={[0, .83, .1]} r={.18} h={.06} c="#222" />
   </>,
   cinema: ui => <>
-    <B p={[0, .75, -1.5]} s={[3.2, 1.75, .12]} c="#0c0d10" ro={.4} r={.03} /><B p={[0, .75, -1.43]} s={[3.0, 1.55, .02]} c={ui.power ? '#6aa0ff' : '#14161a'} ro={.2} />
-    {ui.power && <B p={[0, .75, -1.415]} s={[2.6, 1.15, .01]} c="#f0c987" ro={.3} />}
+    <B p={[0, .75, -1.5]} s={[3.2, 1.75, .12]} c="#0c0d10" ro={.4} r={.03} /><B p={[0, .75, -1.43]} s={[3.0, 1.55, .02]} c="#0a0b0e" ro={.2} />
+    <MovieScreen p={[0, .75, -1.416]} w={2.9} h={1.46} on={ui.power} watch={() => watchMode(false)} light />
     <B p={[0, .12, -1.45]} s={[3.2, .24, .3]} c="#1a1c20" ro={.6} />
     <Part id="cinema.seats">
     <Rug x={0} z={1.1} w={3.4} d={2.2} c1="#5a1620" c2="#7d2330" y={.02} />

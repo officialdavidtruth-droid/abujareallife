@@ -509,7 +509,14 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   }
   if (state === 'sleep') { j.laZ = .12; j.raZ = .12; j.leX = .1; j.reX = .1; j.llZ = .05; j.rlZ = -.05; j.sX = 0; j.hY = 0; j.hX = -.08; }
   const k = anim;
-  if (k === 'tv' || k === 'game') { j.sX = -.22; j.hX = k === 'game' ? .12 : -.05; j.laX = .35; j.raX = .35; j.leX = .85; j.reX = .85; if (k === 'game') { j.laX = .75; j.raX = .75; j.laZ = .03; j.raZ = .03; j.leX = .8 + .08 * sin(t * 14); j.reX = .8 + .08 * sin(t * 11); j.sX = .05; j.sY = .05 * sin(t * 2); } else { j.sZ = .02 * sin(t * 1.3); j.hY = .12 * sin(t * .6); j.sX -= .03 * mx(0, sin(t * 3.1)); } }
+  if (k === 'game') { j.sX = .05; j.hX = .12; j.laX = .75; j.raX = .75; j.laZ = .03; j.raZ = .03; j.leX = .8 + .08 * sin(t * 14); j.reX = .8 + .08 * sin(t * 11); j.sY = .05 * sin(t * 2); }
+  if (k === 'tv' || k === 'movie') {   // relaxed lounging: sunk back into the sofa, feet slid forward, hands resting on the lap, eyes on the screen; now and then he laughs or leans in on a tense bit
+    const cy = (t * .8) % 13, laugh = cy > 7.2 && cy < 9 ? sin((cy - 7.2) / 1.8 * Math.PI) : 0, tense = cy > 3 && cy < 5.6 ? sin((cy - 3) / 2.6 * Math.PI) : 0;
+    j.sX = -.32 + .24 * tense + .03 * laugh * sin(t * 18); j.hX = .17 - .1 * laugh + .05 * tense; j.hY = .05 * sin(t * .5); j.hZ = .03 * sin(t * .3);
+    j.llX = 1.3; j.rlX = 1.38; j.lkX = 1.0; j.rkX = 1.05 + .06 * laugh * sin(t * 16); j.llZ = .1; j.rlZ = -.1;
+    j.laX = -.1; j.leX = .95 + .02 * sin(t * 1.3); j.laZ = .1;
+    j.raX = -.05 + .75 * tense; j.reX = 1.0 + .9 * tense; j.raZ = .1 - .06 * tense;
+  }
   if (k === 'chill') { j.sX = -.28; j.hX = -.1; j.laX = .5; j.raX = .5; j.leX = .6; j.reX = .6; j.laZ = .35; j.raZ = .35; }
   if (k === 'work') { j.sX = .1; j.hX = .2; j.laX = .55; j.raX = .55; j.laZ = .05; j.raZ = .05; j.leX = 1.0 + .1 * sin(t * 15); j.reX = 1.0 + .1 * sin(t * 15 + 2); j.hY = .08 * sin(t * .8); }
   if (k === 'browse') { j.sX = .05; j.hX = .25; j.raX = .6; j.leX = 1.0; j.reX = 1.5; j.laX = .4; j.laZ = .15; j.hY = .1 * sin(t * .5); j.raZ = -.1; }

@@ -38,7 +38,8 @@ import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
 import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit, setPlan, PLAN } from '../lib/collision';
 import PlanHouse from './HomePlan';
-import { exteriorWalls, isStarter, planBounds, planMode, type Room as PlanRoom } from '../lib/homeRooms';
+import BuildPanel, { BUILDST, BuildGhost, buildTap } from './BuildMode';
+import { exteriorWalls, isStarter, planBounds, planMode, starterRooms, type Room as PlanRoom } from '../lib/homeRooms';
 import { USES } from '../lib/pantry';
 import { itemById } from '../lib/catalog';
 import FurnitureModel, { hasFurnitureModel } from './FurnitureModels';
@@ -1078,11 +1079,11 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     <Lights />
     {tpOn && !free && <TPWalls ui={ui} />}
     {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: coarse ? 'auto' : 'none' }}><div className="tpPrompt" onClick={() => TP.interact?.()}>{coarse ? <b>👆</b> : <b>E</b>} {near.name}</div></Html>}
-    <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
+    <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow onClick={BUILDST.on ? (e: any) => { if (e.delta > 4) return; buildTap(e.point.x, e.point.z); } : undefined}><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>
     {plan && (free || built) && <PlanHouse rooms={PLANR.rooms} skipStarter={!free} tall={tpOn} wall={HL.w2} trim="#f4f0e6" door={PLANR.door ? { x: PLANR.door.x - 6.2, z: PLANR.door.z + 3.5 } : null}
       floor={{ map: HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null, color: HL.floorTint, roughness: HL.floorKind === 'marble' ? .22 : .7, metalness: HL.floorKind === 'marble' ? .12 : 0 }}
-      onFloor={(x, z) => { setSel(null); if (editingHome) { setHomeSel(null); return; } walk(x, z); }} />}
-    {!free && <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
+      onFloor={(x, z) => { if (BUILDST.on) { buildTap(x, z); return; } setSel(null); if (editingHome) { setHomeSel(null); return; } walk(x, z); }} />}
+    {!free && <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); if (BUILDST.on) { buildTap(e.point.x, e.point.z); return; } setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
       <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial key={HL.floorKind} map={HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null} color={HL.floorTint} roughness={HL.floorKind === 'marble' ? .22 : .7} metalness={HL.floorKind === 'marble' ? .12 : 0} /></mesh>}
     {!free && <Room />}
     {!free && ui.south && <SouthWing ui={ui} />}
@@ -1099,7 +1100,9 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /><HomePeers look={look} sample={homeSample} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]} calculatePosition={keepMenuOnScreen}><div className="pie"><b>{sel.name}</b>
       {sel.acts.filter(a => a.k !== 'together' || COMPANION.phase === 'home').map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { if (a.k === 'together') spendNight(); else enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : a.k === 'together' ? 'tonight' : `${a.dur} min`}</small></button>)}</div></Html>}
-    {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={plan ? [PB.cx, 0, PB.cz] : [ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}
+    {BUILDST.on && <BuildGhost />}
+    {!tpOn && (BUILDST.on ? <OrbitControls ref={ctl} enablePan={false} target={plan ? [PB.cx, 0, PB.cz] : [ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={8} maxDistance={42} minPolarAngle={.15} maxPolarAngle={1.3} />
+      : <OrbitControls ref={ctl} enablePan={false} target={plan ? [PB.cx, 0, PB.cz] : [ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />)}
   </>;
 }
 
@@ -1108,10 +1111,11 @@ export default function Sim() {
   const [tp, setTp] = useState(true);
   useEffect(() => { try { if (localStorage.getItem('arl-tp') === '0') setTp(false); } catch { /* private mode */ } }, []);
   useEffect(() => { try { localStorage.setItem('arl-tp', tp ? '1' : '0'); } catch { /* private mode */ } }, [tp]);
-  const [famModal, setFamModal] = useState(false), [homeEdit, setHomeEdit] = useState(false), [homeSel, setHomeSel] = useState<string | null>(null), [homeSaving, setHomeSaving] = useState(false), [homeMin, setHomeMin] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [homeSec, setHomeSec] = useState(false), [mates, setMates] = useState(false), [houseLook, setHouseLook] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null), [homeItems, setHomeItems] = useState<typeof HOME_OWNED[number][]>([]), [homePlaceable, setHomePlaceable] = useState<{itemKey:string;name:string;e:string;cat:string;sub?:string;kind?:string;cost:number;quantity:number;fp?:[number,number]}[]>([]);
+  const [famModal, setFamModal] = useState(false), [homeEdit, setHomeEdit] = useState(false), [homeSel, setHomeSel] = useState<string | null>(null), [homeSaving, setHomeSaving] = useState(false), [homeMin, setHomeMin] = useState(false), [wardrobe, setWardrobe] = useState(false), [homeUp, setHomeUp] = useState(false), [building, setBuilding] = useState(false), [homeSec, setHomeSec] = useState(false), [mates, setMates] = useState(false), [houseLook, setHouseLook] = useState(false), [famOpen, setFamOpen] = useState(false), [menu, setMenu] = useState(false), [ui, setUi] = useState<UI>(snap), [sel, setSel] = useState<Obj | null>(null), [look, setLook] = useState<Look | null>(null), [ready, setReady] = useState(false), [editing, setEditing] = useState(false), [user, setUser] = useState<AccountUser | null>(null), lookRef = useRef<Look | null>(null), [outside, setOutside] = useState(false), [profile, setProfile] = useState<Profile | null>(null), [nearB, setNearB] = useState<{ name: string; type: string; id: string } | null>(null), [inside, setInside] = useState<string | null>(null), [hud, setHud] = useState(false), [cityTab, setCityTab] = useState<'map' | 'jobs' | 'businesses' | null>(null), [homeItems, setHomeItems] = useState<typeof HOME_OWNED[number][]>([]), [homePlaceable, setHomePlaceable] = useState<{itemKey:string;name:string;e:string;cat:string;sub?:string;kind?:string;cost:number;quantity:number;fp?:[number,number]}[]>([]);
   useEffect(() => { if (!homeEdit) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { setHomeEdit(false); setHomeSel(null); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [homeEdit]);
   const [visit, setVisit] = useState<{ u: string; slot: number | null } | null>(null), [doorPanel, setDoorPanel] = useState(false), visitRef = useRef<{ u: string; slot: number | null } | null>(null);
   visitRef.current = visit;
+  BUILDST.on = building && !!user && !outside && !visit;
   lookRef.current = look;
   /** (Re)load the house you live in: rooms, look, layout and furniture. A housemate gets the owner's house. Used at sign-in and when you move in or out. */
   async function reloadHome(username: string, visitOwner?: string) {
@@ -1152,7 +1156,7 @@ export default function Sim() {
    * walks there, goes in and starts shifts (see Interior.tsx), and heads home when the building closes or their needs run low.
    * Offline: the server pays the shifts worked while you were away (lib/autowork.ts) on the first heartbeat after you come back. */
   const live = useRef<any>({});
-  live.current = { outside, inside, nearB, user, look, profile, busy: homeEdit || editing || wardrobe || homeUp || homeSec || mates || houseLook || famModal || menu };
+  live.current = { outside, inside, nearB, user, look, profile, busy: homeEdit || building || editing || wardrobe || homeUp || homeSec || mates || houseLook || famModal || menu };
   useEffect(() => { AUTO.free = ui.free; }, [ui.free]);
   useEffect(() => {
     const f = () => { AUTO.lastInput = Date.now(); }, evs = ['keydown', 'pointerdown', 'touchstart', 'wheel'];
@@ -1217,7 +1221,7 @@ export default function Sim() {
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d === 'object') for (const k of Object.keys(d)) if (k in S.needs && Number.isFinite(d[k])) S.needs[k as N] = cl(S.needs[k as N] + d[k]); }; window.addEventListener('arl-need-fx', f); return () => window.removeEventListener('arl-need-fx', f); }, []); // parties and other panels change needs through this event
   useEffect(() => { const f = (e: Event) => { const d = (e as CustomEvent).detail; if (d && typeof d.meals === 'number') { S.meals = d.meals; S.supplies = d.supplies; } }; window.addEventListener('arl-pantry', f); return () => window.removeEventListener('arl-pantry', f); }, []);
   const h = Math.floor(ui.min / 60) % 24, m = Math.floor(ui.min % 60), hr = (ui.min / 60) % 24;
-  return <div className={'sim' + (outside ? ' outside' : '') + (tp && !homeEdit && !outside ? ' tp' : '')}>
+  return <div className={'sim' + (outside ? ' outside' : '') + (tp && !homeEdit && !building && !outside ? ' tp' : '')}>
     {!ready && <Loader label="Checking your session" />}
     {ready && !user && <AuthScreen onAuth={enter} />}
     {user && look && outside && !inside && <City tab={cityTab} onTab={setCityTab} look={look} getMinute={worldMinute} onSocial={(a?: number) => { S.needs.social = cl(S.needs.social + (a ?? 0.06)); }} onNear={b => { if (b) S.needs.social = cl(S.needs.social + 0.02); setNearB(b ? { name: b.name, type: b.type, id: b.id } : null); }} />}
@@ -1227,9 +1231,11 @@ export default function Sim() {
     {user && look && <CompanionHud outside={outside} />}
     {user && look && <Wallet />}
     {user && look && !editing && !wardrobe && !homeUp && <Tutorial user={user.username} canStart={ready} outside={outside} inside={!!inside} hud={hud} menu={menu} probe={() => ({ x: S.pos[0], z: S.pos[1], act: S.cur?.t === 'act' ? S.cur.a.k : null, minNeed: Math.min(...Object.values(S.needs)), power: S.power })} />}
-    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World tpOn={tp && !homeEdit} kbd={!(editing || wardrobe || homeUp || homeSec || mates || famModal || homeEdit)} ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}
+    {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World tpOn={tp && !homeEdit && !building} kbd={!(editing || wardrobe || homeUp || homeSec || mates || famModal || homeEdit || building)} ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}
     {wardrobe && user && look && profile && <Wardrobe look={look} profile={profile} onClose={() => setWardrobe(false)} onSave={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (d.profile) setProfile(d.profile); setLook(n); saveNow(n); setWardrobe(false); say('👕 Looking good!'); }} />}
     {houseLook && user && look && <HouseStyle user={user.username} onClose={() => setHouseLook(false)} onCash={c => { S.cash = c; }} />}
+    {building && user && look && !outside && !visit && <BuildPanel rooms={PLANR.rooms.length ? PLANR.rooms : starterRooms(id => ui.home.includes(id))} cash={ui.cash}
+      onRooms={r => { applyPlan(r); setUi(snap()); }} onCash={d => { S.cash += d; setUi(snap()); }} onClose={() => setBuilding(false)} />}
     {homeUp && user && look && <HomeUpgrades onClose={() => setHomeUp(false)} onChange={(ids, cash) => { applyHome(ids); S.cash = cash; }} />}
     {user && look && <HomeDoor outside={outside} visiting={visit?.u ?? null} panel={doorPanel} onClosePanel={() => setDoorPanel(false)} onVisit={enterVisit} onLeaveVisit={leaveVisit} say={m => { say(m); GAME.notice = m; }} />}
     {mates && user && look && <Housemates onClose={() => setMates(false)} onChanged={async () => { await reloadHome(user.username); loadHouses(); setUi(snap()); }} />}
@@ -1242,7 +1248,7 @@ export default function Sim() {
       <div className="topMore"><div className="pill">{worldCalendar(ui.min).season.e} {worldCalendar(ui.min).season.label} · {weatherAt().e} {weatherAt().label}</div>
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
         {user && <Account user={user} onUser={setUser} onLogout={logout} />}
-        {user && look && !visit && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !visit && <button className="pill" onClick={() => { setHomeSec(true); setMenu(false); }}>🛡️ Home security</button>} {user && look && !visit && <button className="pill" onClick={() => { setMates(true); setMenu(false); }}>🏠 Housemates</button>} {user && look && !visit && <button className="pill" onClick={() => { setHouseLook(true); setMenu(false); }}>🎨 House look</button>} {user && look && !outside && !visit && <button className="pill" onClick={() => { setDoorPanel(true); setMenu(false); }}>🚪 Front door</button>} {user && look && !outside && !visit && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
+        {user && look && !visit && <button className="pill" onClick={() => { setHomeUp(true); setMenu(false); }}>🏗️ Home upgrades</button>} {user && look && !visit && !HOUSES.shared && <button className="pill" onClick={() => { setBuilding(true); setMenu(false); setSel(null); }}>🧱 Build rooms</button>} {user && look && !visit && <button className="pill" onClick={() => { setHomeSec(true); setMenu(false); }}>🛡️ Home security</button>} {user && look && !visit && <button className="pill" onClick={() => { setMates(true); setMenu(false); }}>🏠 Housemates</button>} {user && look && !visit && <button className="pill" onClick={() => { setHouseLook(true); setMenu(false); }}>🎨 House look</button>} {user && look && !outside && !visit && <button className="pill" onClick={() => { setDoorPanel(true); setMenu(false); }}>🚪 Front door</button>} {user && look && !outside && !visit && <button className={'pill ' + (homeEdit ? 'on' : '')} onClick={() => { setHomeEdit(v => !v); setHomeSel(null); setMenu(false); }}>🛋️ {homeEdit ? 'Finish decorating' : 'Edit home'}</button>}
         <button className="pill" onClick={() => { setEditing(true); setMenu(false); }}>✏️ Character</button>
         <button className="pill" onClick={() => { setTp(v => !v); setSel(null); setMenu(false); }}>🎥 {tp ? 'Overview camera' : 'Third-person camera'}</button>
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
@@ -1254,8 +1260,8 @@ export default function Sim() {
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}
     {user && look && !outside && <div className="emotes">{EMOTES.map(a => <button key={a.k} title={a.label} onClick={() => emote(a)}>{a.e}</button>)}</div>}
-    {!outside && <div className="hint">{tp && !homeEdit ? 'WASD walk · Shift run · Drag or ←/→ turn camera · Scroll zoom · E use · 1-9 pick · or tap the floor' : 'Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom'}</div>}
-    {user && look && !outside && tp && !homeEdit && <><TPStick /><TPButtons /></>}
+    {!outside && <div className="hint">{building ? 'Build mode: tap the ground beside your home to place a room · drag to look around · scroll to zoom' : tp && !homeEdit ? 'WASD walk · Shift run · Drag or ←/→ turn camera · Scroll zoom · E use · 1-9 pick · or tap the floor' : 'Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom'}</div>}
+    {user && look && !outside && tp && !homeEdit && !building && <><TPStick /><TPButtons /></>}
     {homeEdit && !outside && user && look && <div className="homeEditor">
       <div className="homeHead"><b>🏠 Home design</b><div className="homeHeadBtns"><button onClick={() => setHomeMin(v => !v)} aria-label="Minimise">{homeMin ? '▴' : '▾'}</button><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT, look: packHomeLook(HLOOK), base: HOME_BASE }) }).catch(() => null);
             if (r?.ok) { const d = await r.json().catch(() => null); if (d?.layout) { const was = JSON.stringify(HOME_LAYOUT); resetHomeLayout(); Object.assign(HOME_LAYOUT, d.layout); if (d.look) setHomeLook(sanitizeHomeLook(d.look, defaultHomeLook(user?.username || ''))); blKey = '\0'; setUi(snap()); markHomeBase(); say(JSON.stringify(HOME_LAYOUT) === was ? '🏠 Home saved.' : '🏠 Home saved. A housemate changed things too: now merged.'); } else { markHomeBase(); say('🏠 Home saved.'); } }

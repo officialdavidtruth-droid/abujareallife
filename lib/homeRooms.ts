@@ -111,3 +111,21 @@ export function planBounds(rooms: Room[]) {
   const x0 = Math.min(...rooms.map(r => r.x)), x1 = Math.max(...rooms.map(r => r.x + r.w)), z0 = Math.min(...rooms.map(r => r.z)), z1 = Math.max(...rooms.map(r => r.z + r.d));
   return { x0, x1, z0, z1, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2 };
 }
+
+/* ───── step 3: where a new room goes when you tap the ground ───── */
+export type Placement = { x: number; z: number; why: string | null };
+/** The spot for a w x d room that sits flush against an existing room and is closest to the tapped point (px, pz). Prefers a spot that is allowed; otherwise returns the nearest one with the reason it is not. */
+export function suggestPlacement(rooms: Room[], type: RoomType, w: number, d: number, px: number, pz: number): Placement | null {
+  if (!rooms.length) return null;
+  const t1 = (v: number) => Math.round(v * 10) / 10, cl = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+  const cands: NewRoom[] = [];
+  for (const r of rooms) {
+    const z = t1(cl(r.z + Math.round(pz - d / 2 - r.z), r.z - d + 1, r.z + r.d - 1)), x = t1(cl(r.x + Math.round(px - w / 2 - r.x), r.x - w + 1, r.x + r.w - 1));   // slide along the wall in whole metres from the room's own corner
+    cands.push({ type, x: t1(r.x + r.w), z, w, d }, { type, x: t1(r.x - w), z, w, d }, { type, x, z: t1(r.z + r.d), w, d }, { type, x, z: t1(r.z - d), w, d });
+  }
+  const near = (c: NewRoom) => Math.hypot(c.x + c.w / 2 - px, c.z + c.d / 2 - pz);
+  cands.sort((a, b) => near(a) - near(b));
+  const ok = cands.find(c => checkBuild(rooms, c) === null);
+  const pick = ok ?? cands[0];
+  return { x: pick.x, z: pick.z, why: ok ? null : checkBuild(rooms, pick) };
+}

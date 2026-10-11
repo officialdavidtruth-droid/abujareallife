@@ -1,3 +1,4 @@
+import type { Look } from './characterModels';
 /* Club NPCs you can walk up to and talk to (step 1). Shared by the 3D scene (Interior) and the talk panel (ClubTalk). */
 export type ClubPerson = { idx: number; name: string; role: string; e: string; escort?: boolean; price?: number; greet: string[]; chat: string[]; club: string[] };
 export const CLUB_PEOPLE: ClubPerson[] = [
@@ -16,5 +17,16 @@ export const CLUB_TALK = { idx: -1 };
 export const TALK_RANGE = 3.2;
 
 /* Step 2: the companion you paid. She follows you inside the club; when you walk out she goes with you ('outside' is picked up by the next step). */
-export const COMPANION = { idx: -1, name: '', phase: 'none' as 'none' | 'inside' | 'outside' };
+export const COMPANION = { idx: -1, name: '', phase: 'none' as 'none' | 'inside' | 'outside' | 'home' };   // inside = still in the club, outside = in the city with you, home = in your house
 export const endCompanion = () => { COMPANION.idx = -1; COMPANION.name = ''; COMPANION.phase = 'none'; };
+
+/* how the club NPCs look (index = CLUB_PEOPLE idx); the companion keeps her look in the city and at home */
+export const CLUB_LOOKS: Look[] = [
+  { name: 'Zara · VIP Hostess', model: 'citizen', gender: 'f', hair: 'knotless', hairColor: '#0d0907', skin: '#8b552f', outfit: '#a21caf', pants: '#222831', height: 1.02, outfitModel: 'gown' },
+  { name: 'Mimi · Dancer', model: 'citizen', gender: 'f', hair: 'puffs', hairColor: '#0d0907', skin: '#b87a4b', outfit: '#e07aa1', pants: '#222831', height: .98, outfitModel: 'crop' },
+  { name: 'Naya · Lounge Hostess', model: 'citizen', gender: 'f', hair: 'long', hairColor: '#2b1a12', skin: '#5e3a22', outfit: '#6b4a8a', pants: '#222831', height: 1.04, outfitModel: 'dress' },
+  { name: 'Tee · Promoter', model: 'citizen', gender: 'f', hair: 'braids', hairColor: '#0d0907', skin: '#d9a577', outfit: '#d18a22', pants: '#222831', height: 1, outfitModel: 'ankara' },
+  { name: 'Amara · Lounge Companion', model: 'citizen', gender: 'f', hair: 'ponytail', hairColor: '#0d0907', skin: '#3b2416', outfit: '#b43c35', pants: '#222831', height: 1.01, outfitModel: 'gown' },
+  { name: 'Chi · Companion', model: 'citizen', gender: 'f', hair: 'braids', hairColor: '#1b0f0a', skin: '#a8683a', outfit: '#c2185b', pants: '#222831', height: 1.0, outfitModel: 'dress' },
+  { name: 'Lola · Companion', model: 'citizen', gender: 'f', hair: 'long', hairColor: '#0d0907', skin: '#7a4a2a', outfit: '#1e293b', pants: '#222831', height: 1.03, outfitModel: 'gown' },
+];

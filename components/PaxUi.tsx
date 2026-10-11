@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { NET } from '../lib/cityNet';
 import { GAME } from './cityShared';
-import { PAX, PAX_MAX, admit, board, dropAll, hostKind, paxBusy, paxChanged, paxSend, poseOf, type PaxKind } from './cityPax';
+import { KIND_FULL, PAX, PAX_MAX, admit, board, dropAll, hostKind, paxBusy, paxChanged, paxSend, poseOf, type PaxKind } from './cityPax';
 import RuntimeStyle from './RuntimeStyle';
 
 type Prompt = { id: number; from: string; k: 'invite' | 'ask'; kind: PaxKind; until: number };
@@ -14,11 +14,11 @@ export function startSeat(name: string) {
   if (PAX.host) return say('🚗 You are already riding in someone’s vehicle.');
   const mine = hostKind();
   if (mine) {
-    if (Object.keys(PAX.guests).length >= PAX_MAX[mine] && !PAX.guests[name]) return say(mine === 'taxi' ? '🚕 A taxi has room for one guest.' : '🚗 Your car is full.');
+    if (Object.keys(PAX.guests).length >= PAX_MAX[mine] && !PAX.guests[name]) return say(KIND_FULL[mine]);
     PAX.invited[name] = Date.now() + 60_000; paxSend(name, 'invite', { kind: mine }); return say(`🚗 Invite sent to @${name}`);
   }
-  if (q.drv || q.rd === 1) { PAX.pending[name] = Date.now() + 60_000; paxSend(name, 'ask'); return say(`🙋 Asked @${name} if you can ride along`); }
-  say('🚗 Get into your car (or a taxi) to invite someone, or ask a player who is driving.');
+  if (q.drv || q.rd === 1 || q.pl) { PAX.pending[name] = Date.now() + 60_000; paxSend(name, 'ask'); return say(`🙋 Asked @${name} if you can ride along`); }
+  say('🚗 Get into your car, a taxi or the plane to invite someone, or ask a player who is driving or flying.');
 }
 
 export default function PaxUi() {
@@ -32,8 +32,8 @@ export default function PaxUi() {
       if (d.k === 'invite') { if (paxBusy()) paxSend(d.from, 'no', { r: 'is busy right now.' }); else add({ from: d.from, k: 'invite', kind: d.kind }); }
       else if (d.k === 'ask') {
         const kind = hostKind();
-        if (!kind) paxSend(d.from, 'no', { r: 'is not in a car or taxi right now.' });
-        else if (Object.keys(PAX.guests).length >= PAX_MAX[kind] && !PAX.guests[d.from]) paxSend(d.from, 'no', { r: kind === 'taxi' ? 'taxi is full.' : 'car is full.' });
+        if (!kind) paxSend(d.from, 'no', { r: 'is not in a car, taxi or plane right now.' });
+        else if (Object.keys(PAX.guests).length >= PAX_MAX[kind] && !PAX.guests[d.from]) paxSend(d.from, 'no', { r: kind === 'taxi' ? 'taxi is full.' : kind === 'plane' ? 'plane is full.' : 'car is full.' });
         else add({ from: d.from, k: 'ask', kind });
       }
       else if (d.k === 'join') {
@@ -69,7 +69,7 @@ export default function PaxUi() {
   const guests = Object.keys(PAX.guests);
   return <>
     {prompts.map((p, i) => <div key={p.id} className="paxCard" role="alert" style={{ top: `calc(${112 + i * 72}px + env(safe-area-inset-top,0px))` }}>
-      <i>{p.kind === 'taxi' ? '🚕' : '🚗'}</i>
+      <i>{p.kind === 'taxi' ? '🚕' : p.kind === 'plane' ? '✈️' : '🚗'}</i>
       <span><b>@{p.from}</b><small>{p.k === 'invite' ? `invites you to ride with them · ${Math.max(0, Math.ceil((p.until - Date.now()) / 1000))}s` : `asks to ride along with you · ${Math.max(0, Math.ceil((p.until - Date.now()) / 1000))}s`}</small></span>
       <button className="ok" onClick={() => answer(p, true)}>{p.k === 'invite' ? 'Get in' : 'Let in'}</button><button className="no" onClick={() => answer(p, false)}>✕</button>
     </div>)}

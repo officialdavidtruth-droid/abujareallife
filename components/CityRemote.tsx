@@ -35,7 +35,7 @@ export function Remote({ name, bub, onPick }: { name: string; bub?: string; onPi
     const rd = q.rd || 0; if (rd !== rkRef.current) { rkRef.current = rd; setRk(rd); }
     const gKey = guestKey(name); if (gKey !== gkRef.current) { gkRef.current = gKey; setGk(gKey); }
     if (rideG.current) { rideG.current.visible = near && rd > 0; rideG.current.position.set(q.x, 0, q.z); rideG.current.rotation.y = q.r; }   // riding a taxi: x, z, r are the vehicle's pose
-    body.current.visible = near && !q.drv && !rd && !q.pa; body.current.rotation.order = 'YXZ'; body.current.position.set(q.x, q.ko ? .28 : 0, q.z); body.current.rotation.y = q.r; body.current.rotation.x = q.ko ? -Math.PI / 2 : 0;
+    body.current.visible = near && !q.drv && !rd && !q.pa && !q.pl; body.current.rotation.order = 'YXZ'; body.current.position.set(q.x, q.ko ? .28 : 0, q.z); body.current.rotation.y = q.r; body.current.rotation.x = q.ko ? -Math.PI / 2 : 0;
     car.current.visible = near && (q.cp || q.drv) && !JACK.hides(name); car.current.position.set(q.cx, 0, q.cz); car.current.rotation.y = q.cr;
     if (drvObj.current) drvObj.current.visible = !!q.drv;   // somebody sits in a remote car only while that player is driving it (a parked car is empty)
     tagRanks();

@@ -19,13 +19,16 @@ export const PLANE = {
   x: AIR.x - 7, y: 0, z: AIR.z, h: Math.PI / 2, pitch: 0, roll: 0,
   speed: 0, throttle: 0,
   on: false,            // I am the pilot
+  pax: false,           // I am a passenger in somebody else's flight
+  remote: '',           // name of the OTHER player who is flying the plane right now ('' = nobody): their flight is mirrored onto this plane
+  me: '',               // my own player name (set by the scene)
   air: false,           // wheels are off the ground
   idleAt: 0,            // when the last pilot got out (for the auto-tow)
   cam: 'out' as 'out' | 'in',   // 'out' = chase camera behind the plane, 'in' = from the cockpit
   obj: null as THREE.Group | null,
 };
 
-const HOME = { x: AIR.x - 7, z: AIR.z, h: Math.PI / 2 };
+export const HOME = { x: AIR.x - 7, z: AIR.z, h: Math.PI / 2 };
 const ROTATE = 26;      // m/s needed to lift off
 const STALL = 22;       // m/s: below this in the air the nose drops
 const VMAX = 62;
@@ -37,13 +40,25 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 const ping = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('arl-plane')); };
 export function togglePlaneView() {
-  if (!PLANE.on) return;
+  if (!PLANE.on && !PLANE.pax) return;
   PLANE.cam = PLANE.cam === 'out' ? 'in' : 'out'; camInit = false; applyView();
   GAME.notice = PLANE.cam === 'in' ? '👁️ Cockpit view (V to switch back)' : '🎥 Outside view (V for cockpit)';
   ping();
 }
 
-export const planeNear = (x: number, z: number) => !PLANE.on && !PLANE.air && Math.hypot(x - PLANE.x, z - PLANE.z) < BOARD_R;
+export const planeNear = (x: number, z: number) => !PLANE.on && !PLANE.pax && !PLANE.remote && !PLANE.air && Math.hypot(x - PLANE.x, z - PLANE.z) < BOARD_R;
+
+export function syncPlane() { sync(); }
+/** The camera restarts behind the plane (used when a passenger gets in or out). */
+export function planeCamReset() { camInit = false; PLANE.cam = 'out'; applyView(); }
+
+/** Throw me out of the pilot seat without the usual checks (somebody else got in first): I stand beside the plane. */
+export function ejectPilot(p: P) {
+  PLANE.on = false; PLANE.throttle = 0; PLANE.cam = 'out'; applyView(); ping();
+  const lx = Math.cos(PLANE.h), lz = -Math.sin(PLANE.h);
+  p.x = PLANE.x + lx * 6; p.z = PLANE.z + lz * 6; p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;
+  sync();
+}
 
 function sync() {
   const o = PLANE.obj; if (!o) return;
@@ -155,7 +170,7 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
   sync();
 }
 
-export const planePrompt = () => PLANE.on
+export const planePrompt = () => PLANE.pax ? `✈ Passenger · ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · V view${PLANE.air ? '' : ' · E out'}` : PLANE.on
   ? `✈ ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · throttle ${Math.round(PLANE.throttle * 100)}% · Shift +  Space − · W/S pitch · A/D bank · V view${PLANE.air ? '' : ' · E out'}`
   : '';
 
@@ -186,7 +201,7 @@ export function planeCamera(cam: THREE.Camera, target: THREE.Vector3, dt: number
 /* Which parts are drawn: from the cockpit the hull is hidden (you would see its inside) and a dashboard + window frame is shown instead. */
 const VIEW = { hull: null as THREE.Object3D | null, cockpit: null as THREE.Object3D | null };
 function applyView() {
-  const inside = PLANE.cam === 'in' && PLANE.on;
+  const inside = PLANE.cam === 'in' && (PLANE.on || PLANE.pax);
   if (VIEW.hull) VIEW.hull.visible = !inside;
   if (VIEW.cockpit) VIEW.cockpit.visible = inside;
 }
@@ -202,7 +217,7 @@ export function Plane() {
   /* V switches the view while flying */
   useEffect(() => {
     const kd = (e: KeyboardEvent) => {
-      if (e.code !== 'KeyV' || e.repeat || !PLANE.on) return;
+      if (e.code !== 'KeyV' || e.repeat || (!PLANE.on && !PLANE.pax)) return;
       const t = e.target as HTMLElement | null; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
       togglePlaneView();
     };

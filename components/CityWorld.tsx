@@ -38,6 +38,7 @@ import { StreetNpcScene } from './StreetNpcs';
 import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
 import PaxUi from './PaxUi';
 import { PAX, stepPax } from './cityPax';
+import { PlaneTag, planeBroadcast, stepPlaneNet } from './planeNet';
 import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane, togglePlaneView } from './cityPlane';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
@@ -62,7 +63,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   useEffect(() => { const m = window.matchMedia('(pointer: coarse), (max-width: 700px)'); const sync = () => setTouchDevice(m.matches); sync(); m.addEventListener?.('change', sync); return () => m.removeEventListener?.('change', sync); }, []);
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
   useEffect(() => { sun.current.target = sunTarget; }, [sunTarget]);
-  useEffect(() => { PAX.me = look.name; PAX.look = look; }, [look]);   // ride-along needs my own name and look
+  useEffect(() => { PAX.me = look.name; PAX.look = look; PLANE.me = look.name; }, [look]);   // ride-along needs my own name and look
   useEffect(() => {
     const stop = (e: Event) => e.preventDefault();
     document.addEventListener('gesturestart', stop as any, { passive: false });
@@ -81,6 +82,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const dt = Math.min(dtRaw, .05), c = ctl.current, k = c.keys, p = P.current, oc = controls.current;
     if (!oc) return;
     stepPax(p, dt, pushOut);   // ride-along: a guest follows the host's vehicle; a host drops guests when the ride ends
+    NET.me.pl = 0; stepPlaneNet(dt, p);   // plane multiplayer: mirror another player's flight onto the plane, give way if they boarded first (the pilot branch below sets pl = 1 again)
 
     /* ── time of day (follows the in-game clock) ── */
     const hrs = ((((getMinute ? getMinute() : worldMinute()) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
@@ -113,6 +115,20 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       c.look = { x: c.look.x - lx, y: c.look.y - ly };
     }
     let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
+    if (GAME.ride && GAME.ride.pax && PAX.kind === 'plane') {   /* ── passenger on somebody's flight: the chase / cockpit camera follows the mirrored plane ── */
+      const ride = GAME.ride;
+      p.x = ride.x; p.z = ride.z; p.y = 0; p.vy = 0; moving.current = false; running.current = false;
+      group.current.visible = false; oc.enabled = false;
+      planeCamera(cam, t, dt);
+      GAME.player.x = ride.x; GAME.player.z = ride.z;
+      { const M = NET.me; M.x = ride.x; M.z = ride.z; M.r = ride.r; M.mv = 0; M.drv = false; M.rd = 0; M.pa = PAX.host; M.ps = PAX.seat; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
+      hud.current = { x: ride.x, z: ride.z, fx: Math.sin(PLANE.h), fz: Math.cos(PLANE.h), r: PLANE.h, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: PLANE.speed * 3.6, drv: false, prompt: planePrompt() };
+      sunTarget.position.set(ride.x, 0, ride.z); sun.current.position.set(ride.x + sx * 70, sy * 70 + 8, ride.z + 25);
+      if (c.interact) c.interact = false;
+      c.taxi = false; c.horn = false;
+      updateDetails(ride.x, ride.z, performance.now());
+      return;
+    }
     if (GAME.ride) {
       const ride = GAME.ride;
       p.x = ride.x; p.z = ride.z; p.y = 0; p.vy = 0; moving.current = false; running.current = false;
@@ -137,7 +153,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       stepPlane(dt, c, p, pushOut);
       if (PLANE.on) planeCamera(cam, t, dt);
       GAME.player.x = p.x; GAME.player.z = p.z; OBS[0].on = false; OBS[1].on = VEH.placed;
-      { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = 0; M.drv = false; M.rd = 0; M.pa = ''; M.ps = 0; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
+      { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = 0; M.drv = false; M.rd = 0; M.pa = ''; M.ps = 0; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; planeBroadcast(); }
       hud.current = { x: p.x, z: p.z, fx: Math.sin(PLANE.h), fz: Math.cos(PLANE.h), r: PLANE.h, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: PLANE.speed * 3.6, drv: false, prompt: planePrompt() };
       sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
       c.taxi = false; c.horn = false;
@@ -441,6 +457,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Rain />
       <Airport />
       <Plane />
+      <PlaneTag />
       <ChopYards />
       <JailCell />
       <group ref={group}>
@@ -491,8 +508,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: '' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
   /* plane buttons for phones: "Plane" (board / get out) appears next to the plane or while flying, "View" switches cockpit / outside */
-  const [pl, setPl] = useState<'' | 'near' | 'fly'>('');
-  useEffect(() => { const f = () => { const v = PLANE.on ? 'fly' : planeNear(GAME.player.x, GAME.player.z) ? 'near' : ''; setPl(o => o === v ? o : v); }; f(); const i = setInterval(f, 300); window.addEventListener('arl-plane', f); return () => { clearInterval(i); window.removeEventListener('arl-plane', f); }; }, []);
+  const [pl, setPl] = useState<'' | 'near' | 'fly' | 'pax'>('');
+  useEffect(() => { const f = () => { const v = PLANE.on ? 'fly' : PLANE.pax ? 'pax' : planeNear(GAME.player.x, GAME.player.z) ? 'near' : ''; setPl(o => o === v ? o : v); }; f(); const i = setInterval(f, 300); window.addEventListener('arl-plane', f); return () => { clearInterval(i); window.removeEventListener('arl-plane', f); }; }, []);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
   useEffect(() => { // killed: climb out of any vehicle, drop the waypoint and the arrival spot; Sim.tsx puts you back in your house
     const f = () => { VEH.drv = false; VEH.v = 0; GAME.nav = null; GAME.tp = null; }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f);
@@ -561,8 +578,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
-        {pl && <HoldBtn cls="cwTouch" label={pl === 'fly' ? 'Exit plane' : 'Board plane'} icon="✈️" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
-        {pl === 'fly' && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
+        {(pl === 'fly' || pl === 'near') && <HoldBtn cls="cwTouch" label={pl === 'fly' ? 'Exit plane' : 'Board plane'} icon="✈️" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+        {(pl === 'fly' || pl === 'pax') && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />

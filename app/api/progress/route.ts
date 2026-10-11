@@ -6,6 +6,7 @@ import { SKILLS, skillLevel } from '../../../lib/profile';
 import {
   ACHIEVEMENTS, DAILY_BONUS, KEY_INSIDER, STARTER, STARTER_BONUS, dailiesFor, dayKey, dayStart, keyAch, keyBonus, keyCheckin, keyDaily, keyStarter,
   prevDay, stepProgress, streakReward, STREAK_REWARDS, type Stats,
+  CREW_WEEK, WEEKLY_BONUS, WEEKLY_BONUS_NEEDS, crewNeed, keyCrewWeek, keyWeekly, keyWeeklyBonus, spotlightFor, weekEnd, weekKey, weekStart, weeklyFor,
 } from '../../../lib/goals';
 
 /* Goals / daily missions / streak / achievements.
@@ -24,6 +25,8 @@ const isBuy = (r: Row) => r.type === 'SPEND' && /^(store|shop|mall):/.test(r.des
 const isMission = (r: Row) => isEarn(r) && r.description.startsWith('mission:');
 const isHelp = (r: Row) => r.description.startsWith('help:');
 const isRide = (r: Row) => r.type === 'SPEND' && r.description.endsWith(':city transport');
+const isRace = (r: Row) => r.type === 'SPEND' && r.description.startsWith('race-entry:');
+const CREW_WORK = [{ description: { startsWith: 'quest:' } }, { description: { startsWith: 'shift:' } }, { description: { in: ['work', 'hustle', 'bizplan'] } }, { description: { startsWith: 'mission:' } }];
 
 async function compute(userId: string) {
   const st = await loadState(userId); if (!st) return null;
@@ -40,6 +43,20 @@ async function compute(userId: string) {
     prisma.transaction.aggregate({ where: { userId, type: 'EARN', NOT: NOT_INCOME.map(p => ({ description: { startsWith: p } })) }, _sum: { amount: true } }),
     prisma.inventoryItem.findMany({ where: { userId, itemKey: { startsWith: 'goal_' } }, select: { itemKey: true }, take: 4000 }),
   ]);
+  // this week (Monday 00:00 WAT): the weekly missions, and the crew chest if you are in a crew
+  const wk = weekKey(now), wStart = weekStart(now);
+  const [weekRows, partiesGone, partiesHosted, partiesGoneWeek, partiesHostedWeek, cm] = await Promise.all([
+    prisma.transaction.findMany({ where: { userId, createdAt: { gte: wStart } }, select: { type: true, amount: true, description: true }, take: 6000 }) as Promise<Row[]>,
+    prisma.partyGuest.count({ where: { userId } }), prisma.party.count({ where: { hostId: userId } }),
+    prisma.partyGuest.count({ where: { userId, joinedAt: { gte: wStart } } }), prisma.party.count({ where: { hostId: userId, startsAt: { gte: wStart } } }),
+    prisma.crewMember.findUnique({ where: { userId }, select: { crewId: true, crew: { select: { name: true, tag: true } } } }),
+  ]);
+  let crew: { name: string; tag: string; members: number; have: number; mine: number } | null = null;
+  if (cm) {
+    const ids = (await prisma.crewMember.findMany({ where: { crewId: cm.crewId }, select: { userId: true } })).map((m: { userId: string }) => m.userId);
+    const g = await prisma.transaction.groupBy({ by: ['userId'], where: { userId: { in: ids }, type: 'EARN', createdAt: { gte: wStart }, OR: CREW_WORK }, _count: { _all: true } }) as unknown as { userId: string; _count: { _all: number } }[];
+    crew = { name: cm.crew.name, tag: cm.crew.tag, members: ids.length, have: g.reduce((a, r) => a + r._count._all, 0), mine: g.find(r => r.userId === userId)?._count._all || 0 };
+  }
   const claimed = new Set<string>(markers.map((m: { itemKey: string }) => m.itemKey));
 
   // login streak: consecutive game days with a check-in. It only breaks once a whole day is missed.
@@ -57,17 +74,29 @@ async function compute(userId: string) {
     questsToday: todayRows.filter(isQuest).length, shiftsToday: todayRows.filter(isShift).length, buysToday: todayRows.filter(isBuy).length,
     missionsToday: todayRows.filter(isMission).length, helpsToday: todayRows.filter(isHelp).length, ridesToday: todayRows.filter(isRide).length,
     bestStreak: best,
+    inCrew: cm ? 1 : 0, partiesAll: partiesGone + partiesHosted,
+    earnedWeek: weekRows.filter(isIncome).reduce((a: number, r: Row) => a + r.amount, 0), questsWeek: weekRows.filter(isQuest).length, shiftsWeek: weekRows.filter(isShift).length,
+    missionsWeek: weekRows.filter(isMission).length, helpsWeek: weekRows.filter(isHelp).length, racesWeek: weekRows.filter(isRace).length, partiesWeek: partiesGoneWeek + partiesHostedWeek,
   };
-  return { stats, claimed, day, streak: { current, claimedToday: claimed.has(keyCheckin(day)) } };
+  return { stats, claimed, day, week: wk, crew, streak: { current, claimedToday: claimed.has(keyCheckin(day)) } };
 }
 type Ctx = NonNullable<Awaited<ReturnType<typeof compute>>>;
 
 function snapshot(c: Ctx) {
-  const { stats, claimed, day } = c;
+  const { stats, claimed, day, week, crew } = c;
   const starter = STARTER.map(s => { const p = stepProgress(s, stats); return { id: s.id, e: s.e, title: s.title, how: s.how, reward: s.reward, have: p.have, need: p.need, done: p.done, claimed: claimed.has(keyStarter(s.id)) }; });
   const starterAll = starter.every(s => s.claimed);
   const dailies = dailiesFor(day).map(d => ({ id: d.id, e: d.e, title: d.title, reward: d.reward, have: Math.min(d.target, Number(stats[d.stat]) || 0), need: d.target, claimed: claimed.has(keyDaily(day, d.id)) }));
   const dailiesAll = dailies.every(d => d.claimed);
+  const weeklyMissions = weeklyFor(week).map(d => ({ id: d.id, e: d.e, title: d.title, reward: d.reward, have: Math.min(d.target, Number(stats[d.stat]) || 0), need: d.target, claimed: claimed.has(keyWeekly(week, d.id)) }));
+  const sp = spotlightFor();
+  const need = crew ? crewNeed(crew.members) : 0, crewClaimed = claimed.has(keyCrewWeek(week)), crewReady = !!crew && crew.have >= need && crew.mine >= CREW_WEEK.minShare && !crewClaimed;
+  const weekly = {
+    week, endsAt: weekEnd().getTime(), spotlight: { id: sp.id, e: sp.e, name: sp.name, blurb: sp.blurb }, missions: weeklyMissions,
+    bonus: { reward: WEEKLY_BONUS, claimed: claimed.has(keyWeeklyBonus(week)), ready: weeklyMissions.filter(m => m.claimed).length >= WEEKLY_BONUS_NEEDS && !claimed.has(keyWeeklyBonus(week)) },
+    crew: crew ? { name: crew.name, tag: crew.tag, members: crew.members, have: crew.have, need, mine: crew.mine, minShare: CREW_WEEK.minShare, reward: CREW_WEEK.reward, claimed: crewClaimed, ready: crewReady } : null,
+  };
+  const wReady = weeklyMissions.find(m => m.have >= m.need && !m.claimed);
   const nextStreak = c.streak.claimedToday ? c.streak.current + 1 : (c.streak.current || 0) + 1;
   const achievements = ACHIEVEMENTS.map(a => { const have = Math.min(a.target, Number(stats[a.stat]) || 0); return { id: a.id, e: a.e, title: a.title, how: a.how, reward: a.reward, have, need: a.target, done: have >= a.target, claimed: claimed.has(keyAch(a.id)) }; });
   // what the guide chip should point at right now
@@ -77,12 +106,14 @@ function snapshot(c: Ctx) {
   const next = ready ? { kind: 'starter', id: ready.id, e: ready.e, title: ready.title, ready: true }
     : !c.streak.claimedToday ? { kind: 'checkin', id: 'checkin', e: '🎁', title: 'Daily check-in reward', ready: true }
     : dReady ? { kind: 'daily', id: dReady.id, e: dReady.e, title: dReady.title, ready: true }
+    : wReady ? { kind: 'weekly', id: wReady.id, e: wReady.e, title: wReady.title, ready: true }
+    : crewReady ? { kind: 'crewweek', id: 'crew', e: '🛡️', title: 'Crew chest is ready', ready: true }
     : open ? { kind: 'starter', id: open.id, e: open.e, title: open.title, how: open.how, ready: false }
     : null;
   return {
     day, cash: stats.cash, next,
     starter, starterBonus: { ...STARTER_BONUS, ready: starter.every(s => s.claimed) && !claimed.has(KEY_INSIDER), claimed: claimed.has(KEY_INSIDER), locked: !starterAll },
-    dailies, dailyBonus: { reward: DAILY_BONUS, claimed: claimed.has(keyBonus(day)), ready: dailiesAll && !claimed.has(keyBonus(day)) },
+    weekly, dailies, dailyBonus: { reward: DAILY_BONUS, claimed: claimed.has(keyBonus(day)), ready: dailiesAll && !claimed.has(keyBonus(day)) },
     streak: { current: c.streak.current, best: stats.bestStreak, claimedToday: c.streak.claimedToday, reward: streakReward(nextStreak), cycle: STREAK_REWARDS, day: ((nextStreak - 1) % STREAK_REWARDS.length) + 1 },
     achievements,
   };
@@ -120,6 +151,18 @@ export async function POST(req: Request) {
     } else if (kind === 'checkin') {
       const n = c.streak.current + 1; // today counts, so claiming makes the streak one longer
       key = keyCheckin(day); reward = streakReward(n); label = `Day ${n} streak`;
+    } else if (kind === 'weekly') {
+      const m = weeklyFor(c.week).find(x => x.id === id); if (!m) return err('That mission is not active this week.');
+      if ((Number(stats[m.stat]) || 0) < m.target) return err('Not finished yet.', 403);
+      key = keyWeekly(c.week, m.id); reward = m.reward; label = m.title;
+    } else if (kind === 'wbonus') {
+      if (weeklyFor(c.week).filter(m => claimed.has(keyWeekly(c.week, m.id))).length < WEEKLY_BONUS_NEEDS) return err(`Claim ${WEEKLY_BONUS_NEEDS} weekly missions first.`, 403);
+      key = keyWeeklyBonus(c.week); reward = WEEKLY_BONUS; label = 'Weekly bonus';
+    } else if (kind === 'crewweek') {
+      if (!c.crew) return err('Join a crew first.', 403);
+      if (c.crew.have < crewNeed(c.crew.members)) return err("Your crew hasn't reached this week's target yet.", 403);
+      if (c.crew.mine < CREW_WEEK.minShare) return err(`Do at least ${CREW_WEEK.minShare} quests, shifts or missions yourself to share the chest.`, 403);
+      key = keyCrewWeek(c.week); reward = CREW_WEEK.reward; label = `Crew chest · ${c.crew.name}`;
     } else if (kind === 'ach') {
       const a = ACHIEVEMENTS.find(x => x.id === id); if (!a) return err('Unknown achievement.');
       if ((Number(stats[a.stat]) || 0) < a.target) return err('Not reached yet.', 403);

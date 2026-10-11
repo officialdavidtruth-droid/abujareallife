@@ -8,8 +8,12 @@ import { sfx } from '../lib/audio';
 
 type Item = { id: string; e: string; title: string; how: string; reward: number; have: number; need: number; done: boolean; claimed: boolean };
 type Daily = { id: string; e: string; title: string; reward: number; have: number; need: number; claimed: boolean };
+type Weekly = {
+  week: string; endsAt: number; spotlight: { id: string; e: string; name: string; blurb: string }; missions: Daily[]; bonus: { reward: number; claimed: boolean; ready: boolean };
+  crew: { name: string; tag: string; members: number; have: number; need: number; mine: number; minShare: number; reward: number; claimed: boolean; ready: boolean } | null;
+};
 export type Progress = {
-  day: string; cash: number;
+  day: string; cash: number; weekly: Weekly;
   next: { kind: string; id: string; e: string; title: string; how?: string; ready: boolean } | null;
   starter: Item[]; starterBonus: { id: string; reward: number; title: string; ready: boolean; claimed: boolean; locked: boolean };
   dailies: Daily[]; dailyBonus: { reward: number; claimed: boolean; ready: boolean };
@@ -61,7 +65,7 @@ export function GuideChip({ cash, fame, hidden, onOpen }: { cash: number; fame: 
 
 /* ───────── the Goals panel ───────── */
 export function GoalsPanel({ onCash, say }: { onCash: (n: number) => void; say: (m: string) => void }) {
-  const [p, setP] = useState<Progress | null>(null), [sub, setSub] = useState<'today' | 'guide' | 'badges' | null>(null), [busy, setBusy] = useState(''), [failed, setFailed] = useState(false);
+  const [p, setP] = useState<Progress | null>(null), [sub, setSub] = useState<'today' | 'week' | 'guide' | 'badges' | null>(null), [busy, setBusy] = useState(''), [failed, setFailed] = useState(false);
   useEffect(() => { let dead = false; load().then(d => { if (dead) return; if (d) setP(d); else setFailed(true); }); return () => { dead = true; }; }, []);
   useEffect(() => { if (p && !sub) setSub(p.starter.every(s => s.claimed) ? 'today' : 'guide'); }, [p, sub]);
   const claim = async (kind: string, id: string) => {
@@ -78,6 +82,8 @@ export function GoalsPanel({ onCash, say }: { onCash: (n: number) => void; say: 
   if (!p) return <><h3>🎯 Goals</h3><p className="gcMuted">Loading…</p></>;
   const guideReady = p.starter.some(s => s.done && !s.claimed) || p.starterBonus.ready;
   const todayReady = !p.streak.claimedToday || p.dailies.some(d => d.have >= d.need && !d.claimed) || p.dailyBonus.ready;
+  const weekReady = p.weekly.missions.some(m => m.have >= m.need && !m.claimed) || p.weekly.bonus.ready || !!p.weekly.crew?.ready;
+  const left = Math.max(0, p.weekly.endsAt - Date.now()), leftTxt = left >= 86_400_000 ? `${Math.floor(left / 86_400_000)}d ${Math.floor((left % 86_400_000) / 3_600_000)}h left` : `${Math.max(1, Math.floor(left / 3_600_000))}h left`;
   const badgeReady = p.achievements.some(a => a.done && !a.claimed);
   const doneCount = p.starter.filter(s => s.claimed).length;
   const Btn = ({ k, kind, id, text }: { k?: string; kind: string; id: string; text: string }) => <button className="gcClaim" disabled={!!busy} onClick={() => claim(kind, id)}>{busy === (k || kind + id) ? '…' : text}</button>;
@@ -86,6 +92,7 @@ export function GoalsPanel({ onCash, say }: { onCash: (n: number) => void; say: 
     <h3>🎯 Goals</h3>
     <div className="gcTabs">
       <button className={sub === 'today' ? 'on' : ''} onClick={() => setSub('today')}>Today{todayReady && <u />}</button>
+      <button className={sub === 'week' ? 'on' : ''} onClick={() => setSub('week')}>Week{weekReady && <u />}</button>
       <button className={sub === 'guide' ? 'on' : ''} onClick={() => setSub('guide')}>Guide {doneCount}/{p.starter.length}{guideReady && <u />}</button>
       <button className={sub === 'badges' ? 'on' : ''} onClick={() => setSub('badges')}>Badges{badgeReady && <u />}</button>
     </div>
@@ -106,6 +113,28 @@ export function GoalsPanel({ onCash, say }: { onCash: (n: number) => void; say: 
         <div className="gcRow"><span><i>🎁</i> <b>Finish all 3 missions</b></span><em>{naira(p.dailyBonus.reward)}</em></div>
         {p.dailyBonus.claimed ? <small>Claimed ✅</small> : p.dailyBonus.ready ? <Btn kind="bonus" id="bonus" text="Claim bonus" /> : <small>Claim each mission above first.</small>}
       </div>
+    </>}
+
+    {sub === 'week' && <>
+      <div className="gcCard gcSpot"><div className="gcRow"><b>{p.weekly.spotlight.e} {p.weekly.spotlight.name}</b><small>{leftTxt}</small></div><small className="gcHow">{p.weekly.spotlight.blurb}</small></div>
+      <h4>Weekly missions <small>reset Monday</small></h4>
+      {p.weekly.missions.map(d => { const ok = d.have >= d.need; return <div key={d.id} className={'gcCard' + (d.claimed ? ' off' : '')}>
+        <div className="gcRow"><span><i>{d.e}</i> <b>{d.title}</b></span><em>{naira(d.reward)}</em></div>
+        <Bar a={d.have} b={d.need} />
+        <div className="gcRow"><small>{d.claimed ? 'Claimed ✅' : `${d.have >= 1000 ? naira(d.have) : d.have} / ${d.need >= 1000 ? naira(d.need) : d.need}`}</small>{!d.claimed && ok && <Btn kind="weekly" id={d.id} text="Claim" />}</div>
+      </div>; })}
+      <div className={'gcCard gcBonus' + (p.weekly.bonus.claimed ? ' off' : '')}>
+        <div className="gcRow"><span><i>🏆</i> <b>Finish any 2 weekly missions</b></span><em>{naira(p.weekly.bonus.reward)}</em></div>
+        {p.weekly.bonus.claimed ? <small>Claimed ✅</small> : p.weekly.bonus.ready ? <Btn kind="wbonus" id="bonus" text="Claim bonus" /> : <small>Claim 2 missions above first.</small>}
+      </div>
+      <h4>Crew chest <small>shared with your crew</small></h4>
+      {!p.weekly.crew ? <div className="gcCard"><small className="gcHow">🛡️ Join a crew in ☰ Crew. When your crew finishes enough quests, shifts and missions this week, everyone who pitched in shares a {naira(150_000)} chest.</small></div>
+        : <div className={'gcCard' + (p.weekly.crew.claimed ? ' off' : '')}>
+          <div className="gcRow"><span><i>🛡️</i> <b>{p.weekly.crew.name} [{p.weekly.crew.tag}]</b></span><em>{naira(p.weekly.crew.reward)}</em></div>
+          <Bar a={p.weekly.crew.have} b={p.weekly.crew.need} />
+          <div className="gcRow"><small>{p.weekly.crew.have} / {p.weekly.crew.need} crew jobs · you {p.weekly.crew.mine} (need {p.weekly.crew.minShare})</small>{p.weekly.crew.ready && <Btn kind="crewweek" id="crew" text="Claim" />}</div>
+          {p.weekly.crew.claimed && <small>Claimed ✅</small>}
+        </div>}
     </>}
 
     {sub === 'guide' && <>
@@ -150,7 +179,7 @@ const PANEL_CSS = `.gcPanel h3{margin:0 0 8px}.gcPanel h4{margin:14px 0 6px;font
 .gcTabs{display:flex;gap:6px;margin-bottom:10px}.gcTabs button{all:unset;cursor:pointer;position:relative;flex:1;text-align:center;padding:8px 6px;border-radius:10px;background:#13231d;border:1px solid #ffffff16;color:#c9d8d0;font-size:12px;font-weight:800}
 .gcTabs button.on{background:#d99a42;color:#1a1208;border-color:#d99a42}.gcTabs u{position:absolute;top:4px;right:6px;width:8px;height:8px;border-radius:50%;background:#ff5b52;border:1px solid #0b1511}
 .gcCard{background:#13231d;border:1px solid #ffffff16;border-radius:12px;padding:9px 11px;margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
-.gcCard.off{opacity:.55}.gcCard i{font-style:normal}
+.gcSpot{border-color:#8be0b5aa;background:#17302a}.gcCard.off{opacity:.55}.gcCard i{font-style:normal}
 .gcRow{display:flex;justify-content:space-between;align-items:center;gap:8px}.gcRow em{font-style:normal;color:#f0b94a;font-weight:800;font-size:12px;white-space:nowrap}.gcRow small{color:#9fb5aa}
 .gcHow{color:#9fb5aa;font-size:11.5px;line-height:1.35}
 .gcBar{height:7px;border-radius:99px;background:#0b1511;overflow:hidden}.gcBar i{display:block;height:100%;background:linear-gradient(90deg,#3fb98a,#8be0b5);border-radius:99px;transition:width .4s}

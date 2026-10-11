@@ -8,6 +8,8 @@ export type Stats = {
   earned: number; quests: number; shifts: number; buys: number; missions: number; helps: number; rides: number; sent: number;
   earnedToday: number; questsToday: number; shiftsToday: number; buysToday: number; missionsToday: number; helpsToday: number; ridesToday: number;
   bestStreak: number;
+  inCrew: number; partiesAll: number;   // 1 when you are in a crew; parties you went to or hosted
+  earnedWeek: number; questsWeek: number; shiftsWeek: number; missionsWeek: number; helpsWeek: number; partiesWeek: number; racesWeek: number;
 };
 export type StatKey = keyof Stats;
 
@@ -30,6 +32,8 @@ export const STARTER: Step[] = [
   { id: 'skill_1', e: '📈', title: 'Reach level 1 in any skill', how: 'Skills grow from quests and work. Check ☰ My Life.', reward: 15_000, stat: 'skillLevel', target: 1 },
   { id: 'be_social', e: '🤝', title: 'Help or send money to another player', how: 'Tap a player nearby to Help them, or use ☰ Send Money.', reward: 15_000 },
   { id: 'fame_local', e: '🙂', title: 'Become Local (50 fame)', how: 'Fame comes from quests, shifts, helping players and time spent playing.', reward: 30_000, stat: 'fame', target: 50 },
+  { id: 'join_crew', e: '🛡️', title: 'Join a crew', how: 'Open ☰ Crew and join an open crew (or accept an invite). Crews share a daily cup and a weekly chest.', reward: 20_000, stat: 'inCrew', target: 1 },
+  { id: 'first_party', e: '🎉', title: 'Go to a party', how: 'Open ☰ Parties, pick a hangout, owambe or club night and walk in. You can host one yourself too.', reward: 20_000, stat: 'partiesAll', target: 1 },
   { id: 'buy_car', e: '🚗', title: 'Own a car', how: 'Save up and visit a Car Dealer. Cars make travel and jobs faster.', reward: 100_000 },
 ];
 export const STARTER_BONUS = { id: 'insider', reward: 150_000, title: 'Abuja Insider' };
@@ -58,6 +62,33 @@ export const DAILY_BONUS = 40_000;
 export const STREAK_REWARDS = [5_000, 8_000, 10_000, 15_000, 20_000, 30_000, 60_000];
 export const streakReward = (streak: number) => STREAK_REWARDS[(Math.max(1, streak) - 1) % STREAK_REWARDS.length];
 
+/* ───────── the week: 3 weekly missions (one is the Spotlight) + a crew chest ─────────
+   The week rolls over Monday 00:00 WAT. The Spotlight rotates through the city's activities, so every week points players at something different:
+   parties, races, hustling, helping neighbours. It is the loop between solo goals, parties and crews. */
+const WEEK = 7 * DAY;
+const mondayNum = (now = Date.now()) => { const dn = Math.floor((now + WAT) / DAY); return dn - ((dn + 3) % 7); };   // 1970-01-01 was a Thursday
+export const weekKey = (now = Date.now()) => new Date(mondayNum(now) * DAY).toISOString().slice(0, 10);
+export const weekStart = (now = Date.now()) => new Date(mondayNum(now) * DAY - WAT);
+export const weekEnd = (now = Date.now()) => new Date(mondayNum(now) * DAY - WAT + WEEK);
+export type Weekly = Daily;   // same shape: id, emoji, title, stat, target, reward
+const W_A = [D('w_earn', '💰', 'Earn ₦1,000,000 this week', 'earnedWeek', 1_000_000, 120_000), D('w_quests', '📜', 'Finish 8 quests this week', 'questsWeek', 8, 100_000)];
+const W_B = [D('w_shifts', '💼', 'Work 8 shifts this week', 'shiftsWeek', 8, 100_000), D('w_missions', '🎯', 'Complete 5 city missions', 'missionsWeek', 5, 110_000)];
+export type Spotlight = { id: string; e: string; name: string; blurb: string; mission: Weekly };
+export const SPOTLIGHTS: Spotlight[] = [
+  { id: 'party', e: '🎉', name: 'Party Week', blurb: 'Abuja is out tonight. Go to or host parties, owambes and club nights.', mission: D('w_party', '🎉', 'Go to 2 parties', 'partiesWeek', 2, 200_000) },
+  { id: 'race', e: '🏁', name: 'Race Week', blurb: 'The streets are for racing. Enter the street races.', mission: D('w_race', '🏁', 'Enter 2 races', 'racesWeek', 2, 200_000) },
+  { id: 'hustle', e: '💸', name: 'Hustle Week', blurb: 'Everybody is chasing money. Quests, shifts and missions all count.', mission: D('w_hustle', '💸', 'Earn ₦2,000,000', 'earnedWeek', 2_000_000, 200_000) },
+  { id: 'social', e: '🤝', name: 'Neighbour Week', blurb: 'Look out for each other. Help other players.', mission: D('w_help', '🤝', 'Help 3 players', 'helpsWeek', 3, 200_000) },
+];
+export const spotlightFor = (now = Date.now()) => SPOTLIGHTS[Math.floor(mondayNum(now) / 7) % SPOTLIGHTS.length];
+export const weeklyFor = (week: string, now = Date.now()): Weekly[] => [W_A[hash(week + 'a') % W_A.length], W_B[hash(week + 'b') % W_B.length], spotlightFor(now).mission];
+export const WEEKLY_BONUS = 250_000;
+export const WEEKLY_BONUS_NEEDS = 2;   // 2 of the 3 weekly missions unlock the bonus, so an unaffordable Spotlight (race entry is ₦500k+ and needs a car) never blocks a new player
+export const WEEKLY_BONUS_NEEDS = 2;   // 2 of the 3 weekly missions unlock the bonus, so an unaffordable Spotlight (race entry is ₦500k+ and needs a car) never blocks a new player
+/** Crew chest: the crew's quests, shifts and missions this week. Everybody who did at least `minShare` of them shares the reward when the crew gets to `need`. */
+export const CREW_WEEK = { perMember: 10, minNeed: 24, maxMembersCounted: 10, minShare: 3, reward: 150_000 };
+export const crewNeed = (members: number) => Math.max(CREW_WEEK.minNeed, Math.min(members, CREW_WEEK.maxMembersCounted) * CREW_WEEK.perMember);
+
 /* ───────── achievements ───────── */
 export type Ach = { id: string; e: string; title: string; how: string; reward: number; stat: StatKey; target: number };
 const A = (id: string, e: string, title: string, how: string, reward: number, stat: StatKey, target: number): Ach => ({ id, e, title, how, reward, stat, target });
@@ -84,4 +115,7 @@ export const keyDaily = (day: string, id: string) => `goal_d_${day}_${id}`;
 export const keyBonus = (day: string) => `goal_b_${day}`;
 export const keyCheckin = (day: string) => `goal_c_${day}`;
 export const keyAch = (id: string) => `goal_a_${id}`;
+export const keyWeekly = (week: string, id: string) => `goal_w_${week}_${id}`;
+export const keyWeeklyBonus = (week: string) => `goal_w_${week}_bonus`;
+export const keyCrewWeek = (week: string) => `goal_w_${week}_crew`;
 export const KEY_INSIDER = 'goal_s_insider';

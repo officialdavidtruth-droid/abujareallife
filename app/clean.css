@@ -26,7 +26,7 @@
   .sim.outside .menuBtn{margin-left:auto!important;width:40px!important;min-width:40px!important;padding:0!important}
   .sim.outside .topMore{display:none!important}
 
-  .sim.outside .needs{top:calc(58px + var(--sat))!important;left:calc(12px + var(--sal))!important;bottom:auto!important;z-index:55!important}
+  .sim.outside .needs{top:calc(58px + var(--sat))!important;left:calc(12px + var(--sal))!important}
   .sim.outside .glBar{top:calc(106px + var(--sat))!important;left:calc(12px + var(--sal))!important;right:auto!important;min-width:0!important;width:170px!important;max-width:170px!important;padding:7px 9px!important;border-radius:12px!important;z-index:45!important}
   .sim.outside .glBar .glRow{font-size:10px!important}
   .sim.outside .glFame{font-size:10px!important}
@@ -138,7 +138,7 @@
   .sim.outside .top>button.pill:not(.menuBtn) em{display:none!important}
   .sim.outside .top>.menuBtn{display:none!important}
   .sim.outside .topMore{display:none!important}
-  .sim.outside .needs,.sim.outside .glBar{display:none!important}
+  .sim.outside .glBar{display:none!important}
 
   .sim.outside .dock{top:calc(10px + var(--sat))!important;right:calc(12px + var(--sar))!important;z-index:90!important}
   .sim.outside .dockToggle{width:42px!important;height:42px!important;border-radius:12px!important;background:rgba(8,20,15,.94)!important;box-shadow:0 5px 16px #0006!important}

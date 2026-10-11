@@ -25,6 +25,7 @@ import { CITY } from '../lib/cityData';
 import { GAME, buildingExitPoint } from './CityWorld';
 import { HOUSES, loadHouses } from '../lib/houses';
 import Tutorial from './Tutorial';
+import { HomeCompanion, CompanionHud } from './ClubCompanion';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import Wardrobe from './Wardrobe';
@@ -1051,7 +1052,7 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
     {ui.homeOwned.map(i => <OwnedFurniture key={i.id} item={i} editing={editingHome} onSelect={setHomeSel} />)}
     {editingHome && homeSel && (() => { const q = homePos(homeSel); return q ? <mesh rotation-x={-Math.PI / 2} position={[q[0], .035, q[1]]}><ringGeometry args={[.62, .76, 40]} /><meshBasicMaterial color="#f0b94a" transparent opacity={.95} depthTest={false} /></mesh> : null; })()}
     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
-    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
+    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /></Suspense>
     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]} calculatePosition={keepMenuOnScreen}><div className="pie"><b>{sel.name}</b>
       {sel.acts.map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : `${a.dur} min`}</small></button>)}</div></Html>}
     {!tpOn && <OrbitControls ref={ctl} enablePan={false} target={[ui.wing ? 2.6 : 0, 0, ui.south ? 2.2 : 0]} minDistance={7} maxDistance={26} minPolarAngle={.5} maxPolarAngle={1.25} minAzimuthAngle={-.6} maxAzimuthAngle={.9} />}
@@ -1155,6 +1156,7 @@ export default function Sim() {
     {user && look && profile && outside && !inside && <GameLayer open={hud} onToggle={() => setHud(h => !h)} onCityTab={setCityTab} cityTab={cityTab} onEnter={setInside} onDenied={() => setInside(null)} username={user.username} getMinute={worldMinute} role={profile.profession === 'police' ? 'police' : 'player'} near={nearB} onCash={n => { S.cash = n; }} />}
     {user && look && profile && outside && inside && <Interior key={inside} bizId={inside} look={look} profile={profile} getMinute={worldMinute} onCash={n => { S.cash = n; }} onFx={fx => { for (const k of Object.keys(fx)) if (k in S.needs) S.needs[k as N] = cl(S.needs[k as N] + fx[k]); }} onExit={() => { const ex = buildingExitPoint(inside); if (ex) GAME.tp = ex; fetch('/api/exit', { method: 'POST' }).catch(() => {}); setInside(null); }} />}
     {user && look && <AssetLoader />}
+    {user && look && <CompanionHud outside={outside} />}
     {user && look && <Wallet />}
     {user && look && !editing && !wardrobe && !homeUp && <Tutorial user={user.username} canStart={ready} outside={outside} inside={!!inside} hud={hud} menu={menu} probe={() => ({ x: S.pos[0], z: S.pos[1], act: S.cur?.t === 'act' ? S.cur.a.k : null, minNeed: Math.min(...Object.values(S.needs)), power: S.power })} />}
     {user && look && !outside && <Canvas shadows dpr={[1, 1.5]} camera={{ position: [3, 13, 16], fov: 42 }}><World tpOn={tp && !homeEdit} kbd={!(editing || wardrobe || homeUp || famModal || homeEdit)} ui={ui} sel={sel} setSel={setSel} look={look} editingHome={homeEdit} setHomeSel={setHomeSel} homeSel={homeSel} onLayout={() => { blKey = '\0'; setUi(snap()); }} /></Canvas>}

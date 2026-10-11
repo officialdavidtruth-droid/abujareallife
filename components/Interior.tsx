@@ -14,7 +14,7 @@ import { DrinksMenu } from './Intoxication';
 import Dealers from './Dealers';
 import ClubNightlife from './ClubNightlife';
 import ClubTalk from './ClubTalk';
-import { CLUB_REG, CLUB_TALK, COMPANION } from '../lib/clubNpc';
+import { CLUB_REG, CLUB_TALK, COMPANION, CLUB_LOOKS as CLUB_GUESTS } from '../lib/clubNpc';
 import { dealerAt } from '../lib/dealers';
 import { BAR_TYPES } from '../lib/intoxication';
 import { sfx } from '../lib/audio';
@@ -100,15 +100,6 @@ function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: n
     <Html position={[0, 2.75, 0]} center zIndexRange={[5, 0]}><div className="inTag" ref={tag}><button className="glPlate" onClick={() => onTalk(post.idx)}><b>{look.name}</b><em>{post.title}</em><i>💬</i></button></div></Html></group>;
 }
 
-const CLUB_GUESTS: Look[] = [
-  { name: 'Zara · VIP Hostess', model: 'citizen', gender: 'f', hair: 'knotless', hairColor: '#0d0907', skin: '#8b552f', outfit: '#a21caf', pants: '#222831', height: 1.02, outfitModel: 'gown' },
-  { name: 'Mimi · Dancer', model: 'citizen', gender: 'f', hair: 'puffs', hairColor: '#0d0907', skin: '#b87a4b', outfit: '#e07aa1', pants: '#222831', height: .98, outfitModel: 'crop' },
-  { name: 'Naya · Lounge Hostess', model: 'citizen', gender: 'f', hair: 'long', hairColor: '#2b1a12', skin: '#5e3a22', outfit: '#6b4a8a', pants: '#222831', height: 1.04, outfitModel: 'dress' },
-  { name: 'Tee · Promoter', model: 'citizen', gender: 'f', hair: 'braids', hairColor: '#0d0907', skin: '#d9a577', outfit: '#d18a22', pants: '#222831', height: 1, outfitModel: 'ankara' },
-  { name: 'Amara · Lounge Companion', model: 'citizen', gender: 'f', hair: 'ponytail', hairColor: '#0d0907', skin: '#3b2416', outfit: '#b43c35', pants: '#222831', height: 1.01, outfitModel: 'gown' },
-  { name: 'Chi · Companion', model: 'citizen', gender: 'f', hair: 'braids', hairColor: '#1b0f0a', skin: '#a8683a', outfit: '#c2185b', pants: '#222831', height: 1.0, outfitModel: 'dress' },
-  { name: 'Lola · Companion', model: 'citizen', gender: 'f', hair: 'long', hairColor: '#0d0907', skin: '#7a4a2a', outfit: '#1e293b', pants: '#222831', height: 1.03, outfitModel: 'gown' },
-];
 function ClubGuest({ index, room }: { index: number; room: Room }) {
   const group = useRef<THREE.Group>(null!);
   const state = useRef({ x: [-5.3, -2.6, 2.6, 5.1, 0, -4.2, 4.4][index], z: [-2.8, 2.5, -3.2, 2.2, 0.4, 3.6, -1.2][index], tx: [-2.5, 1.5, 4, -3.6, 2.8, -3.4, 3.2][index], tz: [2.8, -2.7, 2.5, -2.8, 3.2, 2.9, -2][index], wait: index * .65, dance: index % 2 === 0, rot: 0, mv: false });

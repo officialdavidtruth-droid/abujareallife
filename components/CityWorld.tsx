@@ -1,4 +1,5 @@
 'use client';
+import { CityCompanion } from './ClubCompanion';
 import { GAME_LABEL_CSS } from '../lib/gameLabels';
 import { openSettings, useSettings } from '../lib/settings';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -430,6 +431,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <StreetNpcScene />
+      <CityCompanion />
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
       <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} touches={{ ONE: -1 as any, TWO: -1 as any }} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={1.45} target={[START.x, 1.62, START.z + 6]} />
     </>

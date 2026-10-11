@@ -19,6 +19,24 @@ export type Box2 = { x: number; z: number; sx: number; sz: number };
 
 export const hs = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
 
+/* ───────────── detail level of detail ─────────────
+ * Each building has ~25 small meshes (door, glass, awning, roof kit, signs, AC units...). Drawn for the whole city that is 2,000+ draw calls a frame,
+ * far too many for a phone. Those groups register here and are only shown within DETAIL_R metres of the player (fog hides the change). */
+export const DETAIL_R = 85;
+const DETAILS = new Set<{ g: THREE.Object3D; x: number; z: number }>();
+let detailAt = 0;
+export function registerDetail(g: THREE.Object3D | null, x: number, z: number) {
+  if (!g) return undefined;
+  const e = { g, x, z }; DETAILS.add(e); detailAt = 0;
+  return () => { DETAILS.delete(e); };
+}
+/** call every frame; it only does work 4 times a second */
+export function updateDetails(px: number, pz: number, now: number) {
+  if (now - detailAt < 250) return; detailAt = now;
+  const r2 = DETAIL_R * DETAIL_R;
+  for (const e of DETAILS) { const dx = e.x - px, dz = e.z - pz, v = dx * dx + dz * dz < r2; if (e.g.visible !== v) e.g.visible = v; }
+}
+
 export const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 

@@ -2,7 +2,8 @@
 // Step 8: city look. Everything here is purely visual (no netcode, no server) and built from shared geometry + instancing so it stays cheap on phones.
 // Exports: BuildingDress (per-building signs / roof props / wall details), awningMat, StreetClutter, Graffiti, PowerLines, ShopGlow, Puddles, LookDriver, ROAD_MAT, LOOK_SOLIDS.
 import { useFrame } from '@react-three/fiber';
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { registerDetail } from './cityShared';
 import * as THREE from 'three';
 import { BUILDS_WORLD, BUILDABLE, destIcon } from '../lib/destinations';
 import { GRID, WS, halfW } from '../lib/roadRoute';
@@ -275,8 +276,14 @@ const GRAF = BUILDS.flatMap(b => {
   if (wall === 1) return [{ id: b.id, k, x: b.x + b.w / 2 + .03, z: b.z + t * b.d, ry: Math.PI / 2 }];
   return [{ id: b.id, k, x: b.x + t * b.w, z: b.z - b.d / 2 - .03, ry: Math.PI }];
 });
+const GPLANE = new THREE.PlaneGeometry(2.8, 1.4);
+function GrafTag({ g }: { g: (typeof GRAF)[number] }) {
+  const ref = useRef<THREE.Mesh>(null!);
+  useEffect(() => registerDetail(ref.current, g.x, g.z), [g.x, g.z]);   // only drawn near the player (see cityShared)
+  return <mesh ref={ref} geometry={GPLANE} position={[g.x, 1.75, g.z]} rotation={[0, g.ry, 0]} material={grafMat(g.k)} />;
+}
 export function Graffiti() {
-  return <>{GRAF.map(g => <mesh key={g.id} position={[g.x, 1.75, g.z]} rotation={[0, g.ry, 0]} material={grafMat(g.k)}><planeGeometry args={[2.8, 1.4]} /></mesh>)}</>;
+  return <>{GRAF.map(g => <GrafTag key={g.id} g={g} />)}</>;
 }
 
 /* ───────────── utility poles + sagging wires along the roads ───────────── */

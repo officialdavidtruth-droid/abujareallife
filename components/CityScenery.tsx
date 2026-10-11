@@ -1,12 +1,12 @@
 'use client';
 import { useFrame } from '@react-three/fiber';
 import { RoundedBox, Text } from '@react-three/drei';
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { CityBuilding } from '../lib/cityTypes';
 import { BuildingDress, ROAD_MAT, awningMat } from './CityLook';
 import { GRID, WS, halfW, billboardSpot } from '../lib/roadRoute';
-import { BUILDS, Box2, FH, INTER, Kind, NIGHT, Prof, hs } from './cityShared';
+import { BUILDS, Box2, FH, INTER, Kind, NIGHT, Prof, hs, registerDetail } from './cityShared';
 
 
 /* ───────────── building looks per business type ───────────── */
@@ -117,6 +117,16 @@ export function boxGeo(w: number, d: number, floors: number) {
 }
 
 
+/* shared geometry + materials for the buildings: one of each for the whole city instead of one per mesh (the old inline JSX made ~1,500 materials and ~1,500 geometries) */
+const GBX = new THREE.BoxGeometry(1, 1, 1), GPL = new THREE.PlaneGeometry(1, 1), GCY = new THREE.CylinderGeometry(.5, .5, 1, 14), GSPH = new THREE.SphereGeometry(.5, 8, 8);
+const SMAT = new Map<string, THREE.MeshStandardMaterial>();
+const smat = (color: string, rough = .85, metal = 0) => { const k = color + rough + metal; let m = SMAT.get(k); if (!m) { m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }); SMAT.set(k, m); } return m; };
+const M_PLINTH = smat('#6d6f72', 1), M_CORNICE = smat('#c9ccce', .9), M_DOOR = smat('#20262c', .85), M_TANK = smat('#14171a', .6), M_AC = smat('#9aa0a6', .5, .4), M_MAST = smat('#555555'), M_RED = smat('#d11a2a');
+const M_DOORGLASS = new THREE.MeshStandardMaterial({ color: '#9fd0e8', emissive: '#7fb6d6', emissiveIntensity: .35 });
+const M_SHOPGLASS = new THREE.MeshStandardMaterial({ color: '#1a2a35', metalness: .6, roughness: .15, emissive: '#ffcf80', emissiveIntensity: .22 });
+const M_BEACON = new THREE.MeshStandardMaterial({ color: '#ff2a2a', emissive: '#ff2a2a', emissiveIntensity: 2 });
+const M_NEON_C = new THREE.MeshStandardMaterial({ color: '#c026d3', emissive: '#c026d3', emissiveIntensity: 2.2 }), M_NEON_Y = new THREE.MeshStandardMaterial({ color: '#ffb300', emissive: '#ffb300', emissiveIntensity: 2.2 });
+
 /* ───────────── buildings (towers get a setback upper tier) ───────────── */
 export function Building({ b }: { b: CityBuilding }) {
   const type = b.business?.type ?? 'Office';
@@ -132,43 +142,49 @@ export function Building({ b }: { b: CityBuilding }) {
   const geo2 = useMemo(() => (upF > 0 ? boxGeo(uw, ud, upF) : null), [uw, ud, upF]);
   const side = useMemo(() => sideMat(P.kind, wall, !!P.balc), [P.kind, wall, P.balc]);
   const mats = useMemo(() => [side, side, ROOF, ROOF, side, side], [side]);
+  const detail = useRef<THREE.Group>(null!);
+  useEffect(() => registerDetail(detail.current, b.x, b.z), [b.x, b.z]);
+  const rtank = rw * (r - .5) * .6;
   return (
     <group position={[b.x, 0, b.z]}>
+      {/* always drawn: the silhouette (body, plinth, cornice, name board) */}
       <mesh geometry={geo1} material={mats} position={[0, H1 / 2, 0]} castShadow receiveShadow />
-      <mesh position={[0, .35, 0]} receiveShadow><boxGeometry args={[b.w + .12, .7, b.d + .12]} /><meshStandardMaterial color="#6d6f72" roughness={1} /></mesh>
-      <mesh position={[0, H1 + .12, 0]} castShadow><boxGeometry args={[b.w + .25, .24, b.d + .25]} /><meshStandardMaterial color="#c9ccce" roughness={.9} /></mesh>
+      <mesh geometry={GBX} material={M_PLINTH} position={[0, .35, 0]} scale={[b.w + .12, .7, b.d + .12]} receiveShadow />
+      <mesh geometry={GBX} material={M_CORNICE} position={[0, H1 + .12, 0]} scale={[b.w + .25, .24, b.d + .25]} />
       {geo2 && <>
         <mesh geometry={geo2} material={mats} position={[0, H1 + .24 + upF * FH / 2, 0]} castShadow receiveShadow />
-        <mesh position={[0, bodyTop + .12, 0]} castShadow><boxGeometry args={[uw + .25, .24, ud + .25]} /><meshStandardMaterial color="#c9ccce" roughness={.9} /></mesh>
+        <mesh geometry={GBX} material={M_CORNICE} position={[0, bodyTop + .12, 0]} scale={[uw + .25, .24, ud + .25]} />
       </>}
-      {/* entrance + shopfront */}
-      <mesh position={[0, .95, fz + .1]}><boxGeometry args={[gov ? 1.7 : 1.1, gov ? 2.3 : 1.9, .08]} /><meshStandardMaterial color="#20262c" /></mesh>
-      <mesh position={[0, 1.05, fz + .15]}><planeGeometry args={[gov ? 1.4 : .8, gov ? 1.9 : 1.45]} /><meshStandardMaterial color="#9fd0e8" emissive="#7fb6d6" emissiveIntensity={.35} /></mesh>
-      {!gov && <>
-        <mesh position={[0, 1.5, fz + .07]}><planeGeometry args={[b.w * .78, 1.45]} /><meshStandardMaterial color="#1a2a35" metalness={.6} roughness={.15} emissive="#ffcf80" emissiveIntensity={.22} /></mesh>
-        <mesh position={[0, 2.45, fz + .5]} rotation={[.4, 0, 0]} material={awningMat(P.sign, type)}><boxGeometry args={[b.w * .7, .07, .95]} /></mesh>
-      </>}
-      <mesh position={[0, 2.95, fz + .07]}><boxGeometry args={[b.w * .8, .55, .1]} /><meshStandardMaterial color={P.sign} roughness={.6} /></mesh>
-      
-      {/* roof: Geepee water tank, AC unit, aviation-light antenna on towers */}
-      <mesh position={[rw * (r - .5) * .6, top + .4, rd * .2]}><cylinderGeometry args={[.5, .5, .8, 14]} /><meshStandardMaterial color="#14171a" roughness={.6} /></mesh>
-      <mesh position={[-rw * .22, top + .28, -rd * .18]}><boxGeometry args={[1, .55, .7]} /><meshStandardMaterial color="#9aa0a6" metalness={.4} roughness={.5} /></mesh>
-      {floors >= 6 && <>
-        <mesh position={[rw * .3, top + 1.6, -rd * .25]}><cylinderGeometry args={[.04, .05, 3.2, 6]} /><meshStandardMaterial color="#555" /></mesh>
-        <mesh position={[rw * .3, top + 3.25, -rd * .25]}><sphereGeometry args={[.1, 8, 8]} /><meshStandardMaterial color="#ff2a2a" emissive="#ff2a2a" emissiveIntensity={2} /></mesh>
-      </>}
-      {gov && <>
-        <mesh position={[0, .15, fz + .5]} castShadow><boxGeometry args={[b.w * .95, .3, 1]} /><meshStandardMaterial color="#cfc9b8" /></mesh>
-        {[-3, -1.8, -.6, .6, 1.8, 3].map(x => <mesh key={x} position={[x * (b.w / 7), 1.85, fz + .6]} castShadow><cylinderGeometry args={[.2, .22, 3.1, 12]} /><meshStandardMaterial color="#efeadb" /></mesh>)}
-        <mesh position={[0, 3.55, fz + .5]}><boxGeometry args={[b.w * .95, .4, 1]} /><meshStandardMaterial color="#e6e0cf" /></mesh>
-        <mesh position={[0, top, 0]} castShadow><sphereGeometry args={[Math.min(b.w, b.d) * .32, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} /><meshStandardMaterial color="#c8b560" metalness={.5} roughness={.35} /></mesh>
-      </>}
-      {type === 'Hospital' && <>
-        <mesh position={[0, H1 - 1.5, fz + .05]}><boxGeometry args={[1.6, .45, .06]} /><meshStandardMaterial color="#d11a2a" /></mesh>
-        <mesh position={[0, H1 - 1.5, fz + .05]}><boxGeometry args={[.45, 1.6, .06]} /><meshStandardMaterial color="#d11a2a" /></mesh>
-      </>}
-      {(type === 'Nightclub' || type === 'Cinema') && <mesh position={[0, 3.35, fz + .08]}><boxGeometry args={[b.w * .9, .1, .05]} /><meshStandardMaterial color={type === 'Nightclub' ? '#c026d3' : '#ffb300'} emissive={type === 'Nightclub' ? '#c026d3' : '#ffb300'} emissiveIntensity={2.2} /></mesh>}
-      <BuildingDress b={b} type={type} signColor={P.sign} top={top} floors={floors} rw={rw} rd={rd} />
+      <mesh geometry={GBX} material={smat(P.sign, .6)} position={[0, 2.95, fz + .07]} scale={[b.w * .8, .55, .1]} />
+      {/* small detail: only built up near the player (see registerDetail in cityShared), hundreds of tiny draw calls otherwise */}
+      <group ref={detail}>
+        {/* entrance + shopfront */}
+        <mesh geometry={GBX} material={M_DOOR} position={[0, .95, fz + .1]} scale={[gov ? 1.7 : 1.1, gov ? 2.3 : 1.9, .08]} />
+        <mesh geometry={GPL} material={M_DOORGLASS} position={[0, 1.05, fz + .15]} scale={[gov ? 1.4 : .8, gov ? 1.9 : 1.45, 1]} />
+        {!gov && <>
+          <mesh geometry={GPL} material={M_SHOPGLASS} position={[0, 1.5, fz + .07]} scale={[b.w * .78, 1.45, 1]} />
+          <mesh geometry={GBX} position={[0, 2.45, fz + .5]} rotation={[.4, 0, 0]} material={awningMat(P.sign, type)} scale={[b.w * .7, .07, .95]} />
+        </>}
+        {/* roof: Geepee water tank, AC unit, aviation-light antenna on towers */}
+        <mesh geometry={GCY} material={M_TANK} position={[rtank, top + .4, rd * .2]} scale={[1, .8, 1]} />
+        <mesh geometry={GBX} material={M_AC} position={[-rw * .22, top + .28, -rd * .18]} scale={[1, .55, .7]} />
+        {floors >= 6 && <>
+          <mesh geometry={GCY} material={M_MAST} position={[rw * .3, top + 1.6, -rd * .25]} scale={[.09, 3.2, .09]} />
+          <mesh geometry={GSPH} material={M_BEACON} position={[rw * .3, top + 3.25, -rd * .25]} scale={[.2, .2, .2]} />
+        </>}
+        {gov && <>
+          <mesh position={[0, .15, fz + .5]} castShadow><boxGeometry args={[b.w * .95, .3, 1]} /><meshStandardMaterial color="#cfc9b8" /></mesh>
+          {[-3, -1.8, -.6, .6, 1.8, 3].map(x => <mesh key={x} position={[x * (b.w / 7), 1.85, fz + .6]} castShadow><cylinderGeometry args={[.2, .22, 3.1, 12]} /><meshStandardMaterial color="#efeadb" /></mesh>)}
+          <mesh position={[0, 3.55, fz + .5]}><boxGeometry args={[b.w * .95, .4, 1]} /><meshStandardMaterial color="#e6e0cf" /></mesh>
+          <mesh position={[0, top, 0]} castShadow><sphereGeometry args={[Math.min(b.w, b.d) * .32, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} /><meshStandardMaterial color="#c8b560" metalness={.5} roughness={.35} /></mesh>
+        </>}
+        {type === 'Hospital' && <>
+          <mesh geometry={GBX} material={M_RED} position={[0, H1 - 1.5, fz + .05]} scale={[1.6, .45, .06]} />
+          <mesh geometry={GBX} material={M_RED} position={[0, H1 - 1.5, fz + .05]} scale={[.45, 1.6, .06]} />
+        </>}
+        {(type === 'Nightclub' || type === 'Cinema') && <mesh geometry={GBX} material={type === 'Nightclub' ? M_NEON_C : M_NEON_Y} position={[0, 3.35, fz + .08]} scale={[b.w * .9, .1, .05]} />}
+        <BuildingDress b={b} type={type} signColor={P.sign} top={top} floors={floors} rw={rw} rd={rd} />
+      </group>
     </group>
   );
 }

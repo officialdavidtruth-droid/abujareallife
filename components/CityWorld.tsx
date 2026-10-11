@@ -22,7 +22,7 @@ import ChopYards from './ChopYards';
 import { Graffiti, LookDriver, PowerLines, Puddles, ShopGlow, StreetClutter } from './CityLook';
 import { pushCrime } from '../lib/witness';
 import { sidewalkSpawn } from '../lib/roadRoute';
-import { BUILDS, CELL, Ctl, GAME, Hud, LIM, NIGHT, OBS, OWN, PEDPOS, SKY, START, TPOS, VEH, WX, distTo, pick, sm, wrap } from './cityShared';
+import { BUILDS, CELL, Ctl, GAME, Hud, LIM, NIGHT, OBS, OWN, PEDPOS, SKY, START, TPOS, VEH, WX, distTo, pick, sm, updateDetails, wrap } from './cityShared';
 import { Airport, Billboards, Building, Inst, LampGlow, MARKS, MATS, Roads, SLABS, StreetLamps, TrainLine, Trees } from './CityScenery';
 import { BL, BODY, CAR_POSTS, findPath, pushOut } from './CityCollision';
 import { CINE, JACK, JackGhost, JackNpc, ROAM, Signals, TRANSPORT_SOLIDS, Traffic, TransportVehicles, isHail, stepJack } from './CityTraffic';
@@ -35,6 +35,8 @@ import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
 export { POLICE_CARS } from './CityPolice';
+
+const LOW_END = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches; // phones / tablets: smaller shadow map and pixel ratio
 
 function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, fight, shoot }: { fight: (to: string) => boolean; shoot: (to: string, weapon: string) => boolean; look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
   const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: START.r });
@@ -112,6 +114,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       GAME.player.x = ride.x; GAME.player.z = ride.z;
       if (c.interact) c.interact = false;
       c.taxi = false;
+      updateDetails(p.x, p.z, performance.now());
       return;
     } else { group.current.visible = true; }
     const stray = !!(GAME.nav && nav.current && Date.now() - nav.current.at > 1500 && Math.hypot(p.x - (nav.current.points[nav.current.i]?.[0] ?? p.x), p.z - (nav.current.points[nav.current.i]?.[1] ?? p.z)) > 22); // wandered off the route: plan a new one
@@ -311,6 +314,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     }
     if (carTag.current) { const want = VEH.placed && !VEH.drv ? 'block' : 'none'; if (carTag.current.style.display !== want) carTag.current.style.display = want; }
     shown.current = { drv: VEH.drv, placed: VEH.placed };
+    updateDetails(p.x, p.z, performance.now());
     OBS[0].x = p.x; OBS[0].z = p.z; OBS[0].on = !VEH.drv;
     OBS[1].x = VEH.x; OBS[1].z = VEH.z; OBS[1].on = VEH.placed;
 
@@ -353,7 +357,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <color attach="background" args={['#8fc3ea']} />
       <fog attach="fog" args={['#c9dff0', 90, 270]} />
       <hemisphereLight ref={hemi} args={['#dff0ff', '#6b7a5a', 1.25]} />
-      <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0004} />
+      <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={LOW_END ? [1024, 1024] : [2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0004} />
       <primitive object={sunTarget} />
       <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.06, 0]} receiveShadow><planeGeometry args={[700, 700]} /><meshStandardMaterial color="#5d7f55" /></mesh>
@@ -487,7 +491,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
     <div className="cityWorld">
       <RuntimeStyle css={CSS} />
       <RuntimeStyle css={GAME_LABEL_CSS} />
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x - Math.sin(START.r) * 8, 4.2, START.z - Math.cos(START.r) * 8], fov: 52, near: .4, far: 600 }}>
+      <Canvas shadows dpr={LOW_END ? [1, 1.25] : [1, 1.5]} gl={{ powerPreference: 'high-performance' }} camera={{ position: [START.x - Math.sin(START.r) * 8, 4.2, START.z - Math.cos(START.r) * 8], fov: 52, near: .4, far: 600 }}>
         <Scene fight={net.punch} shoot={net.shoot} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />

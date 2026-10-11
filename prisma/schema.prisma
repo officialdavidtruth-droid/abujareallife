@@ -674,3 +674,25 @@ model HomeVisit {
   @@index([guestId, status])
   @@index([ownerId, status])
 }
+
+// One placed piece of furniture in a house (HOME-SAVE.md). homeId = the house's owner, byId = who bought and placed it (gets it back when stored).
+// Where a piece has been moved to still lives in the house's layout (hidden inventory row home_layout); this row is the piece itself.
+model HomeFurniture {
+  id        String   @id
+  homeId    String
+  byId      String
+  itemKey   String
+  name      String
+  e         String   @default("")
+  cat       String   @default("")
+  cost      Int      @default(0)
+  condition Int      @default(100)
+  x         Float    @default(0)
+  z         Float    @default(0)
+  r         Float    @default(0)
+  fpW       Float?
+  fpD       Float?
+  createdAt DateTime @default(now())
+
+  @@index([homeId, createdAt])
+}

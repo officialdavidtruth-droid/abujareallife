@@ -21,3 +21,24 @@ Known limit: edits are merged when someone presses Save, so you only see a house
 
 Files (step 2): EDITED `components/Sim.tsx`
 Step 3 (optional): move placed furniture into its own table.
+
+# Step 3: placed furniture in its own table
+
+Each placed piece is now one row in `HomeFurniture` (migration `0026_home_furniture`) instead of an entry in the house blob.
+
+- **Place** = one INSERT. **Store / sell** = one DELETE that only one request can win; the refund or the payout happens only for the winner. Housemates working on different pieces can no longer touch each other at all.
+- **Existing houses migrate by themselves:** the first time anybody opens or edits a house's furniture (or saves its layout), the pieces are copied into the table and removed from the blob. It is safe if several requests do it at once, and if an older server adds a piece in the middle, the next request picks it up. Nothing to backfill by hand.
+- Stays in the blob (still protected by the versioned writes of step 1): layout positions, house look, sold fixtures.
+- The game client is unchanged: the API returns the same list as before.
+- Tested with a fake database: 8 simultaneous migrations of a 30-piece house (plus one late piece) gave exactly 31 rows with no duplicates; 10 simultaneous deletes of one piece had exactly one winner.
+
+## Setup
+Run `prisma/migrations/0026_home_furniture/migration.sql` (also appended to `prisma/fix-database.sql` and `prisma/setup-database.sql`) in the Supabase SQL editor **before** deploying, then `npm run db:generate`.
+
+## Files (step 3)
+NEW `lib/homeFurniture.ts`, `prisma/migrations/0026_home_furniture/migration.sql`
+EDITED `prisma/schema.prisma`, `prisma/fix-database.sql`, `prisma/setup-database.sql`, `app/api/home/furniture/route.ts`, `app/api/home/layout/route.ts`
+
+## Known limits
+- No foreign key to User, like HouseMate and HomeVisit: furniture rows of a deleted account stay behind (harmless, can be cleaned with `DELETE FROM "HomeFurniture" WHERE "homeId" NOT IN (SELECT id FROM "User")`).
+- Opening a visited house can trigger its one-time copy; it is idempotent.

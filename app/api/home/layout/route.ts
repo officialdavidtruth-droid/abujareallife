@@ -4,6 +4,7 @@ import { currentUser, err, serverError } from '../../../../lib/auth';
 import { defaultHomeLook, packHomeLook, sanitizeHomeLook } from '../../../../lib/homeLook';
 import { resolveHome, resolveView } from '../../../../lib/housemates';
 import { HOME_KEY, HomeBusy, editHome } from '../../../../lib/homeStore';
+import { ensureFurniture } from '../../../../lib/homeFurniture';
 
 /* The player's home layout (where each piece stands) and home look (wall paint, floor, rug, sofa, bedding, bed frame).
    Stored as the metadata of one hidden inventory row, next to the furniture list kept by /api/home/furniture. */
@@ -44,10 +45,12 @@ export async function PUT(req: Request) {
     const mine = cleanLayout(b.layout), hasBase = !!b.base && typeof b.base === 'object' && !!b.base.layout && typeof b.base.layout === 'object';
     const base = hasBase ? cleanLayout(b.base.layout) : null;
     const myLook = b.look !== undefined ? sanitizeHomeLook(b.look, dflt) : null, baseLook = hasBase && b.base.look !== undefined ? sanitizeHomeLook(b.base.look, dflt) : null;
+    await ensureFurniture(h.id);
+    const placed = new Set<string>((await prisma.homeFurniture.findMany({ where: { homeId: h.id }, select: { id: true } })).map((r: { id: string }) => r.id));   // ids of placed pieces right now
     let outLayout: Record<string, T> = {}, outLook: unknown = null;
     try {
       await editHome(h.id, m => {
-        const cur = cleanLayout(m.layout), owned = new Set((Array.isArray(m.owned) ? m.owned : []).map((x: { id?: string }) => String(x?.id))), sold = new Set(Array.isArray(m.soldStatic) ? m.soldStatic.map(String) : []);
+        const cur = cleanLayout(m.layout), owned = placed, sold = new Set(Array.isArray(m.soldStatic) ? m.soldStatic.map(String) : []);
         let layout: Record<string, T>;
         if (!base) layout = mine;
         else {

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { addSeasonScore } from '../../../lib/seasonServer';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, serverError } from '../../../lib/auth';
 import { loadState } from '../../../lib/game';
@@ -50,9 +51,10 @@ async function postImpl(req: Request) {
       await tx.save.update({ where: { userId: u.id }, data: { cash: { increment: q.pay }, fame: { increment: q.mult >= 1 ? 1 : 0 } } });
       await tx.transaction.create({ data: { userId: u.id, type: 'EARN', amount: q.pay, description: `driver-fare:${kind}` } });
       await tx.reputation.upsert({ where: { userId: u.id }, update: { trust: { increment: 1 }, score: { increment: 1 } }, create: { userId: u.id, score: 51, trust: 51 } });
-      return { ok: true as const, earned: q.pay, note: q.note };
+      return { ok: true as const, earned: q.pay, note: q.note, fame: q.mult >= 1 ? 1 : 0 };
     });
     if (!paid.ok) return paid.why === 'cap' ? err(paid.note, 429) : err('No passenger waiting yet. Try again shortly.', 429);
+    if (paid.fame) await addSeasonScore(u.id, 'fame', paid.fame);
     return NextResponse.json({ ok: true, earned: paid.earned, note: paid.note });
   }
 

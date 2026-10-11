@@ -61,7 +61,7 @@ Convention: **rules and numbers live in `lib/*.ts`; routes in `app/api` enforce 
 
 ## 4. Data model (Prisma)
 
-Models: `User Character Job Property Vehicle InventoryItem Mission PlayerMission Transaction EmailCode Save Invite Relationship Crime Management Listing Message PlayerBusiness BusinessEmployee CareerProgress Reputation CityEvent CityBusinessMetric PlayerPosition DriverProfile RideRequest Deal Crew CrewMember CrewInvite CrewMessage CrewTurf CrewEvent Party PartyGuest HouseMate HomeVisit HomeFurniture`.
+Models: `User Character Job Property Vehicle InventoryItem Mission PlayerMission Transaction EmailCode Save Invite Relationship Crime Management Listing Message PlayerBusiness BusinessEmployee CareerProgress Reputation CityEvent CityBusinessMetric PlayerPosition DriverProfile RideRequest Deal Crew CrewMember CrewInvite CrewMessage CrewTurf CrewEvent Party PartyGuest HouseMate HomeVisit HomeFurniture SeasonScore`.
 
 Core ideas:
 
@@ -92,7 +92,7 @@ If you add per-player state that is small and not queried across players, this i
 
 ### Migrations
 
-`prisma/migrations/0002_accounts … 0026_home_furniture` (note two `0005_*`: `interiors` and `session_version`). `setup-database.sql` is the one-shot for an empty database; `fix-database.sql` is the cumulative, re-runnable patch to paste into the Supabase SQL editor. **Every new migration must also be appended to both files.** Many later features needed no migration because they use hidden rows or `Crime`/`Transaction` rows.
+`prisma/migrations/0002_accounts … 0027_season_scores` (note two `0005_*`: `interiors` and `session_version`). `setup-database.sql` is the one-shot for an empty database; `fix-database.sql` is the cumulative, re-runnable patch to paste into the Supabase SQL editor. **Every new migration must also be appended to both files.** Many later features needed no migration because they use hidden rows or `Crime`/`Transaction` rows.
 
 ## 5. Server patterns (use these when adding a route)
 
@@ -113,7 +113,7 @@ If you add per-player state that is small and not queried across players, this i
 | City & movement | `position`, `transport`, `rides`, `driver`, `vehicles`, `access`, `exit`, `invite`, `city-life`, `city-events` |
 | Crime & police | `crime`, `rob`, `carjack`, `holdup`, `burgle`, `chop`, `death`, `down`, `fight`, `help`, `shot`, `shot/confirm`, `arrest`, `jail`, `wanted`, `evade`, `npc-police`, `security` |
 | Nightlife & vice | `intox`, `dealer`, `deal`, `escort`, `street-npc`, `club-company` |
-| Social | `relationship`, `crew{,/chat,/board}`, `party`, `housemates`, `visit`, `quest`, `mission`, `race`, `casino` |
+| Social | `season`, `relationship`, `crew{,/chat,/board}`, `party`, `housemates`, `visit`, `quest`, `mission`, `race`, `casino` |
 | Home | `home`, `home/layout`, `home/furniture`, `houses`, `housestyle` |
 | Legacy | `livekit`, `turn` (voice was removed from the game, see §15) |
 
@@ -139,6 +139,7 @@ If you add per-player state that is small and not queried across players, this i
 | Crews | `lib/crews.ts` (+ `lib/crewServer.ts` for scoring/settlement) | all costs, kinds, turf, cup |
 | Parties | `lib/parties.ts` | kinds, caps, spray cut 8% |
 | Business economy | `lib/bizEconomy.ts` | `COGS_RATE` 0.5, elasticity 1.8 |
+| Seasons | `lib/season.ts` | `SEASON_DAYS` 28, `BOARDS` (board list) |
 | Goals | `lib/goals.ts` | `SPOTLIGHTS`, `W_A/W_B`, `WEEKLY_BONUS`, `CREW_WEEK` |
 | Missions / tail | `lib/missions.ts`, `lib/tailRoute.ts` | `TAIL_RULES` |
 | Weapons | `lib/weapons.ts` | single source for stats |
@@ -226,6 +227,7 @@ Home scene needs, furniture editor (Arrange / Add items / Style), 6 home rooms a
 - **Goals loop**: starter chain (12 steps), daily check-in streak, 3 daily missions, 14 badges, weekly Spotlight + missions + crew chest. Progress is *derived* from `Transaction` + `Save`; claims are unique hidden rows.
 - **Crews** (`lib/crews.ts`, `lib/crewServer.ts`): Crew/Gang/Company kinds, treasury, turf (11 districts, ₦120k/h, half to treasury), turf wars (₦500k, 60 min), daily Crew Cup, chat (polling 2.5 s). Scoring is read from `Transaction`/`Crime` rows (≤ 600 points per member per event). Events settle lazily on the next crew endpoint hit.
 - **Parties** (`lib/parties.ts`, `/api/party`): hangout / house party / owambe / club night, vibe 0–100, spray 92% to recipient (8% sink), host fame at end. Virtual venue (no 3D party room).
+- **Seasons** (`lib/season.ts`, `lib/seasonServer.ts`, `/api/season`, `components/Seasons.tsx`, table `SeasonScore`): 28-day seasons starting Monday 00:00 WAT from the anchor week 5 Jan 2026 (Season 1). One row per player per season per board (`score` Int; `lowerIsBetter` per board in `BOARDS`). `addSeasonScore()` is called wherever fame is earned (`awardFame`, driver fares, city events) and never throws, so a missing table cannot break the action. The API returns the board list, so adding a board server-side shows it in the panel automatically. **Live boards: fame gained.** Planned: best race time per tier, richest crew, end-of-season rewards, push notifications.
 - **Racing**, **casino**, **fashion** (boutiques, wardrobe mirror, wearable items checked on `/api/save`), **transport** (taxi/bike/bus, ride requests between players, passengers in cars/taxis/plane).
 - **Plane** (`cityPlane.tsx`, `planeNet.tsx`): single pilot at a time, cockpit/chase camera (V), up to 3 passengers via the `cityPax.ts` handshake, pose rides on the normal 5/s position broadcast. Runway at the airport; `FLY_LIM` 850 m.
 

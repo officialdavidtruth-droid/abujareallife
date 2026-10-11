@@ -157,6 +157,9 @@ const HOME_LAYOUT: HomeLayout = {};
 let HLOOK: HomeLook = defaultHomeLook('guest');
 const HL = resolveHomeLook(HLOOK);
 const setHomeLook = (l: HomeLook) => { HLOOK = l; Object.assign(HL, resolveHomeLook(l)); };
+// What the house looked like when we last loaded or saved it. Sent with every save so the server only applies what THIS player changed and keeps housemates' edits (HOME-SAVE.md).
+let HOME_BASE: { layout: HomeLayout; look: unknown } = { layout: {}, look: null };
+const markHomeBase = () => { HOME_BASE = { layout: JSON.parse(JSON.stringify(HOME_LAYOUT)), look: packHomeLook(HLOOK) }; };
 // Home editor settings: how far one tap moves a piece, how far one tap turns it, which tab is open and which shelf of the inventory is showing.
 const HEDIT = { step: .25, rot: Math.PI / 12, tab: 'move' as 'move' | 'add' | 'style', cat: 'All' };
 const HOME_OWNED: { id:string; itemKey:string; name:string; e:string; cat:string; cost:number; condition:number; x:number; z:number; r:number; fp?:[number,number] }[] = [];
@@ -1130,6 +1133,7 @@ export default function Sim() {
   async function reloadHome(username: string, visitOwner?: string) {
     const q = visitOwner ? '?visit=' + encodeURIComponent(visitOwner) : '';
     try { const h = await fetch('/api/home' + q, { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setHomeLook(defaultHomeLook(username)); try { const l = await fetch('/api/home/layout' + q, { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); setHomeLook(sanitizeHomeLook(ld.look, defaultHomeLook(username))); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture' + q,{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ }
+    markHomeBase();
   }
   async function enter(u: AccountUser) {
     const sr = await fetch('/api/save'), r = await sr.json().catch(() => null);
@@ -1268,7 +1272,10 @@ export default function Sim() {
     {!outside && <div className="hint">{tp && !homeEdit ? 'WASD walk · Shift run · Drag or ←/→ turn camera · Scroll zoom · E use · 1-9 pick · or tap the floor' : 'Tap the floor to walk · Tap objects or family for actions · Drag to rotate · Scroll to zoom'}</div>}
     {user && look && !outside && tp && !homeEdit && <><TPStick /><TPButtons /></>}
     {homeEdit && !outside && user && look && <div className="homeEditor">
-      <div className="homeHead"><b>🏠 Home design</b><div className="homeHeadBtns"><button onClick={() => setHomeMin(v => !v)} aria-label="Minimise">{homeMin ? '▴' : '▾'}</button><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT, look: packHomeLook(HLOOK) }) }); setHomeSaving(false); say(r.ok ? '🏠 Home saved.' : 'Could not save your home.'); }}>{homeSaving ? 'Saving…' : 'Save'}</button><button className="homeDone" onClick={() => { setHomeEdit(false); setHomeSel(null); setHomeMin(false); }}>✓ Done</button></div></div>
+      <div className="homeHead"><b>🏠 Home design</b><div className="homeHeadBtns"><button onClick={() => setHomeMin(v => !v)} aria-label="Minimise">{homeMin ? '▴' : '▾'}</button><button onClick={() => { resetHomeLayout(); blKey = '\0'; setHomeSel(null); setUi(snap()); }}>Reset</button><button disabled={homeSaving} className="save" onClick={async () => { setHomeSaving(true); const r = await fetch('/api/home/layout', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: HOME_LAYOUT, look: packHomeLook(HLOOK), base: HOME_BASE }) }).catch(() => null);
+            if (r?.ok) { const d = await r.json().catch(() => null); if (d?.layout) { const was = JSON.stringify(HOME_LAYOUT); resetHomeLayout(); Object.assign(HOME_LAYOUT, d.layout); if (d.look) setHomeLook(sanitizeHomeLook(d.look, defaultHomeLook(user?.username || ''))); blKey = '\0'; setUi(snap()); markHomeBase(); say(JSON.stringify(HOME_LAYOUT) === was ? '🏠 Home saved.' : '🏠 Home saved. A housemate changed things too: now merged.'); } else { markHomeBase(); say('🏠 Home saved.'); } }
+            else say(r ? ((await r.json().catch(() => ({}))).error || 'Could not save your home.') : 'No connection. Your home was not saved.');
+            setHomeSaving(false); }}>{homeSaving ? 'Saving…' : 'Save'}</button><button className="homeDone" onClick={() => { setHomeEdit(false); setHomeSel(null); setHomeMin(false); }}>✓ Done</button></div></div>
       {!homeMin && <>
         <div className="homeTabs">{([['move', '✋ Arrange'], ['add', '➕ Add items'], ['style', '🎨 Style']] as const).map(([k, t]) => <button key={k} className={HEDIT.tab === k ? 'on' : ''} onClick={() => { HEDIT.tab = k; setUi(snap()); }}>{t}</button>)}</div>
         {HEDIT.tab === 'move' && (homeSel ? (() => {

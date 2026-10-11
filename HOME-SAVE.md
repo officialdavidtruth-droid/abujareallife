@@ -9,3 +9,15 @@ Fix (no migration): `lib/homeStore.ts`
 - Tested with an in-memory fake database: 20 simultaneous placements all kept; 10 simultaneous sells of one piece, exactly one succeeded.
 
 Next steps: (2) the game client sends `base` on save and shows the merged result, (3) optionally move placed furniture into its own table.
+
+# Step 2: the game sends what it loaded and shows the merge
+
+- `components/Sim.tsx` remembers the layout and look it loaded (`HOME_BASE`, set at the end of `reloadHome` and after every save) and sends it as `base` with the **Save** in Home design.
+- The server (step 1) then applies only the pieces you actually moved and the look fields you actually changed on top of the house's current data.
+- The reply is the merged result: the game applies it, so you immediately see a housemate's moves that were saved meanwhile. The toast says "A housemate changed things too: now merged." when that happened.
+- Save errors now show the server's reason (for example "The house is busy right now. Try again.") instead of a generic message, and a lost connection is reported as not saved.
+
+Known limit: edits are merged when someone presses Save, so you only see a housemate's moves after your own save or after reloading the house. Live updating while both are decorating is not built.
+
+Files (step 2): EDITED `components/Sim.tsx`
+Step 3 (optional): move placed furniture into its own table.

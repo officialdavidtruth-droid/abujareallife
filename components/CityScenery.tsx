@@ -317,7 +317,8 @@ export const AIR = { x: 122 * WS, z: -12 * WS, s: 1.8 };
 
 export function Airport() {
   return <group position={[AIR.x, 0, AIR.z]} scale={AIR.s}>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .04, 0]}><planeGeometry args={[22, 7]} /><meshStandardMaterial color="#33383e" /></mesh>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[39, .04, 0]}><planeGeometry args={[100, 7]} /><meshStandardMaterial color="#33383e" /></mesh>
+    {Array.from({ length: 16 }, (_, i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[-6 + i * 6.2, .07, 0]}><planeGeometry args={[3, .22]} /><meshStandardMaterial color="#e8e8e8" /></mesh>)}
     <Text position={[0, .1, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={.6} color="#fff" anchorX="center">RUNWAY</Text>
     <RoundedBox args={[9, 1.5, 5]} position={[0, .75, -7]} radius={.15}><meshStandardMaterial color="#7b8791" /></RoundedBox>
     <Text position={[0, 1.65, -4.4]} fontSize={.45} color="#fff" anchorX="center">Nnamdi Azikiwe Airport</Text>

@@ -38,6 +38,7 @@ import { StreetNpcScene } from './StreetNpcs';
 import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
 import PaxUi from './PaxUi';
 import { PAX, stepPax } from './cityPax';
+import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane } from './cityPlane';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
 export { POLICE_CARS } from './CityPolice';
@@ -73,7 +74,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const oc = controls.current; if (!oc) return;
     const s = () => { drag.current.on = true; }, e = () => { drag.current.on = false; drag.current.end = performance.now(); };
     oc.addEventListener('start', s); oc.addEventListener('end', e);
-    return () => { oc.removeEventListener('start', s); oc.removeEventListener('end', e); engineStop(); VEH.drv = false; OBS[0].on = false; OBS[1].on = false; };
+    return () => { oc.removeEventListener('start', s); oc.removeEventListener('end', e); engineStop(); VEH.drv = false; OBS[0].on = false; OBS[1].on = false; if (PLANE.on) resetPlane(); };
   }, []);
 
   useFrame((st, dtRaw) => {
@@ -131,6 +132,20 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       updateDetails(p.x, p.z, performance.now());
       return;
     } else { group.current.visible = true; }
+    if (PLANE.on) {   /* ── flying the airport plane (components/cityPlane.tsx) ── */
+      group.current.visible = false; moving.current = false; running.current = false; oc.enabled = false;
+      stepPlane(dt, c, p, pushOut);
+      if (PLANE.on) planeCamera(cam, t, dt);
+      GAME.player.x = p.x; GAME.player.z = p.z; OBS[0].on = false; OBS[1].on = VEH.placed;
+      { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = 0; M.drv = false; M.rd = 0; M.pa = ''; M.ps = 0; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
+      hud.current = { x: p.x, z: p.z, fx: Math.sin(PLANE.h), fz: Math.cos(PLANE.h), r: PLANE.h, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: PLANE.speed * 3.6, drv: false, prompt: planePrompt() };
+      sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
+      c.taxi = false; c.horn = false;
+      updateDetails(p.x, p.z, performance.now());
+      if (!PLANE.on) firstCam.current = true;   // just stepped out: the walking camera takes over again
+      return;
+    }
+    if (!oc.enabled) { oc.enabled = true; firstCam.current = true; }
     if (GAME.nav?.follow) { const fq = NET.peers[GAME.nav.follow]; if (fq && fq.init && Math.hypot(fq.x - GAME.nav.x, fq.z - GAME.nav.z) > 5) { GAME.nav.x = fq.x; GAME.nav.z = fq.z; } }   // "where is @player" follows them as they move, instead of pointing at the spot they were standing on
     const stray = !!(GAME.nav && nav.current && Date.now() - nav.current.at > 1500 && Math.hypot(p.x - (nav.current.points[nav.current.i]?.[0] ?? p.x), p.z - (nav.current.points[nav.current.i]?.[1] ?? p.z)) > 22); // wandered off the route: plan a new one
     if (GAME.nav && (!nav.current || stray || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
@@ -245,6 +260,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
       if (taxiI >= 0) ROAM.openSheet(taxiI);
       else if (doorH) { if (doorH.mine) window.dispatchEvent(new CustomEvent('arl-enter-home')); else GAME.notice = `🔒 ${doorH.u}'s house is locked.`; }
+      else if (!VEH.drv && !GAME.ride && planeNear(p.x, p.z)) { boardPlane(p); nearId.current = null; setN(null); setNear(null); }
       else if (VEH.drv) {
         VEH.drv = false; VEH.v = 0; engineStop();
         const lx = -Math.sin(VEH.r), lz = -Math.cos(VEH.r);
@@ -392,7 +408,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={LOW_END ? [1024, 1024] : [2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0004} />
       <primitive object={sunTarget} />
       <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.06, 0]} receiveShadow><planeGeometry args={[700, 700]} /><meshStandardMaterial color="#5d7f55" /></mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.06, 0]} receiveShadow><planeGeometry args={[1900, 1900]} /><meshStandardMaterial color="#5d7f55" /></mesh>
       <Roads />
       <Billboards />
       <TransportVehicles look={look} />
@@ -424,6 +440,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <WorldEventVisuals />
       <Rain />
       <Airport />
+      <Plane />
       <ChopYards />
       <JailCell />
       <group ref={group}>

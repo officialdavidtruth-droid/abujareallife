@@ -12,7 +12,8 @@ import { BUILDS, GAME } from './cityShared';
  * Anything solid (buildings) or a hard landing crashes it; it is towed back to the runway and you are put out beside it.
  *
  * Heading convention matches the player: forward = (sin h, cos h). The model's nose points along local +z.
- * Later steps add: STEP 2 cockpit / outside camera toggle (PLANE.cam), STEP 3 passengers + network sync. */
+ *   V (or the 📷 View button) switches between the OUTSIDE chase camera and the INSIDE cockpit camera.
+ * Later step: STEP 3 passengers + network sync. */
 
 export const PLANE = {
   x: AIR.x - 7, y: 0, z: AIR.z, h: Math.PI / 2, pitch: 0, roll: 0,
@@ -20,7 +21,7 @@ export const PLANE = {
   on: false,            // I am the pilot
   air: false,           // wheels are off the ground
   idleAt: 0,            // when the last pilot got out (for the auto-tow)
-  cam: 'out' as 'out' | 'in',   // STEP 2 will use this
+  cam: 'out' as 'out' | 'in',   // 'out' = chase camera behind the plane, 'in' = from the cockpit
   obj: null as THREE.Group | null,
 };
 
@@ -34,6 +35,14 @@ const BOARD_R = 10;     // how close you must stand to board
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
+const ping = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('arl-plane')); };
+export function togglePlaneView() {
+  if (!PLANE.on) return;
+  PLANE.cam = PLANE.cam === 'out' ? 'in' : 'out'; camInit = false; applyView();
+  GAME.notice = PLANE.cam === 'in' ? '👁️ Cockpit view (V to switch back)' : '🎥 Outside view (V for cockpit)';
+  ping();
+}
+
 export const planeNear = (x: number, z: number) => !PLANE.on && !PLANE.air && Math.hypot(x - PLANE.x, z - PLANE.z) < BOARD_R;
 
 function sync() {
@@ -45,15 +54,15 @@ function sync() {
 
 export function resetPlane() {
   PLANE.x = HOME.x; PLANE.z = HOME.z; PLANE.h = HOME.h; PLANE.y = 0; PLANE.pitch = 0; PLANE.roll = 0;
-  PLANE.speed = 0; PLANE.throttle = 0; PLANE.air = false; PLANE.on = false; sync();
+  PLANE.speed = 0; PLANE.throttle = 0; PLANE.air = false; PLANE.on = false; PLANE.cam = 'out'; applyView(); sync(); ping();
 }
 
 type P = { x: number; z: number; y: number; vy: number; r: number };
 
 export function boardPlane(p: P) {
-  PLANE.on = true; PLANE.throttle = 0; camInit = false;
+  PLANE.on = true; PLANE.throttle = 0; PLANE.cam = 'out'; camInit = false; applyView(); ping();
   p.x = PLANE.x; p.z = PLANE.z; p.y = 0; p.vy = 0;
-  GAME.notice = '✈️ In the cockpit: hold Shift for throttle, pull back (S) after ~100 km/h to take off. E to get out on the ground.';
+  GAME.notice = '✈️ In the cockpit: hold Shift for throttle, pull back (S) after ~100 km/h to take off. V switches camera. E to get out on the ground.';
 }
 
 function crash(p: P, why: string) {
@@ -82,7 +91,7 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
     if (PLANE.air) GAME.notice = '✈️ You are still in the air: land first.';
     else if (PLANE.speed > 8) GAME.notice = '✈️ Slow down first (hold Space to brake), then press E.';
     else {
-      PLANE.on = false; PLANE.speed = 0; PLANE.throttle = 0; PLANE.idleAt = Date.now();
+      PLANE.on = false; PLANE.speed = 0; PLANE.throttle = 0; PLANE.idleAt = Date.now(); PLANE.cam = 'out'; applyView(); ping();
       const lx = Math.cos(PLANE.h), lz = -Math.sin(PLANE.h);   // the plane's left-hand side
       p.x = PLANE.x + lx * 6; p.z = PLANE.z + lz * 6; pushOut(p); p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;
       sync();
@@ -147,13 +156,24 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
 }
 
 export const planePrompt = () => PLANE.on
-  ? `✈ ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · throttle ${Math.round(PLANE.throttle * 100)}% · Shift +  Space − · W/S pitch · A/D bank${PLANE.air ? '' : ' · E out'}`
+  ? `✈ ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · throttle ${Math.round(PLANE.throttle * 100)}% · Shift +  Space − · W/S pitch · A/D bank · V view${PLANE.air ? '' : ' · E out'}`
   : '';
 
-/* ───────────── chase camera (outside view). STEP 2 adds the cockpit view next to it. ───────────── */
-const camP = new THREE.Vector3(), look = new THREE.Vector3();
+/* ───────────── cameras: outside (chase) and inside (cockpit) ───────────── */
+const camP = new THREE.Vector3(), look = new THREE.Vector3(), eye = new THREE.Vector3(), flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), tq = new THREE.Quaternion();
 let camInit = false;
+const EYE = new THREE.Vector3(0, 2.72, 4.7);   // the pilot's head, in the plane's own coordinates
+
 export function planeCamera(cam: THREE.Camera, target: THREE.Vector3, dt: number) {
+  if (PLANE.cam === 'in' && PLANE.obj) {
+    /* cockpit: the camera is glued to the pilot's head and banks / pitches with the plane, so the horizon tilts like the real thing */
+    PLANE.obj.updateMatrixWorld(true);
+    eye.copy(EYE); PLANE.obj.localToWorld(eye);
+    cam.position.copy(eye);
+    PLANE.obj.getWorldQuaternion(tq); cam.quaternion.copy(tq).multiply(flip);   // the camera looks down -z, the nose points down +z
+    look.set(0, 0, 10); PLANE.obj.localToWorld(look); target.copy(look);
+    return;
+  }
   const sh = Math.sin(PLANE.h), ch = Math.cos(PLANE.h);
   const back = 19 + PLANE.speed * .05, up = 6 + Math.max(0, PLANE.pitch) * 6;
   const wx = PLANE.x - sh * back, wy = Math.max(PLANE.y + up, 2.2), wz = PLANE.z - ch * back;
@@ -163,13 +183,31 @@ export function planeCamera(cam: THREE.Camera, target: THREE.Vector3, dt: number
   cam.position.copy(camP); cam.lookAt(look); target.copy(look);
 }
 
+/* Which parts are drawn: from the cockpit the hull is hidden (you would see its inside) and a dashboard + window frame is shown instead. */
+const VIEW = { hull: null as THREE.Object3D | null, cockpit: null as THREE.Object3D | null };
+function applyView() {
+  const inside = PLANE.cam === 'in' && PLANE.on;
+  if (VIEW.hull) VIEW.hull.visible = !inside;
+  if (VIEW.cockpit) VIEW.cockpit.visible = inside;
+}
+
 /* ───────────── the plane itself ───────────── */
 const W = '#f4f6f8', G = '#1d8a4a', D = '#1b2a35', GR = '#8b949c';
 const M = (c: string, m = .2, r = .55) => <meshStandardMaterial color={c} metalness={m} roughness={r} />;
 
 export function Plane() {
   const g = useRef<THREE.Group>(null!);
-  useEffect(() => { PLANE.obj = g.current; sync(); return () => { PLANE.obj = null; }; }, []);
+  const hull = useRef<THREE.Group>(null!), cockpit = useRef<THREE.Group>(null!);
+  useEffect(() => { PLANE.obj = g.current; VIEW.hull = hull.current; VIEW.cockpit = cockpit.current; applyView(); sync(); return () => { PLANE.obj = null; VIEW.hull = null; VIEW.cockpit = null; }; }, []);
+  /* V switches the view while flying */
+  useEffect(() => {
+    const kd = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyV' || e.repeat || !PLANE.on) return;
+      const t = e.target as HTMLElement | null; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      togglePlaneView();
+    };
+    window.addEventListener('keydown', kd); return () => window.removeEventListener('keydown', kd);
+  }, []);
   /* a plane left on the grass or in the city is towed back to the runway after 90 s (nobody flying it) */
   useEffect(() => {
     const i = setInterval(() => {
@@ -180,6 +218,7 @@ export function Plane() {
   }, []);
   return <group ref={g}>
     <group position={[0, 2.05, 0]}>
+      <group ref={hull}>
       {/* fuselage + nose + tail */}
       <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[1.15, 1.15, 11, 20]} />{M(W)}</mesh>
       <mesh position={[0, 0, 7.5]} rotation={[Math.PI / 2, 0, 0]} castShadow><coneGeometry args={[1.15, 3, 20]} />{M(W)}</mesh>
@@ -188,6 +227,17 @@ export function Plane() {
       <mesh position={[0, -.52, 0]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[1.17, 1.17, 11, 20, 1, false, Math.PI * .72, Math.PI * .56]} />{M(G)}</mesh>
       {[-1, 1].map(sx => <mesh key={sx} position={[sx * 1.1, .35, 0]}><boxGeometry args={[.06, .34, 7.5]} />{M(D, .6, .2)}</mesh>)}
       <mesh position={[0, .7, 6.35]} rotation={[-.45, 0, 0]}><boxGeometry args={[1.7, .5, 1.2]} />{M(D, .7, .15)}</mesh>
+      </group>
+      {/* cockpit interior: only drawn in the inside view */}
+      <group ref={cockpit} visible={false}>
+        <mesh position={[0, -.12, 3.55]}><boxGeometry args={[2.3, .55, .9]} />{M('#23282d', .1, .8)}</mesh>
+        <mesh position={[0, .22, 3.55]}><boxGeometry args={[1.5, .12, .5]} />{M('#0d1114', .2, .6)}</mesh>
+        {[-.5, 0, .5].map(x => <mesh key={x} position={[x, .3, 3.3]} rotation={[-.9, 0, 0]}><boxGeometry args={[.32, .22, .02]} /><meshBasicMaterial color={x === 0 ? '#38d27a' : '#3aa0ff'} /></mesh>)}
+        <mesh position={[0, -.05, 2.9]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[.22, .035, 8, 18]} />{M('#111', .2, .7)}</mesh>
+        <mesh position={[0, -.3, 2.9]}><cylinderGeometry args={[.04, .04, .5, 8]} />{M('#111', .2, .7)}</mesh>
+        {[-1, 1].map(sx => <mesh key={sx} position={[sx * 1.02, .55, 3.1]} rotation={[0, 0, sx * -.12]}><boxGeometry args={[.1, 1.5, .14]} />{M('#23282d', .1, .8)}</mesh>)}
+        <mesh position={[0, 1.18, 3.2]}><boxGeometry args={[2.1, .12, .8]} />{M('#23282d', .1, .8)}</mesh>
+      </group>
       {/* wings, tailplane, fin */}
       <mesh position={[0, -.35, .6]} castShadow><boxGeometry args={[14, .2, 2.8]} />{M(W)}</mesh>
       {[-1, 1].map(sx => <mesh key={sx} position={[sx * 7, -.2, .6]}><boxGeometry args={[.25, .9, 1.6]} />{M(G)}</mesh>)}

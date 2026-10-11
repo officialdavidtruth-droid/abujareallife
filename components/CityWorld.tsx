@@ -38,7 +38,7 @@ import { StreetNpcScene } from './StreetNpcs';
 import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
 import PaxUi from './PaxUi';
 import { PAX, stepPax } from './cityPax';
-import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane } from './cityPlane';
+import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane, togglePlaneView } from './cityPlane';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
 export { POLICE_CARS } from './CityPolice';
@@ -490,6 +490,9 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const ctl = useRef<Ctl>({ shoot: false, joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: '' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
+  /* plane buttons for phones: "Plane" (board / get out) appears next to the plane or while flying, "View" switches cockpit / outside */
+  const [pl, setPl] = useState<'' | 'near' | 'fly'>('');
+  useEffect(() => { const f = () => { const v = PLANE.on ? 'fly' : planeNear(GAME.player.x, GAME.player.z) ? 'near' : ''; setPl(o => o === v ? o : v); }; f(); const i = setInterval(f, 300); window.addEventListener('arl-plane', f); return () => { clearInterval(i); window.removeEventListener('arl-plane', f); }; }, []);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
   useEffect(() => { // killed: climb out of any vehicle, drop the waypoint and the arrival spot; Sim.tsx puts you back in your house
     const f = () => { VEH.drv = false; VEH.v = 0; GAME.nav = null; GAME.tp = null; }; window.addEventListener('arl-respawn-home', f); return () => window.removeEventListener('arl-respawn-home', f);
@@ -558,6 +561,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
+        {pl && <HoldBtn cls="cwTouch" label={pl === 'fly' ? 'Exit plane' : 'Board plane'} icon="✈️" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+        {pl === 'fly' && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />

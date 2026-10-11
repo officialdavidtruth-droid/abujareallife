@@ -167,7 +167,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         fight(tgt);
       }
     }
-    if (down) { ix = 0; iy = 0; wantJump = false; wantRun = false; c.interact = false; c.jump = false; }
+    if (down) { ix = 0; iy = 0; wantJump = false; wantRun = false; c.interact = false; c.jump = false; c.taxi = false; }
     const m = Math.hypot(ix, iy); if (m > 1) { ix /= m; iy /= m; }
     const mag = Math.min(m, 1);
     let snapCam = false;
@@ -199,9 +199,20 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── T / Taxi button: stopped taxi nearby → destination menu; otherwise hail the closest taxi or bike taxi ── */
     if (c.taxi) {
       c.taxi = false;
-      if (!VEH.drv && !GAME.ride && !GAME.jailed && !CINE.on) {
-        let bi = -1, bd = 1e9;
-        ROAM.cars.forEach((e, i) => { const tp = TPOS[i]; if (!tp || e.c.busy || !isHail(e.c.role)) return; const d = Math.hypot(p.x - tp.x, p.z - tp.z); if (e.c.hail === 2 && d < 18) { if (bd > -1) { bd = -1; bi = i; } } else if (e.c.hail !== 1 && bd >= 0 && d < bd) { bd = d; bi = i; } });
+      // every blocked case now tells the player why (before, the button silently did nothing)
+      if (VEH.drv) GAME.notice = '🚕 Get out of your car first (Car button), then call a taxi.';
+      else if (GAME.ride || CINE.on) GAME.notice = '🚕 You are already on a ride.';
+      else if (GAME.jailed) GAME.notice = '🚫 You cannot call a taxi from jail.';
+      else {
+        // a stopped vehicle within reach wins; otherwise the nearest one, but the Taxi button prefers real taxis over bikes and buses
+        let bi = -1, bs = 1e9;
+        ROAM.cars.forEach((e, i) => {
+          const tp = TPOS[i]; if (!tp || e.c.busy || !isHail(e.c.role)) return;
+          const d = Math.hypot(p.x - tp.x, p.z - tp.z);
+          let sc: number;
+          if (e.c.hail === 2 && d < 18) sc = -1; else if (e.c.hail === 1) return; else sc = d + (e.c.role === 'taxi' ? 0 : e.c.role === 'bike' ? 25 : 60);
+          if (sc < bs) { bs = sc; bi = i; }
+        });
         if (bi < 0) GAME.notice = ROAM.cars.some(e => e.c.hail === 1) ? '🚕 Your taxi is still pulling over...' : '🚕 No taxi, bike or bus nearby: wait for one to drive past.';
         else if (ROAM.cars[bi].c.hail === 2) ROAM.openSheet(bi);
         else ROAM.tap(bi);

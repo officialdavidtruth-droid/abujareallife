@@ -15,6 +15,7 @@ import { BOLT_LINES, DRV_SHOUT, PEDSTATE, PEDVIEW, PRI, RESIST_LINES, SHOUTS, as
 import { GRID, WS, inJunction, curbSpot, halfW, signalised } from '../lib/roadRoute';
 import { GAME, PEDPOS, TPOS, VEH, WSCALE, hs, lightState, pick } from './cityShared';
 import { JACK, nextCenter } from './CityTraffic';
+import { PAX, guestsOf } from './cityPax';
 import { BikeBody, BusBody, CarModel, DrvLook, PoliceBody, TaxiBody, pkit } from './CityCars';
 import { CAR_R } from './CityWeather';
 import { CAR_POSTS } from './CityCollision';
@@ -49,10 +50,10 @@ export const BODY_R = .3, PED_PUSH = .6;
 export type Spot = { x: number; z: number };
 
 /** every other real player on foot (those driving are inside their car) */
-export const peersOnFoot = () => { const o: Spot[] = []; for (const q of Object.values(NET.peers)) if (q.init && !q.drv) o.push({ x: q.x, z: q.z }); return o; };
+export const peersOnFoot = () => { const o: Spot[] = []; for (const q of Object.values(NET.peers)) if (q.init && !q.drv && !q.rd && !q.pa) o.push({ x: q.x, z: q.z }); return o; };   // not someone sitting in a vehicle
 
 /** every other real player's car (parked or driven), except one that is being carjacked right now */
-export const remoteCars = () => { const o: { x: number; z: number; r: number }[] = []; for (const [n, q] of Object.entries(NET.peers)) if (q.init && (q.cp || q.drv) && !JACK.hides(n)) o.push({ x: q.cx, z: q.cz, r: q.cr }); return o; };
+export const remoteCars = () => { const o: { x: number; z: number; r: number }[] = []; for (const [n, q] of Object.entries(NET.peers)) { if (!q.init) continue; if ((q.cp || q.drv) && !JACK.hides(n)) o.push({ x: q.cx, z: q.cz, r: q.cr }); if (q.rd === 1 || q.rd === 3) o.push({ x: q.x, z: q.z, r: q.r }); } return o; };   // a taxi / bus another player rides in is solid too
 
 /** push p out of a circle at (x, z) with the given reach. true if it moved. */
 export function pushFrom(p: Spot, x: number, z: number, reach: number) {
@@ -259,10 +260,13 @@ export function PlayerCar({ carRef, tagRef, spotRef, model, look }: { carRef: Re
   // the seated figure is YOU (your avatar is hidden while you drive): it wears your look, and it is only there while you are at the wheel. It was always there before, so a car you had just jacked still showed its old driver.
   const drvObj = useRef<THREE.Object3D | null>(null), setDrv = useMemo(() => (g: THREE.Object3D | null) => { drvObj.current = g; }, []);
   const dl = useMemo<DrvLook>(() => ({ skin: look.skin, outfit: look.outfit, hairColor: look.hairColor }), [look.skin, look.outfit, look.hairColor]);
-  useFrame(() => { if (drvObj.current) drvObj.current.visible = VEH.drv; }); const [, bump] = useState(0); useEffect(() => { JACK.refresh = () => bump(v => v + 1); return () => { JACK.refresh = () => {}; }; }, []); const stolen = JACK.on; const [style,setStyle]=useState<any>(null); useEffect(()=>{fetch('/api/vehicles').then(r=>r.ok?r.json():null).then(d=>setStyle(d?.vehicles?.[0]||null)).catch(()=>{});},[model]);
+  useFrame(() => { if (drvObj.current) drvObj.current.visible = VEH.drv; }); const [, bump] = useState(0); useEffect(() => { JACK.refresh = () => bump(v => v + 1); return () => { JACK.refresh = () => {}; }; }, []);
+  useEffect(() => { const f = () => bump(v => v + 1); window.addEventListener('arl-pax', f); return () => window.removeEventListener('arl-pax', f); }, []);   // a friend got in or out
+  const guests = guestsOf(PAX.me).map(g => ({ look: g.look, seed: g.name, seat: g.seat }));
+   const stolen = JACK.on; const [style,setStyle]=useState<any>(null); useEffect(()=>{fetch('/api/vehicles').then(r=>r.ok?r.json():null).then(d=>setStyle(d?.vehicles?.[0]||null)).catch(()=>{});},[model]);
   useLayoutEffect(() => { spotRef.current.target = tgt; }, [tgt, spotRef]);
   return <group ref={carRef} visible={false}>
-    {stolen && JACK.sRole === 'bus' ? <BusBody driverRef={setDrv} look={dl} /> : stolen && JACK.sRole === 'bike' ? <BikeBody scale={.95} rider driverRef={setDrv} riderLook={look} /> : stolen && JACK.sRole === 'taxi' ? <TaxiBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : stolen && JACK.sRole === 'police' ? <PoliceBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : <CarModel kit={kit} color={stolen ? JACK.color : (vehicleByName(model).color || CAR_COLOR)} kind={0} driverRef={setDrv} look={dl} model={stolen ? JACK.model : model} style={stolen ? undefined : (style||undefined)} />}
+    {stolen && JACK.sRole === 'bus' ? <BusBody driverRef={setDrv} look={dl} /> : stolen && JACK.sRole === 'bike' ? <BikeBody scale={.95} rider driverRef={setDrv} riderLook={look} /> : stolen && JACK.sRole === 'taxi' ? <TaxiBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : stolen && JACK.sRole === 'police' ? <PoliceBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : <CarModel kit={kit} color={stolen ? JACK.color : (vehicleByName(model).color || CAR_COLOR)} kind={0} driverRef={setDrv} look={dl} model={stolen ? JACK.model : model} style={stolen ? undefined : (style||undefined)} pax={guests} />}
     <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
     <primitive object={tgt} position={[16, .2, 0]} />
     <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>

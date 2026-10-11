@@ -51,7 +51,11 @@ export const driverStyle = (seed: string, shirt?: string) => { const h = drvHash
 
 export type DrvLook = { skin?: string; outfit?: string; hairColor?: string };
 
-export function CarInterior({ seed, shirt, suv, driverRef, look }: { seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Object3D | null) => void; look?: DrvLook }) {
+/** Passengers sitting in a car: where each seat is (x forward, z sideways; the driver is at z = -.4). 0 = front passenger, 1 / 2 = rear left / right. */
+export const PAX_AT: [number, number][] = [[0, .4], [-.62, -.4], [-.62, .4]];
+export type PaxFig = { look?: DrvLook; seed: string; seat: number };
+
+export function CarInterior({ seed, shirt, suv, driverRef, look, pax }: { seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Object3D | null) => void; look?: DrvLook; pax?: PaxFig[] }) {
   const st = driverStyle(seed, shirt), skin = look?.skin || st.skin, top = look?.outfit || st.top, hair = look?.hairColor || st.hair, seatC = '#2a2d31', dash = '#15181b';
   const w = suv ? 1.34 : 1.26;
   return <group>
@@ -68,10 +72,15 @@ export function CarInterior({ seed, shirt, suv, driverRef, look }: { seed: strin
       {[-.15, .15].map(z => <mesh key={z} position={[0, 1.04, z]} rotation-z={.12} material={drvMat(top)}><boxGeometry args={[.56, .07, .07]} /></mesh>)}
       <group position={[.3, 1.02, 0]} rotation-z={.65}><mesh rotation-y={Math.PI / 2} material={drvMat('#0e0f11', .5, .3)}><torusGeometry args={[.13, .014, 8, 18]} /></mesh></group>
     </group>
+    {pax && pax.map(px => { const ps = driverStyle(px.seed), at = PAX_AT[px.seat] || PAX_AT[0]; return <group key={px.seed + px.seat} position={[at[0], 0, at[1]]}>
+      <mesh position={[-.3, 1.06, 0]} material={drvMat(px.look?.outfit || ps.top)}><boxGeometry args={[.24, .32, .36]} /></mesh>
+      <mesh position={[-.27, 1.27, 0]} material={drvMat(px.look?.skin || ps.skin, .6)}><sphereGeometry args={[.095, 14, 12]} /></mesh>
+      <mesh position={[-.28, 1.29, 0]} material={drvMat(px.look?.hairColor || ps.hair, .9)}><sphereGeometry args={[.1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 1.9]} /></mesh>
+    </group>; })}
   </group>;
 }
 
-export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look }: { kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
+export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax }: { pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
@@ -79,7 +88,7 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
   const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims==='sport' ? '#d8dde3' : style?.rims==='black' ? '#111' : '#141619';
   return <group scale={sc}>
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
-    {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} look={look} />}
+    {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} look={look} pax={pax} />}
     {/* driver-side door: hinged at the front edge, swings outward. Closed it is a normal door; open it shows a recessed door well, an inner trim panel and an empty window frame */}
     <mesh position={[.05, .58, -.936]} material={drvMat('#17191c', .9)}><boxGeometry args={[1.0, .4, .02]} /></mesh>
     <group ref={doorRef} position={[.55, 0, -.95]}>
@@ -152,9 +161,9 @@ export function BusBody({ doorRef, driverRef, glassRef, look }: BodyRefs) { // f
 
 export type BodyRefs = { doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void; look?: DrvLook };
 
-export function TaxiBody({ kit, refs }: { kit: Kit; driver?: boolean; refs?: BodyRefs }) {
+export function TaxiBody({ kit, refs, pax }: { kit: Kit; driver?: boolean; refs?: BodyRefs; pax?: PaxFig[] }) {
   return <group>
-    <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" shirt="#d99a42" {...refs} />
+    <CarModel kit={kit} color="#e5b72f" kind={2} model="toyota-corolla-2024" shirt="#d99a42" pax={pax} {...refs} />
     <group position={[-.05, 1.56, 0]}> {/* roof sign: real 3D text on both sides, so no floating label to clutter the view */}
       <mesh><boxGeometry args={[.9, .2, .5]} /><meshStandardMaterial color="#111" /></mesh>
       {[1, -1].map(sd => <Text key={sd} position={[0, .01, sd * .26]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.15} color="#ffd23f" anchorX="center" anchorY="middle">TAXI</Text>)}

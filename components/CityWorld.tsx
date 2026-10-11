@@ -33,6 +33,8 @@ import { pkit } from './CityCars';
 import { RemotePlayers } from './CityRemote';
 import { StreetNpcScene } from './StreetNpcs';
 import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
+import PaxUi from './PaxUi';
+import { PAX, stepPax } from './cityPax';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
 export { POLICE_CARS } from './CityPolice';
@@ -56,6 +58,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   useEffect(() => { const m = window.matchMedia('(pointer: coarse), (max-width: 700px)'); const sync = () => setTouchDevice(m.matches); sync(); m.addEventListener?.('change', sync); return () => m.removeEventListener?.('change', sync); }, []);
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
   useEffect(() => { sun.current.target = sunTarget; }, [sunTarget]);
+  useEffect(() => { PAX.me = look.name; PAX.look = look; }, [look]);   // ride-along needs my own name and look
   useEffect(() => {
     const stop = (e: Event) => e.preventDefault();
     document.addEventListener('gesturestart', stop as any, { passive: false });
@@ -73,6 +76,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, .05), c = ctl.current, k = c.keys, p = P.current, oc = controls.current;
     if (!oc) return;
+    stepPax(p, dt, pushOut);   // ride-along: a guest follows the host's vehicle; a host drops guests when the ride ends
 
     /* ── time of day (follows the in-game clock) ── */
     const hrs = ((((getMinute ? getMinute() : worldMinute()) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
@@ -113,11 +117,18 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       oc.target.set(ride.x, 1.2, ride.z);
       cam.position.set(ride.x - rx * lookDist, 4.6, ride.z - rz * lookDist);
       GAME.player.x = ride.x; GAME.player.z = ride.z;
+      { // other players keep seeing you: in a taxi / bike / bus the broadcast pose is the VEHICLE's (rd), a ride-along guest shows up inside the host's vehicle (pa)
+        const M = NET.me, vo = !!ride.vOn && !ride.pax;
+        M.x = vo ? ride.vx! : ride.x; M.z = vo ? ride.vz! : ride.z; M.r = vo ? ride.vr! : ride.r; M.mv = 0; M.drv = false;
+        M.rd = vo ? (ride.kind === 'taxi' ? 1 : ride.kind === 'bike' ? 2 : 3) : 0; M.pa = ride.pax ? PAX.host : ''; M.ps = ride.pax ? PAX.seat : 0;
+        M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r;
+      }
       if (c.interact) c.interact = false;
       c.taxi = false;
       updateDetails(p.x, p.z, performance.now());
       return;
     } else { group.current.visible = true; }
+    if (GAME.nav?.follow) { const fq = NET.peers[GAME.nav.follow]; if (fq && fq.init && Math.hypot(fq.x - GAME.nav.x, fq.z - GAME.nav.z) > 5) { GAME.nav.x = fq.x; GAME.nav.z = fq.z; } }   // "where is @player" follows them as they move, instead of pointing at the spot they were standing on
     const stray = !!(GAME.nav && nav.current && Date.now() - nav.current.at > 1500 && Math.hypot(p.x - (nav.current.points[nav.current.i]?.[0] ?? p.x), p.z - (nav.current.points[nav.current.i]?.[1] ?? p.z)) > 22); // wandered off the route: plan a new one
     if (GAME.nav && (!nav.current || stray || nav.current.key !== `${GAME.nav.x}:${GAME.nav.z}`)) {
       const pts = findPath(BL, [p.x, p.z], [GAME.nav.x, GAME.nav.z]);
@@ -351,7 +362,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     oc.update();
     sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
 
-    { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; }
+    { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; M.rd = 0; M.pa = ''; M.ps = 0; }
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
     (window as any).__arlPos = { x: p.x, z: p.z };
@@ -513,6 +524,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
       <FightHud />
+      <PaxUi />
       <MissionsCombat />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMuted(!cfg.muteAll); }}>{cfg.muteAll ? '🔇' : '🔊'}</button>
       <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>

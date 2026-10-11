@@ -20,6 +20,7 @@ import { GAME, INTER, LCOL, OBS, OWN, TPOS, VEH, hs, lightState, pick, smooth } 
 import { BikeBody, BusBody, CarModel, PoliceBody, TaxiBody, carKit, driverStyle, drvMat, pkit } from './CityCars';
 import { BILLBOARDS } from './CityScenery';
 import { BodyDom } from './CityUi';
+import { PAX, guestsOf } from './cityPax';
 
 export function Signals() {
   const poles = useRef<THREE.InstancedMesh>(null!), heads = useRef<THREE.InstancedMesh>(null!), last = useRef('');
@@ -434,13 +435,17 @@ export function dispatchRide(r: { id: string; name: string; x: number; z: number
   return null;
 }
 
-export function TransportSheet({ kind, manifest, onPick, onClose }: { kind: 'taxi' | 'bike' | 'bus'; manifest?: BusStop[]; onPick: (d: Dest) => Promise<string | void> | void; onClose: () => void }) {
-  const [busy, setBusy] = useState(false), [msg, setMsg] = useState(''), [fare, setFare] = useState<number | null>(null);
+export function TransportSheet({ kind, manifest, onPick, onClose }: { kind: 'taxi' | 'bike' | 'bus'; manifest?: BusStop[]; onPick: (d: Dest, mate?: string) => Promise<string | void> | void; onClose: () => void }) {
+  const [busy, setBusy] = useState(false), [msg, setMsg] = useState(''), [fare, setFare] = useState<number | null>(null), [mate, setMate] = useState('');
+  // other real players: pick one as the destination ("take me to @friend": resolved to where they are when you tap it), or bring a nearby one along in the taxi
+  const around = useMemo(() => Object.entries(NET.peers).filter(([, q]) => q.init).map(([n, q]) => ({ n, q, d: Math.hypot(q.x - GAME.player.x, q.z - GAME.player.z) })).sort((a, b) => a.d - b.d), []);
+  const players = useMemo<Dest[]>(() => around.slice(0, 8).map(o => ({ id: 'player:' + o.n, name: '@' + o.n, type: 'Player', district: `${Math.round(o.d)} m away`, x: o.q.x, z: o.q.z })), [around]);
+  const nearby = useMemo(() => around.filter(o => o.d < 30 && !o.q.drv && !o.q.rd && !o.q.pa).slice(0, 4), [around]);
   const riders = kind === 'bus' ? 1 + (manifest || []).reduce((a, m) => a + m.n, 0) : 1;
   useEffect(() => { fetch(`/api/transport?riders=${riders}`).then(r => r.json()).then(d => { const f = d?.fares?.[kind]; if (typeof f === 'number') setFare(f); }).catch(() => {}); }, [kind, riders]);
   const pick = async (d: Dest) => {
     if (busy) return; setBusy(true); setMsg('');
-    try { const m = await onPick(d); if (m) { setMsg(m); setBusy(false); } } catch { setMsg('Something went wrong. Try again.'); setBusy(false); }
+    try { const m = await onPick(d, kind === 'taxi' ? mate : ''); if (m) { setMsg(m); setBusy(false); } } catch { setMsg('Something went wrong. Try again.'); setBusy(false); }
   };
   return createPortal(<div className="trSheet">
     <button className="trX" aria-label="Close" onClick={onClose}>✕</button>
@@ -451,7 +456,8 @@ export function TransportSheet({ kind, manifest, onPick, onClose }: { kind: 'tax
         : <p>Where to? An NPC driver takes you there along the road.{fare !== null ? ` Fare: ₦${fare.toLocaleString()}` : ''}</p>}
       {kind === 'bus' && manifest && manifest.length > 0 && <p>🧍 Stops on this bus: {manifest.map(m => m.name).join(' · ')}</p>}
       {msg && <p style={{ background: '#ffd9d4', color: '#7a1608', fontWeight: 800 }}>{msg}</p>}
-      <DestPicker disabled={busy} onPick={pick} />
+      {kind === 'taxi' && nearby.length > 0 && <div className="trMates"><small>👫 Bring someone along (they have to accept):</small><div>{nearby.map(o => <button key={o.n} className={mate === o.n ? 'on' : ''} onClick={() => setMate(m => (m === o.n ? '' : o.n))}>{mate === o.n ? '✓ ' : ''}@{o.n}</button>)}</div></div>}
+      <DestPicker disabled={busy} extra={players} onPick={pick} />
     </div>
   </div>, document.body);
 }
@@ -563,6 +569,7 @@ export function TransportVehicles({ look }: { look: Look }) {
       if (busD.current) { const B = busD.current; B.visible = !!cn.bus && cn.ang > .01; B.position.set(cn.car.x, 0, cn.car.z); B.rotation.y = cn.car.r; busW.current.position.set(1.7, 1.15, cn.side * 1.19); busP.current.position.set(1.7 - Math.min(1, cn.ang / OPEN) * 1.0, 0, cn.side * 1.24); }   // bus door slides back, showing the doorway
       if (paxRef.current) paxRef.current.visible = cn.ph === 'open';   // you stay in your seat until you step out
       ride.x = cn.ax; ride.z = cn.az; ride.r = cn.car.r; GAME.player.x = cn.ax; GAME.player.z = cn.az;
+      ride.vOn = cn.ph === 'open'; ride.exiting = cn.ph === 'open' || cn.ph === 'exit' || cn.ph === 'off'; ride.vx = cn.car.x; ride.vz = cn.car.z; ride.vr = cn.car.r;   // other players see the vehicle only while you are still sitting in it; guests step out as soon as the door opens
       if (cn.ph === 'walk' || cn.ph === 'enter' || cn.ph === 'close') g.visible = false; else { g.visible = true; g.position.set(cn.car.x, 0, cn.car.z); g.rotation.y = cn.car.r; }
       return;
     }
@@ -573,7 +580,7 @@ export function TransportVehicles({ look }: { look: Look }) {
     const inJ = EXIT.req && inJunction(r.x, r.z);   // asked to get off: keep rolling until clear of the junction, then stop
     stepRide(r, rt, Math.min(dtRaw, .05), { vmax: EXIT.req && !inJ ? 0 : ride.kind === 'taxi' ? 11 : ride.kind === 'bus' ? 8.5 : 7.5, t: st.clock.elapsedTime, light: lightState, cars: TPOS });
     if (!EXIT.req && !r.done && r.wait > 40) { r.s = Math.min(rt.len, r.s + 12); r.wait = 0; GAME.notice = '🚌 Traffic cleared: moving on.'; }   // never stay stuck for good
-    ride.x = r.x; ride.z = r.z; ride.r = r.r;
+    ride.x = r.x; ride.z = r.z; ride.r = r.r; ride.vOn = true; ride.exiting = false; ride.vx = r.x; ride.vz = r.z; ride.vr = r.r;
     g.visible = true; g.position.set(r.x, 0, r.z); g.rotation.y = r.r; if (paxRef.current) paxRef.current.visible = true;   // you can be seen sitting inside
     OBS[2].x = r.x; OBS[2].z = r.z; GAME.player.x = r.x; GAME.player.z = r.z;
     const exitNow = EXIT.req && !r.done && r.v < .3 && !inJ;
@@ -600,6 +607,7 @@ export function TransportVehicles({ look }: { look: Look }) {
         if (rideId.current) { const id = rideId.current; rideId.current = null; fetch('/api/rides', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'complete', id }) }).catch(() => {}); }
         GAME.player.x = drop[0]; GAME.player.z = drop[1]; GAME.tp = { x: drop[0], z: drop[1] };
         GAME.notice = `📍 Arrived at ${name}`;
+        { const fo = followRef.current; followRef.current = ''; const fq = fo ? NET.peers[fo] : null; if (fq && fq.init) GAME.nav = { x: fq.x, z: fq.z, name: `@${fo}`, follow: fo }; }   // the taxi stops at the kerb: a live waypoint walks you the rest of the way to them
         if (dp) { dp.idx = ROAM.rideIdx; ROAM.rideIdx = -1; dep.current = dp; }
         else { g.visible = false; if (ROAM.rideIdx >= 0) { respawnRoamer(ROAM.rideIdx); ROAM.rideIdx = -1; } }
         setTick(v => v + 1);
@@ -609,8 +617,16 @@ export function TransportVehicles({ look }: { look: Look }) {
 
   const refundRide = (id: string) => { fetch('/api/rides', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'refund', id }) }).catch(() => {}); };
   /** `pre` = the id of a ride another player already paid for: nothing is charged and the destination was chosen by them. */
-  const go = async (idx: number, d: Dest, pre?: string): Promise<string | void> => {
+  const followRef = useRef('');   // the player this ride is taking you to: a live waypoint follows them once you get out
+  const go = async (idx: number, d: Dest, pre?: string, mate?: string): Promise<string | void> => {
     const e = ROAM.cars[idx], tp = TPOS[idx]; if (!e || !tp || e.c.hail !== 2 || e.c.busy) { setOpen(null); if (pre) refundRide(pre); return; }
+    let follow = '';
+    if (d.id.startsWith('player:')) follow = d.id.slice(7); else if (d.id === 'dispatch') { const mm = /^Meet @(.+)$/.exec(d.name); if (mm) follow = mm[1]; }
+    if (follow) { // a player is the destination: use where they are RIGHT NOW (the list was a snapshot from when the menu opened)
+      const fq = NET.peers[follow];
+      if (fq && fq.init) d = { ...d, x: fq.x, z: fq.z };
+      else if (d.id.startsWith('player:')) return `@${follow} just left the city.`;
+    }
     const { l, c } = e, kind: 'taxi' | 'bike' | 'bus' = c.role === 'bus' ? 'bus' : c.role === 'bike' ? 'bike' : 'taxi';
     const start = { x: tp.x, z: tp.z, axis: l.axis, road: l.road, along: c.s, h: l.dir };
     const curbFor = kind === 'bus' ? CURB_BUS : kind === 'bike' ? CURB : CURB_CAR, direct = planRide(start, [d.x, d.z], curbFor);
@@ -639,7 +655,8 @@ export function TransportVehicles({ look }: { look: Look }) {
     cine.current = { ph: 'walk', t: 0, side, bike, bus, front, ang: 0, car, ax: p0.x, az: p0.z, yaw: Math.atan2(tp.x - p0.x, tp.z - p0.z), walk: true, fin: () => { // door shut, passenger inside: off we go
       cine.current = null; CINE.on = false; walking.current = false; actor.current.visible = false; doorG.current.visible = false;
       route.current = rt; rs.current = newRide(rt, l.rot); c.busy = true; c.hail = 0; c.stopping = false; ROAM.rideIdx = idx;
-      busTrip.current = stops ? { stops, k: firstK, dwell: -1 } : null; rideId.current = pre || null;
+      busTrip.current = stops ? { stops, k: firstK, dwell: -1 } : null; rideId.current = pre || null; followRef.current = follow;
+      if (mate && kind === 'taxi') setTimeout(() => window.dispatchEvent(new CustomEvent('arl-seat-start', { detail: mate })), 700);   // the taxi has set off: invite the person you brought along
       GAME.notice = kind === 'bus' ? `🚌 Bus to ${d.name}: ${stops && stops.length > 1 ? `${stops.length - 1} stop${stops.length === 2 ? '' : 's'} on the way` : 'no stops on the way'}` : `${kind === 'taxi' ? '🚕 Your driver' : '🚲 Your rider'} is taking you to ${d.name}`; setTick(v => v + 1);
     } };
     GAME.notice = kind === 'bus' ? '🚌 Getting on...' : kind === 'taxi' ? '🚕 Getting in...' : '🚲 Hopping on...';
@@ -647,6 +664,7 @@ export function TransportVehicles({ look }: { look: Look }) {
   };
   // a ride another player ordered for you has pulled up: climb in and go, no menu, no payment
   useEffect(() => { ROAM.autoGo = (i: number) => { const r = DISPATCH.ride; if (!r || DISPATCH.idx !== i) return; if (VEH.drv || GAME.ride || GAME.jailed) { refundRide(r.id); const rc = ROAM.cars[i]; if (rc) releaseRoamer(rc.c); DISPATCH.idx = -1; DISPATCH.ride = null; GAME.notice = 'Ride cancelled: you were busy. The fare was returned.'; return; } go(i, { id: 'dispatch', name: r.name, type: 'Meeting point', district: '', x: r.x, z: r.z }, r.id); }; return () => { ROAM.autoGo = () => {}; }; });
+  useEffect(() => { const f = () => setTick(v => v + 1); window.addEventListener('arl-pax', f); return () => window.removeEventListener('arl-pax', f); }, []);   // a friend got in or out of your taxi
   const openKind: 'taxi' | 'bike' | 'bus' = open !== null ? (ROAM.cars[open]?.c.role === 'bike' ? 'bike' : ROAM.cars[open]?.c.role === 'bus' ? 'bus' : 'taxi') : 'taxi';
   return <>
     <group ref={actor} visible={false}><Human look={look} getState={() => (walking.current ? 'walk' : 'idle')} getSpeed={() => 1.9} /></group>
@@ -661,9 +679,10 @@ export function TransportVehicles({ look }: { look: Look }) {
     </group>
     {(() => { const dk = GAME.ride?.kind ?? lastKind.current, sp = seat.current; return <group ref={activeRef} visible={false}>{dk === 'bike' ? <BikeBody scale={1} rider /> : dk === 'bus' ? <BusBody /> : <TaxiBody kit={kit} driver />}
       <group ref={paxRef} visible={false} scale={dk === 'taxi' ? [.9, 1, .98] : [1, 1, 1]}><Passenger look={look} pos={dk === 'bus' ? [.9, 1.85, sp.side * .55] : dk === 'bike' ? [-.55, .75, 0] : sp.front ? [-.3, .92, .4] : [-.95, .92, sp.side * .4]} /></group>
+      {dk === 'taxi' && guestsOf(PAX.me).map(gst => <group key={gst.name} scale={[.9, 1, .98]}><Passenger look={gst.look} pos={sp.front ? [-.95, .92, .4] : [-.95, .92, -sp.side * .4]} /></group>)}
     </group>; })()}
     {canExit && <BodyDom><button className="rideExit" onClick={requestExit} aria-label="Get off">🚪 Get off<small>E</small></button></BodyDom>}
-    {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={openKind} manifest={MANIFEST.get(open)} onPick={d => go(open, d)} onClose={() => setOpen(null)} /></Html>}
+    {open !== null && <Html position={[0, 0, 0]}><TransportSheet kind={openKind} manifest={MANIFEST.get(open)} onPick={(d, mate) => go(open, d, undefined, mate)} onClose={() => setOpen(null)} /></Html>}
     <RuntimeStyle css={`${DEST_PICKER_CSS}.hailTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:5px 12px 4px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;pointer-events:auto;cursor:pointer}.hailTag.go{background:var(--gold,#ffb81c)}\n.trTag{font:400 15px/1 var(--gf,system-ui);color:#fff;background:var(--plum,#261a36);border:3px solid var(--ink,#1a1410);border-radius:999px;padding:4px 11px 3px;white-space:nowrap;box-shadow:0 3px 0 var(--ink,#1a1410);-webkit-text-stroke:3px var(--ink,#1a1410);paint-order:stroke fill;letter-spacing:.03em;transition:opacity .18s;pointer-events:none}.trTag.off{opacity:0}.trTag.near{background:var(--gold,#ffb81c)}
 .rideExit{all:unset;box-sizing:border-box;position:fixed;z-index:61;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));min-height:48px;display:flex;align-items:center;gap:8px;padding:10px 22px;cursor:pointer;background:var(--gold,#ffb81c);color:#fff;border:4px solid var(--ink,#1a1410);border-radius:999px;box-shadow:0 4px 0 var(--ink,#1a1410),0 10px 22px #0008;font:400 18px/1 var(--gf,system-ui);letter-spacing:.04em;-webkit-text-stroke:4px var(--ink,#1a1410);paint-order:stroke fill;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.rideExit small{font-size:12px;padding:3px 7px;border:2px solid var(--ink,#1a1410);border-radius:7px;background:#fff3d6;color:#1a1410;-webkit-text-stroke:0}.rideExit:active{transform:translateX(-50%) translateY(4px);box-shadow:none}@media (hover:none){.rideExit small{display:none}}\n.trSheet{position:fixed;z-index:60;right:calc(12px + env(safe-area-inset-right,0px));top:calc(54px + env(safe-area-inset-top,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(320px,40vw);display:flex;flex-direction:column;overflow:hidden;background:var(--plum,#261a36);color:var(--cream,#fff3d6);border:4px solid var(--ink,#1a1410);border-radius:22px;box-shadow:0 6px 0 var(--ink,#1a1410),0 18px 34px #000a;font-family:var(--gf,system-ui);animation:trIn .24s cubic-bezier(.3,1.4,.5,1)}
 .trSheet h3{flex:none;margin:0;padding:10px 54px 8px 16px;background:var(--gold,#ffb81c);border-bottom:4px solid var(--ink,#1a1410);font-weight:400;font-size:22px;line-height:1.1;letter-spacing:.04em;color:#fff;background-image:repeating-linear-gradient(135deg,#ffffff1c 0 10px,#0000 10px 20px)}.trSheet h3 span{display:block;-webkit-text-stroke:6px var(--ink,#1a1410);paint-order:stroke fill}
@@ -672,6 +691,7 @@ export function TransportVehicles({ look }: { look: Look }) {
 .trBody p{margin:0;padding:7px 12px;background:var(--cream,#fff3d6);color:var(--ink,#1a1410);border:3px solid var(--ink,#1a1410);border-radius:14px;box-shadow:0 3px 0 var(--ink,#1a1410);font-size:13px;line-height:1.28}
 .trBody button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;cursor:pointer;width:100%;padding:8px 9px 8px 12px;background:var(--plum2,#34244a);color:var(--cream,#fff3d6);border:3px solid var(--ink,#1a1410);border-radius:16px;box-shadow:0 4px 0 var(--ink,#1a1410);font-family:var(--gf,system-ui);transition:transform .1s,filter .1s}.trBody button:hover{filter:brightness(1.12)}.trBody button:active{transform:translateY(4px);box-shadow:none}
 .trBody .tx{flex:1;min-width:0}.trBody b{font-weight:400;font-size:16px;letter-spacing:.03em;color:#fff}.trBody em{flex:none;font-style:normal;padding:5px 14px 4px;background:var(--green,#2fc66b);color:#fff;border:3px solid var(--ink,#1a1410);border-radius:12px;box-shadow:0 3px 0 var(--ink,#1a1410),inset 0 3px 0 #ffffff55;font-size:15px;-webkit-text-stroke:4px var(--ink,#1a1410);paint-order:stroke fill}
+\n.trMates{display:flex;flex-direction:column;gap:6px}.trMates small{color:var(--cream,#fff3d6);font-size:12px}.trMates div{display:flex;flex-wrap:wrap;gap:6px}.trBody .trMates button{width:auto;padding:5px 12px;border-radius:999px;font-size:14px;box-shadow:0 3px 0 var(--ink,#1a1410)}.trBody .trMates button.on{background:var(--green,#2fc66b)}
 @keyframes trIn{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}@media (max-width:620px) and (orientation:portrait){.trSheet{left:10px;right:10px;top:auto;width:auto;max-height:46vh}}`} />
   </>;
 }

@@ -303,3 +303,6 @@ CREATE TABLE IF NOT EXISTS "PartyGuest" (
 CREATE UNIQUE INDEX IF NOT EXISTS "PartyGuest_partyId_userId_key" ON "PartyGuest"("partyId","userId");
 CREATE INDEX IF NOT EXISTS "PartyGuest_userId_status_idx" ON "PartyGuest"("userId","status");
 CREATE INDEX IF NOT EXISTS "PartyGuest_partyId_status_idx" ON "PartyGuest"("partyId","status");
+
+-- Session revocation (log out of all devices)
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionVersion" INTEGER NOT NULL DEFAULT 0;

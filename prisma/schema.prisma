@@ -44,6 +44,7 @@ model User {
   username     String     @unique
   usernameKey  String     @unique
   passwordHash String
+  sessionVersion Int      @default(0) // bump to sign the account out of every device
   email        String?    @unique
   emailVerifiedAt DateTime?
   dateOfBirth DateTime?

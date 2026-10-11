@@ -21,20 +21,24 @@ export function serverError(e: unknown) {
   return err('Server error. Please try again.', 500);
 }
 export async function startSession(userId: string) {
-  const token = await new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(userId).setIssuedAt().setExpirationTime('30d').sign(secret());
+  // The token carries the account's session version; bumping it in the database (see revokeAllSessions) kills every token issued before.
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { sessionVersion: true } });
+  const token = await new SignJWT({ sv: u?.sessionVersion ?? 0 }).setProtectedHeader({ alg: 'HS256' }).setSubject(userId).setIssuedAt().setExpirationTime('30d').sign(secret());
   (await cookies()).set(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 60 * 60 * 24 * 30 });
 }
+/** Sign this account out of every device: all tokens issued so far stop working. The caller then clears its own cookie. */
+export async function revokeAllSessions(userId: string) { await prisma.user.update({ where: { id: userId }, data: { sessionVersion: { increment: 1 } } }); }
 export async function endSession() { (await cookies()).delete(COOKIE); }
 const TRANSIENT_DB = new Set(['P1001', 'P1002', 'P1008', 'P1017', 'P2024', 'P2028']);
 export async function currentUser() {
   const t = (await cookies()).get(COOKIE)?.value;
   if (!t) return null;
-  let sub: string | undefined;
-  try { const { payload } = await jwtVerify(t, secret()); sub = payload.sub; } catch { return null; } // a bad or expired token really is "signed out"
+  let sub: string | undefined, sv = 0;
+  try { const { payload } = await jwtVerify(t, secret()); sub = payload.sub; sv = Number(payload.sv) || 0; } catch { return null; } // a bad or expired token really is "signed out"
   if (!sub) return null;
   // A database hiccup is NOT "signed out": retry briefly, then raise the real error instead of pretending the player is logged out.
   for (let i = 0; ; i++) {
-    try { return await prisma.user.findUnique({ where: { id: sub } }); }
+    try { const u = await prisma.user.findUnique({ where: { id: sub } }); return u && (u.sessionVersion ?? 0) === sv ? u : null; } // a token from before a "log out everywhere" is no longer valid
     catch (e) {
       const c = (e as { code?: string })?.code, transient = (!!c && TRANSIENT_DB.has(c)) || /can.t reach|connection pool|timed out|ECONN|terminating connection/i.test(String((e as Error)?.message));
       if (i >= 2 || !transient) throw e;

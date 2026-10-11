@@ -44,6 +44,12 @@ function Switch({ label, icon, on, set }: { label: string; icon: string; on: boo
 function SettingsPanel() {
   const s = useSettings(), [who, setWho] = useState<string | null>(null), [busy, setBusy] = useState(false);
   useEffect(() => { let dead = false; fetch('/api/auth/me', { cache: 'no-store' }).then(r => r.json()).then(d => { if (!dead) setWho(d?.user?.username || null); }).catch(() => {}); return () => { dead = true; }; }, []);
+  const logOutAll = async () => {
+    if (busy || !confirm('Log out of every device? You will need to sign in again everywhere.')) return;
+    setBusy(true);
+    try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) }); } catch { /* still reload below */ }
+    closeSettings(); window.location.reload();
+  };
   const logOut = async () => {
     if (busy || !confirm('Log out of your account?')) return;
     setBusy(true);
@@ -76,6 +82,7 @@ function SettingsPanel() {
         {who && <section><h4>Account</h4>
           <div className="stRow"><span className="stIco">👤</span><span className="stLbl" style={{ width: 'auto', flex: 1 }}>Signed in as <b>{who}</b></span></div>
           <button className="stOut" disabled={busy} onClick={logOut}>🚪 {busy ? 'Logging out…' : 'Log out'}</button>
+          <button className="stOut" disabled={busy} onClick={logOutAll}>🔒 Log out of all devices</button>
         </section>}
       </div>
       <div className="stFoot"><button className="ghost" onClick={() => sfx('success')}>▶ Test sounds</button><button className="ghost" onClick={resetSettings}>↺ Reset</button><button className="done" onClick={closeSettings}>Done</button></div>

@@ -9,8 +9,14 @@ const globalForPrisma = globalThis as unknown as {
 function dbUrl(): string | undefined {
   const u = process.env.DATABASE_URL;
   if (!u || !/pooler\.supabase\.com|pgbouncer=true/.test(u)) return u;
-  const add = [!/connection_limit=/.test(u) && "connection_limit=1", !/pool_timeout=/.test(u) && "pool_timeout=20"].filter(Boolean).join("&");
-  return add ? u + (u.includes("?") ? "&" : "?") + add : u;
+  // Supabase's pooler on port 5432 is SESSION mode: each serverless instance pins a database connection and the pool (about 15) runs out
+  // as soon as a few players are online ("Can't reach database" / "max clients reached"). Port 6543 is TRANSACTION mode, built for serverless.
+  // Same host and credentials, so switch at runtime and tell Prisma it is talking to PgBouncer (no prepared statements).
+  let url = u;
+  if (/pooler\.supabase\.com:5432/.test(url)) url = url.replace('pooler.supabase.com:5432', 'pooler.supabase.com:6543');
+  if (!/pgbouncer=true/.test(url)) url += (url.includes('?') ? '&' : '?') + 'pgbouncer=true';
+  const add = [!/connection_limit=/.test(url) && "connection_limit=1", !/pool_timeout=/.test(url) && "pool_timeout=20"].filter(Boolean).join("&");
+  return add ? url + (url.includes("?") ? "&" : "?") + add : url;
 }
 const url = dbUrl();
 

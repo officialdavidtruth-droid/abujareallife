@@ -113,7 +113,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500); };
   const refresh = useCallback(async () => { const r = await fetch('/api/status'); if (r.ok) { const d = await r.json(); setSt(d); GAME.hasCar = !!d.hasCar; GAME.heat = Number(d.heat) || 0; GAME.drunk = Number(d.drunk) || 0; GAME.high = Number(d.high) || 0; syncDown(Number(d.downLeft) || 0, Number(d.safeLeft) || 0, String(d.downKind || '')); onCash(d.cash); } }, [onCash]);
   useEffect(() => { const f = () => { refresh(); }; window.addEventListener('arl-refresh', f); return () => window.removeEventListener('arl-refresh', f); }, [refresh]);
-  useEffect(() => { refresh(); const a = setInterval(refresh, 5000), b = setInterval(() => { if (GAME.notice) { say(GAME.notice); GAME.notice = ''; } tick(x => x + 1); }, 500); return () => { clearInterval(a); clearInterval(b); }; }, [refresh]);
+  useEffect(() => { refresh(); const a = setInterval(() => { if (!document.hidden) refresh(); }, 5000), b = setInterval(() => { if (GAME.notice) { say(GAME.notice); GAME.notice = ''; } tick(x => x + 1); }, 500); return () => { clearInterval(a); clearInterval(b); }; }, [refresh]);
   // Jail: lock the player inside the real cell, free them at the police station when time is up.
   useEffect(() => {
     const j = !!st?.jailLeft; GAME.jailed = j;

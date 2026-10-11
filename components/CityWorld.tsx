@@ -402,6 +402,29 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       oc.setPolarAngle?.(1.2);
     }
     oc.update();
+    /* ── camera collision: the camera may never sit inside (or behind) a house / building wall ──
+       March from the player out to the camera; at the first solid, bisect back to the last free point and park the camera there.
+       oc.update() re-applies the full orbit distance next frame, so nothing accumulates. Pulls in fast, eases back out slowly. */
+    {
+      const px = t.x, py = t.y, pz = t.z, vx = cam.position.x - px, vy = cam.position.y - py, vz = cam.position.z - pz;
+      const solid = (x: number, y: number, z: number) => {
+        for (const h of HOUSES.list) { const sb = h.solid; if (x > sb.x0 - .5 && x < sb.x1 + .5 && z > sb.z0 - .5 && z < sb.z1 + .5 && y < 8.5) return true; }
+        for (const b of BUILDS) { if (Math.abs(x - b.x) < b.w / 2 + .5 && Math.abs(z - b.z) < b.d / 2 + .5 && y < b.h + .4) return true; }
+        return false;
+      };
+      let want = 1, prev = 0;
+      for (let i = 1; i <= 10; i++) {
+        const m = i / 10;
+        if (solid(px + vx * m, py + vy * m, pz + vz * m)) {
+          let lo = prev, hi = m;
+          for (let j = 0; j < 6; j++) { const mid = (lo + hi) / 2; if (solid(px + vx * mid, py + vy * mid, pz + vz * mid)) hi = mid; else lo = mid; }
+          want = Math.max(.22, lo); break;
+        }
+        prev = m;
+      }
+      camK = want < camK ? want : camK + (want - camK) * (1 - Math.exp(-dt * 3));
+      if (camK < .999) cam.position.set(px + vx * camK, py + vy * camK, pz + vz * camK);
+    }
     sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
 
     { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; M.rd = 0; M.pa = ''; M.ps = 0; }
@@ -498,6 +521,7 @@ const CSS = `
 `;
 
 
+let camK = 1;   // camera collision pull-in factor (1 = full orbit distance)
 export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void; onOpenMap?: () => void }) {
   useState(() => { // stepping out of the house: appear on a sidewalk, somewhere different each time and not on top of another player (building exits set GAME.tp instead)
     if (GAME.tp) { START.x = GAME.tp.x; START.z = GAME.tp.z; START.r = GAME.tp.r ?? 0; GAME.player.x = GAME.tp.x; GAME.player.z = GAME.tp.z; } // arriving from a building / jail / ride: start the camera right there, not at the old default

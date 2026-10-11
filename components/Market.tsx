@@ -3,11 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CATALOG, CATS, isStaple, itemById, type CatId } from '../lib/catalog';
 import { itemSellValue, mallPrice } from '../lib/sell';
 import RuntimeStyle from './RuntimeStyle';
+import FurniturePreview from './FurniturePreview';
 
 type L = { id: string; itemKey: string; name: string; e: string; cat: string; cost: number; qty: number; price: number; seller: string; mine: boolean; soldQty: number; earned: number; at: number };
 type Data = { listings: L[]; mine: L[]; sold: L[]; cash: number; fee: number; bounds: Record<string, { min: number; max: number } | null> };
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 const call = async (body: object) => { const r = await fetch('/api/market', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { ok: r.ok, d: await r.json().catch(() => ({})) as any }; };
+const tokens = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean), hits = (hay: string, q: string) => tokens(q).every(t => hay.includes(t));
+const pic = (key: string, fallback: string) => { const it = itemById(key); return it?.kind && it.col ? <FurniturePreview kind={it.kind} style={it.style} col={it.col} /> : fallback; };
 const ago = (t: number) => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
 
 /* Player marketplace: browse what other players are selling, list your own items, manage your stalls. */
@@ -15,7 +18,7 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
   const [tab, setTab] = useState<'shop' | 'browse' | 'sell' | 'mine'>(seller ? 'browse' : 'shop'), [data, setData] = useState<Data | null>(null), [cat, setCat] = useState(''), [q, setQ] = useState(''), [who, setWho] = useState(seller || '');
   const [inv, setInv] = useState<{ id: string; qty: number }[]>([]), [cashFb, setCashFb] = useState<number | null>(null), [msg, setMsg] = useState(''), [busy, setBusy] = useState(false);
   const [qtys, setQtys] = useState<Record<string, number>>({}), [pick, setPick] = useState(''), [sq, setSq] = useState(1), [sp, setSp] = useState('');
-  const [shopCat, setShopCat] = useState<CatId | ''>(''), [shopQ, setShopQ] = useState(''), [sort, setSort] = useState<'cheap' | 'pricey' | 'az'>('cheap'), [shopQty, setShopQty] = useState<Record<string, number>>({}), [limit, setLimit] = useState(60);
+  const [shopCat, setShopCat] = useState<CatId | ''>(''), [shopSub, setShopSub] = useState(''), [shopCol, setShopCol] = useState(''), [shopQ, setShopQ] = useState(''), [sort, setSort] = useState<'cheap' | 'pricey' | 'az'>('cheap'), [shopQty, setShopQty] = useState<Record<string, number>>({}), [limit, setLimit] = useState(60);
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4000); };
   const load = useCallback(async () => {
     const p = new URLSearchParams(); if (who) p.set('seller', who);
@@ -25,16 +28,20 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
   }, [who, onCash]);
   useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [load]);
 
-  const shown = useMemo(() => (data?.listings || []).filter(l => (!cat || l.cat === cat) && (!q || l.name.toLowerCase().includes(q.toLowerCase()) || l.seller.toLowerCase().includes(q.toLowerCase()))), [data, cat, q]);
+  const shown = useMemo(() => (data?.listings || []).filter(l => (!cat || l.cat === cat) && (!q || hits(l.name.toLowerCase() + ' ' + l.seller.toLowerCase(), q))), [data, cat, q]);
   const sellable = useMemo(() => inv.map(x => ({ ...x, it: itemById(x.id) })).filter(x => x.it && !x.it.use && !isStaple(x.it) && x.qty > 0), [inv]);
   const chosen = sellable.find(x => x.id === pick), range = data?.bounds?.[pick] || (chosen?.it ? { min: Math.max(1, Math.floor(chosen.it.cost * .1)), max: Math.floor(chosen.it.cost * 5) } : null);
   const price = Math.floor(Number(sp) || 0);
   const mallCats = useMemo(() => CATS.filter(c => !isStaple({ cat: c.id }) && c.id !== 'parts'), []);
+  const mallBase = useMemo(() => CATALOG.filter(i => !i.use && !isStaple(i) && i.tag !== 'part' && (!shopCat || i.cat === shopCat)), [shopCat]);
+  const subs = useMemo(() => { const m = new Map<string, number>(); mallBase.forEach(i => i.sub && m.set(i.sub, (m.get(i.sub) || 0) + 1)); return [...m.entries()]; }, [mallBase]);
+  const swatches = useMemo(() => { const m = new Map<string, string>(); mallBase.filter(i => i.sub === shopSub).forEach(i => i.colName && i.col && m.set(i.colName, i.col)); return [...m.entries()]; }, [mallBase, shopSub]);
   const mall = useMemo(() => {
-    const n = shopQ.trim().toLowerCase();
-    return CATALOG.filter(i => !i.use && !isStaple(i) && i.tag !== 'part' && (!shopCat || i.cat === shopCat) && (!n || i.name.toLowerCase().includes(n))).sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? a.cost - b.cost : b.cost - a.cost);
-  }, [shopCat, shopQ, sort]);
-  useEffect(() => setLimit(60), [shopCat, shopQ, sort]);
+    return mallBase.filter(i => (!shopSub || i.sub === shopSub) && (!shopCol || i.colName === shopCol) && (!shopQ.trim() || hits((i.name + ' ' + (i.sub || '')).toLowerCase(), shopQ))).sort((a, b) => sort === 'az' ? a.name.localeCompare(b.name) : sort === 'cheap' ? a.cost - b.cost : b.cost - a.cost);
+  }, [mallBase, shopSub, shopCol, shopQ, sort]);
+  useEffect(() => setLimit(60), [shopCat, shopSub, shopCol, shopQ, sort]);
+  useEffect(() => { setShopSub(''); setShopCol(''); }, [shopCat]);
+  useEffect(() => setShopCol(''), [shopSub]);
   const cash = data?.cash ?? cashFb; // null = not known yet, so never call someone broke before we know
   const tooPoor = (cost: number) => cash != null && cash < cost;
   const owned = useMemo(() => Object.fromEntries(inv.map(x => [x.id, x.qty])), [inv]);
@@ -60,11 +67,13 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
       <div className="mkFilters"><input value={shopQ} placeholder={`Search ${CATALOG.filter(i => !i.use && !isStaple(i)).length}+ products…`} onChange={e => setShopQ(e.target.value)} onKeyDown={e => e.stopPropagation()} onKeyUp={e => e.stopPropagation()} />
         <select className="mkSel" value={sort} onChange={e => setSort(e.target.value as 'cheap' | 'pricey' | 'az')}><option value="cheap">₦ low → high</option><option value="pricey">₦ high → low</option><option value="az">A–Z</option></select></div>
       <div className="mkChips"><button className={'mkChip' + (!shopCat ? ' on' : '')} onClick={() => setShopCat('')}>All</button>{mallCats.map(c => <button key={c.id} className={'mkChip' + (shopCat === c.id ? ' on' : '') + (c.id === 'luxury' ? ' gold' : '')} onClick={() => setShopCat(c.id)}>{c.e} {c.label}</button>)}</div>
+      {subs.length > 0 && <div className="mkChips"><button className={'mkChip' + (!shopSub ? ' on' : '')} onClick={() => setShopSub('')}>All types</button>{subs.map(([n, c]) => <button key={n} className={'mkChip' + (shopSub === n ? ' on' : '')} onClick={() => setShopSub(n)}>{n} <small>{c}</small></button>)}</div>}
+      {swatches.length > 0 && <div className="mkChips mkSw"><button className={'mkChip' + (!shopCol ? ' on' : '')} onClick={() => setShopCol('')}>Any colour</button>{swatches.map(([n, h]) => <button key={n} title={n} aria-label={n} className={'mkDot' + (shopCol === n ? ' on' : '')} style={{ background: h }} onClick={() => setShopCol(shopCol === n ? '' : n)} />)}</div>}
       <p className="mkHint">Delivered to your bag · +8% delivery. Groceries &amp; toiletries: go to the Market, Supermarket or Pharmacy in person.</p>
       <div className="mkGrid">{mall.slice(0, limit).map(i => { const n = Math.min(20, Math.max(1, shopQty[i.id] || 1)), unit = mallPrice(i.cost), have = owned[i.id] || 0;
         return <div className={'mkProd' + (i.cat === 'luxury' ? ' lux' : '')} key={i.id}>
           {i.cat === 'luxury' && <em className="mkLux">LUXURY</em>}
-          <div className="mkPic">{i.e}</div><b>{i.name}</b><small>{CATS.find(c => c.id === i.cat)?.label}{have ? ` · you own ${have}` : ''}</small>
+          <div className="mkPic">{i.kind && i.col ? <span className="mkArt"><FurniturePreview kind={i.kind} style={i.style} col={i.col} /></span> : i.e}</div><b>{i.name}</b><small>{i.sub ? `${i.sub} · ${i.colName}` : CATS.find(c => c.id === i.cat)?.label}{have ? ` · you own ${have}` : ''}</small>
           <span className="mkPrice">{naira(unit)}</span>
           <div className="mkStep"><button disabled={n <= 1} onClick={() => setShopQty(q => ({ ...q, [i.id]: n - 1 }))}>−</button><span>{n}</span><button disabled={n >= 20} onClick={() => setShopQty(q => ({ ...q, [i.id]: n + 1 }))}>+</button></div>
           <button className="mkGo" disabled={busy || tooPoor(unit * n)} onClick={() => shopBuy(i.id, i.name, n)}>{tooPoor(unit * n) ? 'Too pricey' : `Buy ${naira(unit * n)}`}</button>
@@ -79,7 +88,7 @@ export default function Market({ onClose, onCash, seller }: { onClose: () => voi
       <div className="mkList">{!data ? <p className="mkEmpty">Loading…</p> : shown.length === 0 ? <p className="mkEmpty">No players are selling anything here yet. Be the first, or shop the mall in the 🛍️ Shop tab.</p> : shown.map(l => {
         const n = Math.min(l.qty, Math.max(1, qtys[l.id] || 1)), cheap = l.price < l.cost, total = l.price * n;
         return <div className="mkCard" key={l.id}>
-          <div className="mkIcon">{l.e}</div>
+          <div className="mkIcon">{typeof pic(l.itemKey, l.e) === 'string' ? l.e : <span className="mkArt">{pic(l.itemKey, l.e)}</span>}</div>
           <div className="mkInfo"><b>{l.name}</b><small>by @{l.seller}{l.mine ? ' (you)' : ''} · {l.qty} left · {ago(l.at)}</small><span className="mkPrice">{naira(l.price)} each{cheap && <em>deal</em>}</span></div>
           {l.mine ? <span className="mkYours">Your stall</span> : <div className="mkBuy"><div className="mkStep"><button disabled={n <= 1} onClick={() => setQtys(s => ({ ...s, [l.id]: n - 1 }))}>−</button><span>{n}</span><button disabled={n >= l.qty} onClick={() => setQtys(s => ({ ...s, [l.id]: n + 1 }))}>+</button></div><button className="mkGo" disabled={busy || tooPoor(total)} onClick={() => buy(l)}>Buy {naira(total)}</button></div>}
         </div>; })}</div>
@@ -127,4 +136,5 @@ const CSS = `.mkWrap{position:absolute;inset:0;z-index:95;background:#000a;displ
 .mkGrid{flex:1;min-height:140px;overflow-y:auto;padding:4px 12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:8px;align-content:start;overscroll-behavior:contain}
 .mkProd{position:relative;display:flex;flex-direction:column;gap:3px;background:#10201a;border:1px solid #ffffff14;border-radius:14px;padding:9px;min-width:0}.mkProd.lux{background:linear-gradient(160deg,#2a2210,#10201a 70%);border-color:#e7b34a77}
 .mkProd b{font-size:12px;line-height:1.2;min-height:29px}.mkProd small{color:#8fa79b;font-size:10px}.mkPic{font-size:34px;text-align:center;background:#0a1511;border-radius:11px;padding:8px 0}.mkLux{position:absolute;top:6px;right:6px;font-style:normal;font-size:8px;font-weight:900;letter-spacing:.08em;background:#e7b34a;color:#221704;border-radius:6px;padding:2px 5px}
+.mkArt{display:block;width:100%;height:100%}.mkIcon .mkArt{width:38px;height:32px}.mkPic .mkArt{height:46px}.mkPic{overflow:hidden}.mkChip small{opacity:.65;margin-left:3px}.mkSw{align-items:center}.mkDot{flex:none;width:24px;height:24px;border-radius:50%;border:2px solid #ffffff44;cursor:pointer;padding:0}.mkDot.on{border-color:#fff;box-shadow:0 0 0 2px #3fb98a}
 .mkMore{grid-column:1/-1;background:#13231d;color:#fff;border:1px solid #ffffff22;border-radius:12px;padding:11px;font-weight:800;cursor:pointer}`;

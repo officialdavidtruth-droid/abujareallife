@@ -12,7 +12,9 @@ export const CATS: { id: CatId; label: string; e: string }[] = [
   { id: 'style', label: 'Accessories', e: '⌚' }, { id: 'luxury', label: 'Luxury & Fancy', e: '💎' }, { id: 'kids', label: 'Kids & Baby', e: '🧸' }, { id: 'arms', label: 'Firearms', e: '🔫' }, { id: 'parts', label: 'Car Parts', e: '🔩' },
 ];
 export type Needs = Partial<Record<'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social', number>>;
-export type Item = { id: string; cat: CatId; name: string; e: string; cost: number; fx?: Needs; fp?: [number, number]; use?: boolean; tag?: string; units?: number; pantry?: 'meals' | 'supplies' };
+export type Item = { id: string; cat: CatId; name: string; e: string; cost: number; fx?: Needs; fp?: [number, number]; use?: boolean; tag?: string; units?: number; pantry?: 'meals' | 'supplies';
+  /** Furniture varieties: `sub` = shelf label (Beds, Sofas…), `kind`/`style` = which 3D model + design, `col` = main colour. `variant` items live in the Online Mall / player market only. */
+  sub?: string; kind?: string; style?: string; col?: string; colName?: string; variant?: boolean };
 /** Groceries and toiletries are not carried as items: they fill your pantry (meals / supplies), which cooking, showering etc. use up. */
 export const PANTRY_CATS: CatId[] = ['grocery', 'toiletry'];
 export const isStaple = (i: { cat: string }) => i.cat === 'food' || i.cat === 'grocery' || i.cat === 'toiletry';
@@ -172,6 +174,91 @@ add('kids', [
   ['Kids tablet', '📲', 95000], ['Swing set', '🎠', 380000, [2.5, 2]], ['Paddling pool', '🏊', 60000, [1.8, 1.8]],
 ]);
 
+/* ───────── Furniture & appliance varieties (designs × colours) ─────────
+   Generated, so every design comes in every colour of its palette. Ids are `<cat>_<colour>_<design>`; they are stable, never reorder or rename.
+   Variants are sold in the Online Mall and between players; the walk-in shops keep the classic range above. */
+type Pal = [string, string][];
+const FABRIC: Pal = [['Charcoal Grey', '#464a52'], ['Ivory Cream', '#e6dcc6'], ['Royal Blue', '#2a4fa3'], ['Emerald Green', '#1f7d5a'], ['Burgundy Red', '#7d1f33'], ['Blush Pink', '#e0a3b3'], ['Mustard Gold', '#c9992b'], ['Midnight Black', '#1a1b20']];
+const WOOD: Pal = [['Walnut', '#5b3d29'], ['Dark Mahogany', '#4a2418'], ['Natural Oak', '#b98d58'], ['Ebony Black', '#1d1b1a'], ['Whitewash', '#e9e3d6'], ['Golden Teak', '#a8702f'], ['Ash Grey', '#8c8d8a'], ['Cherry Red', '#8b3a2b']];
+const METAL: Pal = [['Matte Black', '#202226'], ['Antique Gold', '#b8923a'], ['Brushed Silver', '#b9bec4'], ['Pure White', '#f1f1ee'], ['Bronze', '#7a5636'], ['Rose Gold', '#c98e83']];
+const LEATHER: Pal = [['Black Leather', '#1c1b1b'], ['Tan Leather', '#a8703d'], ['Chocolate Leather', '#4a2b1b'], ['Cream Leather', '#e5d9c0'], ['Oxblood Leather', '#5e1a1f'], ['Navy Leather', '#1d2a4a']];
+const APPL: Pal = [['White', '#f2f2f0'], ['Black', '#1c1d20'], ['Stainless Steel', '#b4b9be'], ['Cream', '#eadfc4'], ['Retro Red', '#b3262e'], ['Sky Blue', '#79b4d8']];
+const KITCH: Pal = [['White Gloss', '#f0efec'], ['Matte Black', '#222326'], ['Sage Green', '#8ea58a'], ['Navy Blue', '#27406b'], ['Walnut', '#5b3d29'], ['Cream', '#e8dcc2'], ['Slate Grey', '#6a6f76'], ['Natural Oak', '#b98d58']];
+const TVC: Pal = [['Black', '#101114'], ['Silver', '#b7bcc2'], ['White', '#eeeeec'], ['Rose Gold', '#c99a8e']];
+type D = [label: string, cost: number, fp: [number, number], style: string, pal?: Pal];
+const taken = new Set(out.map(i => i.id));
+function addV(cat: CatId, sub: string, kind: string, e: string, pal: Pal, rows: D[]) {
+  rows.forEach(([label, cost, fp, style, p]) => (p || pal).forEach(([cn, hex]) => {
+    const name = `${cn} ${label}`, id = cat.slice(0, 3) + '_' + slug(name);
+    if (taken.has(id)) return; taken.add(id);
+    out.push({ id, cat, name, e, cost, fp, sub, kind, style, col: hex, colName: cn, variant: true });
+  }));
+}
+
+/* Beds: 4 sizes × 10 designs × 6-8 colours */
+const BED_SIZES: [string, number, number, number][] = [['Single', 1, 2, .7], ['Double', 1.5, 2, 1], ['Queen', 1.8, 2.05, 1.25], ['King', 2, 2.1, 1.6]];
+const BED_DESIGNS: [string, number, string, Pal][] = [['Classic Panel Bed', 150000, 'panel', WOOD], ['Tufted Headboard Bed', 260000, 'tufted', FABRIC], ['Slatted Wood Bed', 170000, 'slat', WOOD], ['Metal Frame Bed', 110000, 'metal', METAL], ['Storage Ottoman Bed', 320000, 'storage', FABRIC],
+  ['Low Platform Bed', 210000, 'platform', WOOD], ['Four-Poster Bed', 420000, 'poster', WOOD], ['Sleigh Bed', 380000, 'sleigh', WOOD], ['Wingback Upholstered Bed', 360000, 'wingback', FABRIC], ['Floating LED Bed', 480000, 'led', FABRIC]];
+BED_DESIGNS.forEach(([n, c, st, p]) => BED_SIZES.forEach(([s, w, l, m]) => addV('furniture', 'Beds', 'bed', '🛏️', p, [[`${s} ${n}`, Math.round(c * m / 1000) * 1000, [w, l], st]])));
+
+/* Couches & sofas */
+addV('furniture', 'Sofas', 'sofa', '🛋️', FABRIC, [
+  ['2-Seater Modern Sofa', 210000, [1.6, .9], 'modern'], ['3-Seater Modern Sofa', 330000, [2.2, .9], 'modern'], ['Velvet Loveseat', 240000, [1.4, .85], 'love'], ['Mid-Century Sofa', 410000, [2, .85], 'mid'], ['Convertible Sofa Bed', 360000, [1.9, .95], 'modern'],
+  ['Rattan Garden Sofa', 280000, [2, .9], 'rattan'], ['Modular Cloud Sofa', 720000, [2.6, 1.1], 'cloud'], ['L-Shaped Sectional Sofa', 780000, [3, 2], 'sectional'], ['U-Shaped Corner Sofa', 980000, [3.2, 2.4], 'ushape'],
+  ['3-Seater Chesterfield Sofa', 640000, [2.2, .95], 'chester', LEATHER], ['Tuxedo Leather Sofa', 520000, [2.2, .95], 'tuxedo', LEATHER], ['Power Recliner Sofa', 560000, [2.3, .95], 'recsofa', LEATHER],
+]);
+
+/* Chairs */
+addV('furniture', 'Chairs', 'chair', '🪑', FABRIC, [
+  ['Cushioned Dining Chair', 35000, [.45, .45], 'dc_cush'], ['Modern Shell Dining Chair', 28000, [.45, .45], 'dc_shell'], ['Wingback Dining Chair', 55000, [.5, .5], 'dc_wing'],
+  ['Classic Wooden Dining Chair', 22000, [.45, .45], 'dc_classic', WOOD], ['Ladderback Dining Chair', 30000, [.45, .45], 'dc_ladder', WOOD], ['Cross-Back Dining Chair', 33000, [.45, .45], 'dc_cross', WOOD],
+  ['Club Armchair', 120000, [.9, .9], 'club'], ['Wingback Armchair', 160000, [.9, .9], 'wing'], ['Scoop Armchair', 95000, [.8, .8], 'scoop'], ['Velvet Barrel Accent Chair', 140000, [.8, .8], 'barrel'], ['Rattan Cane Armchair', 110000, [.8, .8], 'cane', WOOD],
+  ['Manual Recliner', 260000, [.9, .9], 'recl', LEATHER], ['Power Recliner', 380000, [.95, .95], 'recl', LEATHER],
+  ['Mesh Office Chair', 65000, [.6, .6], 'off_mesh', APPL], ['Executive Leather Office Chair', 220000, [.7, .7], 'off_exec', LEATHER], ['Ergonomic Office Chair', 180000, [.65, .65], 'off_ergo', APPL], ['Racing Gaming Chair', 140000, [.7, .7], 'game', APPL],
+  ['Tall Bar Stool', 28000, [.4, .4], 'stool_tall', METAL], ['Backrest Bar Stool', 38000, [.42, .42], 'stool_back', METAL], ['Padded Swivel Bar Stool', 45000, [.45, .45], 'stool_pad'],
+  ['Folding Garden Chair', 18000, [.5, .5], 'folding', WOOD], ['Rocking Chair', 90000, [.7, .9], 'rock', WOOD], ['Bean Bag', 35000, [.9, .9], 'bean'], ['Hanging Egg Chair', 150000, [.9, .9], 'egg', WOOD],
+]);
+
+/* Wardrobes */
+addV('furniture', 'Wardrobes', 'wardrobe', '🚪', WOOD, [
+  ['2-Door Hinged Wardrobe', 190000, [1.2, .6], 'h2'], ['3-Door Hinged Wardrobe', 260000, [1.8, .6], 'h3'], ['4-Door Hinged Wardrobe', 340000, [2.4, .6], 'h4'], ['2-Door Sliding Wardrobe', 280000, [1.5, .65], 's2'], ['3-Door Sliding Wardrobe', 380000, [2.2, .65], 's3'],
+  ['Mirror-Door Wardrobe', 420000, [1.8, .6], 'mirror'], ['Corner Wardrobe', 360000, [1.2, 1.2], 'corner'], ['Open Walk-in Rack Wardrobe', 300000, [2, .5], 'open'], ['Louvre-Door Wardrobe', 230000, [1.2, .55], 'louvre'],
+  ['Gold-Trim Luxury Wardrobe', 720000, [2.4, .65], 'gold'], ['Kids Wardrobe', 120000, [.9, .5], 'kids'], ['Classic Armoire', 450000, [1.2, .65], 'armoire'],
+]);
+
+/* Televisions: type × screen size × bezel colour */
+const TV_SIZES: [number, number, number][] = [[24, .55, 60000], [32, .75, 140000], [43, 1, 250000], [50, 1.15, 340000], [55, 1.28, 420000], [65, 1.5, 700000], [75, 1.7, 1100000], [85, 1.95, 1900000], [98, 2.25, 3400000]];
+const TV_TYPES: [string, string, number, number[], string][] = [['LED Smart TV', 'led', 1, [24, 32, 43, 50, 55, 65, 75], '📺'], ['QLED 4K TV', 'qled', 1.5, [43, 50, 55, 65, 75, 85], '📺'], ['OLED TV', 'oled', 2.2, [55, 65, 75, 85, 98], '📺'],
+  ['Curved Gaming TV', 'curved', 1.4, [43, 55, 65], '🖥️'], ['Mini-LED 8K TV', 'mini', 1.9, [65, 75, 85, 98], '📺']];
+TV_TYPES.forEach(([n, st, m, sizes]) => sizes.forEach(sz => { const r = TV_SIZES.find(x => x[0] === sz)!; addV('tech', 'Televisions', 'tv', '📺', TVC, [[`${sz}" ${n}`, Math.round(r[2] * m / 1000) * 1000, [r[1], .1], `${st}:${sz}`]]); }));
+
+/* TV stands, tables, desks & storage */
+addV('furniture', 'TV Stands', 'tvstand', '📺', WOOD, [
+  ['Low TV Stand', 95000, [1.5, .45], 'low'], ['Drawer TV Console', 160000, [1.8, .45], 'drawers'], ['TV Wall Unit with Shelves', 480000, [2.6, .5], 'wall'], ['Floating TV Cabinet', 210000, [1.8, .35], 'float'], ['Corner TV Stand', 130000, [1, .7], 'corner'], ['Glass-Door TV Cabinet', 260000, [1.6, .5], 'glass'],
+]);
+addV('furniture', 'Tables & Storage', 'table', '🪵', WOOD, [
+  ['Round Coffee Table', 75000, [1, 1], 'coffee_round'], ['Rectangular Coffee Table', 75000, [1.1, .6], 'coffee_rect'], ['Glass-Top Coffee Table', 120000, [1.1, .6], 'coffee_glass'], ['4-Seat Dining Table', 220000, [1.3, .9], 'dine'], ['6-Seat Dining Table', 380000, [1.8, .9], 'dine'],
+  ['8-Seat Dining Table', 620000, [2.4, 1], 'dine'], ['Round Dining Table', 300000, [1.3, 1.3], 'dine_round'], ['Study Desk', 90000, [1.2, .6], 'desk'], ['L-Shaped Corner Desk', 240000, [1.6, 1.4], 'desk_l'], ['Standing Desk', 320000, [1.4, .7], 'desk_stand'],
+  ['Side Table', 28000, [.5, .5], 'side'], ['Bedside Table', 38000, [.5, .4], 'bedside'], ['Dresser with Mirror', 190000, [1.2, .5], 'dresser'], ['Bookshelf', 85000, [1, .35], 'shelf'], ['Chest of Drawers', 110000, [1, .5], 'drawers'], ['Shoe Rack', 25000, [.8, .3], 'shoe'],
+]);
+
+/* Kitchen: appliances, units and gadgets */
+addV('kitchen', 'Fridges & Freezers', 'fridge', '🧊', APPL, [
+  ['Single-Door Fridge', 380000, [.6, .65], 'single'], ['Double-Door Fridge', 780000, [.75, .7], 'double'], ['Side-by-Side Fridge', 1100000, [.95, .75], 'sbs'], ['French-Door Fridge', 1500000, [.95, .75], 'french'], ['Chest Freezer', 420000, [1, .6], 'chest'], ['Mini Bar Fridge', 190000, [.5, .5], 'mini'],
+]);
+addV('kitchen', 'Cookers & Ovens', 'cooker', '🍳', APPL, [
+  ['4-Burner Gas Cooker', 280000, [.6, .6], 'gas4'], ['5-Burner Gas Range', 520000, [.9, .65], 'gas5'], ['6-Burner Range Cooker', 900000, [1.2, .65], 'gas6'], ['Induction Cooker', 380000, [.6, .6], 'induct'], ['Built-in Oven', 450000, [.6, .55], 'oven'], ['Microwave Oven', 85000, [.5, .4], 'micro'], ['Extractor Hood', 160000, [.9, .5], 'hood'],
+]);
+addV('kitchen', 'Washers & Dishwashers', 'laundry', '🧺', APPL, [
+  ['Dishwasher', 600000, [.6, .6], 'dish'], ['Front-Load Washing Machine', 520000, [.6, .6], 'washer'], ['Twin-Tub Washing Machine', 190000, [.7, .5], 'twin'], ['Tumble Dryer', 480000, [.6, .6], 'dryer'],
+]);
+addV('kitchen', 'Kitchen Units', 'cabinet', '🗄️', KITCH, [
+  ['Base Cabinet Unit', 110000, [.6, .6], 'base'], ['Wall Cabinet Unit', 90000, [.8, .35], 'wall'], ['Kitchen Island', 520000, [1.8, .9], 'island'], ['Double Sink Unit', 240000, [1.4, .6], 'sink'], ['Breakfast Bar Counter', 340000, [1.6, .6], 'bar'],
+]);
+addV('kitchen', 'Kitchen Gadgets', 'gadget', '☕', APPL, [
+  ['Air Fryer', 85000, [.35, .35], 'airfryer'], ['Blender', 45000, [.25, .25], 'blender'], ['Toaster', 28000, [.3, .2], 'toaster'], ['Electric Kettle', 22000, [.25, .2], 'kettle'], ['Coffee Machine', 190000, [.3, .35], 'coffee'], ['Stand Mixer', 130000, [.3, .25], 'mixer'],
+]);
+
 WEAPONS.forEach(w => out.push({ id: weaponItemId(w.id), cat: 'arms', name: w.name, e: w.icon, cost: w.price, tag: 'weapon' }));
 /* Car parts come ONLY from a chop shop job (lib/chop.ts). No store lists the 'parts' category and the Online Mall refuses tag 'part'. */
 PARTS.forEach(p => out.push({ id: p.id, cat: 'parts', name: p.name, e: p.e, cost: p.cost, tag: 'part' }));
@@ -190,6 +277,6 @@ export const STORE_CATS: Partial<Record<BusinessType, CatId[]>> = {
   'Gun Shop': ['arms'],
 };
 export const storeCats = (type: string): CatId[] => STORE_CATS[type as BusinessType] || [];
-export const storeItems = (type: string): Item[] => { const c = storeCats(type); return CATALOG.filter(i => c.includes(i.cat)); };
-export const storeItem = (type: string, id: string): Item | undefined => { const i = BY_ID.get(id); return i && storeCats(type).includes(i.cat) ? i : undefined; };
+export const storeItems = (type: string): Item[] => { const c = storeCats(type); return CATALOG.filter(i => c.includes(i.cat) && !i.variant); };
+export const storeItem = (type: string, id: string): Item | undefined => { const i = BY_ID.get(id); return i && !i.variant && storeCats(type).includes(i.cat) ? i : undefined; };
 export const MAX_STACK = 99;

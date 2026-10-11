@@ -28,6 +28,7 @@ import Wardrobe from './Wardrobe';
 import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit } from '../lib/collision';
 import { USES } from '../lib/pantry';
 import { itemById } from '../lib/catalog';
+import FurnitureModel, { hasFurnitureModel } from './FurnitureModels';
 
 type N = 'hunger' | 'energy' | 'hygiene' | 'bladder' | 'fun' | 'social';
 type Pose = 'stand' | 'sit' | 'sleep';
@@ -893,8 +894,13 @@ function Lights() {
 function OwnedFurniture({ item, editing, onSelect }: { item: typeof HOME_OWNED[number]; editing: boolean; onSelect: (id:string)=>void }) {
   const m=movedOwned(item), w=item.fp?.[0]||.8, d=item.fp?.[1]||.6;
   return <group position={[m.x,0,m.z]} rotation-y={m.r} onPointerDown={editing?(e:any)=>EDIT.down(item.id,e):undefined} onClick={e=>{if(e.delta>4)return;e.stopPropagation();if(editing)onSelect(item.id);}}>
-    <B p={[0,.16,0]} s={[w,.28,d]} c={item.cat==='tech'?'#252a32':item.cat==='decor'?'#496d42':'#7b5a3b'} r={.05}/>
-    <Html position={[0,.45,0]} center zIndexRange={[12,5]} style={{pointerEvents:'none'}}><div style={{fontSize:Math.min(34,18+Math.max(w,d)*4)}}>{item.e}</div></Html>
+    {hasFurnitureModel(item.itemKey) ? <>
+      <FurnitureModel itemKey={item.itemKey} fp={item.fp} />
+      {editing && <mesh position={[0,.5,0]}><boxGeometry args={[w,1,d]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>}
+    </> : <>
+      <B p={[0,.16,0]} s={[w,.28,d]} c={item.cat==='tech'?'#252a32':item.cat==='decor'?'#496d42':'#7b5a3b'} r={.05}/>
+      <Html position={[0,.45,0]} center zIndexRange={[12,5]} style={{pointerEvents:'none'}}><div style={{fontSize:Math.min(34,18+Math.max(w,d)*4)}}>{item.e}</div></Html>
+    </>}
   </group>;
 }
 

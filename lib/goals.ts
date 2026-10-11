@@ -84,7 +84,6 @@ export const spotlightFor = (now = Date.now()) => SPOTLIGHTS[Math.floor(mondayNu
 export const weeklyFor = (week: string, now = Date.now()): Weekly[] => [W_A[hash(week + 'a') % W_A.length], W_B[hash(week + 'b') % W_B.length], spotlightFor(now).mission];
 export const WEEKLY_BONUS = 250_000;
 export const WEEKLY_BONUS_NEEDS = 2;   // 2 of the 3 weekly missions unlock the bonus, so an unaffordable Spotlight (race entry is ₦500k+ and needs a car) never blocks a new player
-export const WEEKLY_BONUS_NEEDS = 2;   // 2 of the 3 weekly missions unlock the bonus, so an unaffordable Spotlight (race entry is ₦500k+ and needs a car) never blocks a new player
 /** Crew chest: the crew's quests, shifts and missions this week. Everybody who did at least `minShare` of them shares the reward when the crew gets to `need`. */
 export const CREW_WEEK = { perMember: 10, minNeed: 24, maxMembersCounted: 10, minShare: 3, reward: 150_000 };
 export const crewNeed = (members: number) => Math.max(CREW_WEEK.minNeed, Math.min(members, CREW_WEEK.maxMembersCounted) * CREW_WEEK.perMember);

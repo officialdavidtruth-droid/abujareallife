@@ -33,6 +33,7 @@ import { NpcShouts, PED_PUSH, Pedestrians, PlayerCar, parkNear, peersOnFoot, pus
 import { CAR_OFFS, CAR_R, JailCell, Rain, WeatherEffects, WorldEventVisuals } from './CityWeather';
 import { POLICE_CARS, PolicePatrol } from './CityPolice';
 import { pkit } from './CityCars';
+import TailTarget from './TailTarget';
 import { RemotePlayers } from './CityRemote';
 import { StreetNpcScene } from './StreetNpcs';
 import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
@@ -447,6 +448,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <Traffic />
       <JackNpc />
       <JackGhost />
+      <TailTarget />
       <Pedestrians />
       <NpcShouts />
       <PolicePatrol />
@@ -518,7 +520,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   useEffect(() => {
     const startMission = (e: Event) => {
       const m = (e as CustomEvent).detail as { id?: string; goto?: { name?: string; type?: string; district?: string }; final?: { name?: string; type?: string; district?: string }; fresh?: boolean; label?: string; title?: string };
-      if (!m?.id || !m.goto) return;
+      if (!m?.id) return;
+      if (!m.goto) { GAME.missionFinal = null; if ((GAME.nav as any)?.mission) GAME.nav = null; (window as any).__arlMissionTarget = undefined; GAME.notice = `🎯 ${m.label || m.title || 'Mission'}`; return; }   // a stage with no waypoint (the stealth tail): clear the old route and just show the objective
       const pos = (window as any).__arlPos as { x: number; z: number } | undefined;
       const resolve = (g: { name?: string; type?: string; district?: string }, from?: { x: number; z: number }) => {
         const near = (l: typeof BUILDING_DESTS) => from ? [...l].sort((a, b) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(b.x - from.x, b.z - from.z))[0] : l[0];

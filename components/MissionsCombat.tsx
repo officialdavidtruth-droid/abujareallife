@@ -4,6 +4,7 @@ import RuntimeStyle from './RuntimeStyle';
 import { WEAPONS as LOADOUT, weaponItemId } from '../lib/weapons';
 import { MISSIONS, type Mission } from '../lib/missions';
 import { NET } from '../lib/cityNet';
+import TailHud from './TailHud';
 
 const HOLD_RADIUS = 12;
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.max(0, Math.floor(s % 60))).padStart(2, '0')}`;
@@ -39,9 +40,12 @@ export default function MissionsCombat() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const setActive = (id: string | null) => {
     activeRef.current = id; (window as any).__arlMissionId = id; setActiveState(id);
-    if (!id) { holding.current = false; holdProg.current = 0; (window as any).__arlMissionHold = false; setHoldLeft(null); }
+    if (!id) { window.dispatchEvent(new Event('arl-tail-clear')); holding.current = false; holdProg.current = 0; (window as any).__arlMissionHold = false; setHoldLeft(null); }
   };
-  const sendStage = (m: Mission, idx: number, fresh = false) => window.dispatchEvent(new CustomEvent('arl-mission-start', { detail: { id: m.id, title: m.title, goto: m.stages[idx].goto, final: m.stages[m.stages.length - 1].goto, fresh, label: m.stages[idx].label } }));
+  const sendStage = (m: Mission, idx: number, fresh = false) => {
+    window.dispatchEvent(new CustomEvent('arl-mission-start', { detail: { id: m.id, title: m.title, goto: m.stages[idx].goto, final: m.stages[m.stages.length - 1].goto, fresh, label: m.stages[idx].label } }));
+    if (m.tail) { window.dispatchEvent(new CustomEvent('arl-tail-prepare', { detail: { id: m.id } })); if (m.stages[idx].follow) window.dispatchEvent(new Event('arl-tail-go')); }   // stealth tail: the dealer's car is parked from the start and sets off when the follow stage begins
+  };
   const begin = (m: Mission, startedAt: number, fresh = false) => {
     stageRef.current = 0; setStage(0); deadlineAt.current = startedAt + m.deadlineSecs * 1000; setSecsLeft(Math.max(0, Math.round((deadlineAt.current - Date.now()) / 1000)));
     setActive(m.id); sendStage(m, 0, fresh);
@@ -101,6 +105,8 @@ export default function MissionsCombat() {
       else advance();
     };
     const fail = (msg: string) => { window.dispatchEvent(new Event('arl-mission-cancel')); void abandon(msg); };
+    const tailDone = () => { const m = MISSIONS.find(x => x.id === activeRef.current); if (m?.stages[stageRef.current]?.follow) advance(); };
+    const tailFail = (e: Event) => { const m = MISSIONS.find(x => x.id === activeRef.current); if (m?.stages[stageRef.current]?.follow) fail(String((e as CustomEvent).detail || '❌ Mission failed.')); };
     const tick = window.setInterval(() => {
       const m = MISSIONS.find(x => x.id === activeRef.current); if (!m) return;
       const now = Date.now();
@@ -127,10 +133,10 @@ export default function MissionsCombat() {
       else if (k === 'r' && !e.repeat) reload();
     };
     window.addEventListener('arl-inventory-changed', syncOwned); window.addEventListener('arl-combat-notice', onNotice); window.addEventListener('arl-mission-arrived', onArrived); window.addEventListener('arl-shot-fired', onFired);
-    window.addEventListener('arl-mission-lost', onLost); window.addEventListener('arl-trigger-fire', onTrigger); window.addEventListener('keydown', onKey);
+    window.addEventListener('arl-tail-done', tailDone); window.addEventListener('arl-tail-fail', tailFail); window.addEventListener('arl-mission-lost', onLost); window.addEventListener('arl-trigger-fire', onTrigger); window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('arl-inventory-changed', syncOwned); window.removeEventListener('arl-combat-notice', onNotice); window.removeEventListener('arl-mission-arrived', onArrived); window.removeEventListener('arl-shot-fired', onFired);
-      window.removeEventListener('arl-mission-lost', onLost); window.removeEventListener('arl-trigger-fire', onTrigger); window.removeEventListener('keydown', onKey); window.clearInterval(tick);
+      window.removeEventListener('arl-tail-done', tailDone); window.removeEventListener('arl-tail-fail', tailFail); window.removeEventListener('arl-mission-lost', onLost); window.removeEventListener('arl-trigger-fire', onTrigger); window.removeEventListener('keydown', onKey); window.clearInterval(tick);
     };
   }, [say, claim, abandon, trigger, reload]);
 
@@ -157,6 +163,7 @@ export default function MissionsCombat() {
   const activeMission = MISSIONS.find(m => m.id === active);
   return <><RuntimeStyle css={CSS}/><div className="mcQuick"><button title="Missions (M)" aria-label="Missions" onClick={()=>{setOpen(v=>!v);setTab('missions')}}>📋<kbd>M</kbd></button>{weapon>=0 && <button title={`${LOADOUT[weapon].name} (G to switch)`} aria-label="Weapons" onClick={()=>{setOpen(v=>!v);setTab('weapons')}}>{LOADOUT[weapon].icon}<kbd>G</kbd></button>}</div>
     {activeMission && <div className="mcTracker"><small>ACTIVE MISSION · {activeMission.type}</small><b>{activeMission.icon} {activeMission.title}</b><span>Stage {stage + 1}/{activeMission.stages.length}: {activeMission.stages[stage]?.label}</span><span>⏱ {fmt(secsLeft)}{holdLeft !== null ? ` · ⏳ Hold the area ${holdLeft}s` : ''}</span><button onClick={()=>{window.dispatchEvent(new Event('arl-mission-cancel'));void abandon('Mission abandoned.');}}>ABANDON</button></div>}
+    {activeMission?.tail && <TailHud />}
     {notice && <div className="mcNotice">{notice}</div>}
     {open && <div className="mcBackdrop" onClick={()=>setOpen(false)}><section className="mcPanel" onClick={e=>e.stopPropagation()}><header><div><small>ABUJA REAL LIFE</small><h2>{tab==='missions'?'Mission Control':'Weapon Loadout'}</h2></div><button className="mcClose" onClick={()=>setOpen(false)}>×</button></header><nav><button className={tab==='missions'?'on':''} onClick={()=>setTab('missions')}>📋 Missions</button><button className={tab==='weapons'?'on':''} onClick={()=>setTab('weapons')}>🔫 Weapons</button></nav>
       {tab==='missions' ? <div className="mcMissionList">{MISSIONS.map(m=><article key={m.id} className="mcMission"><div className="mcMissionIcon">{m.icon}</div><div className="mcMissionText"><div className="mcMeta"><span>{m.type}</span><span className={'diff '+m.difficulty.toLowerCase()}>{m.difficulty}</span></div><b>{m.title}</b><p>{m.desc}</p><small>📍 {m.target} · ⏱ {fmt(m.deadlineSecs)} · 💵 ₦{m.reward.toLocaleString()}</small></div><button disabled={active===m.id || completed.includes(m.id)} onClick={()=>void startMission(m.id)}>{completed.includes(m.id)?'DONE':active===m.id?'ACTIVE':'START'}</button></article>)}</div> : <div className="mcWeaponList">{LOADOUT.map((w,i)=>{const has=owned.includes(w.id);return <article key={w.id} className={'mcWeapon '+(weapon===i?'selected':'')} style={has?undefined:{opacity:.6}}><span className="mcWeaponIcon">{w.icon}</span><div><b>{w.name}</b><small>Damage {w.damage} · Range {w.range}m</small>{has ? <><div className="mcAmmo"><i style={{width:`${ammo[i].current/w.mag*100}%`}}/></div><small>{ammo[i].current} / {ammo[i].reserve} rounds</small></> : <small>₦{w.price.toLocaleString()} · sold at Gun Shops only</small>}</div>{has ? <button onClick={()=>setWeapon(i)}>EQUIP</button> : <button disabled>🔒</button>}</article>;})}{owned.length>0 && <button className="mcReload" onClick={reload}>↻ Reload current weapon (R)</button>}<p className="mcDisclaimer">{owned.length ? 'Fires at the nearest player in your forward aim cone. Ammunition is limited; reload before the next encounter.' : 'You own no weapon. Find a red Gun Shop on the map, go inside and buy one.'}</p></div>}

@@ -68,6 +68,8 @@ export function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onO
         const fd = Math.hypot(mf.x - h.x, mf.z - h.z), fk = fd > 46 ? 46 / fd : 1; g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = .5; g.beginPath(); g.arc(h.x + (mf.x - h.x) * fk, h.z + (mf.z - h.z) * fk, 3, 0, Math.PI * 2); g.fill(); g.stroke();
       }
       if (nv) { const dd = Math.hypot(nv.x - h.x, nv.z - h.z), k = dd > 46 ? 46 / dd : 1, mx = h.x + (nv.x - h.x) * k, mz = h.z + (nv.z - h.z) * k; g.fillStyle = '#ff3b30'; g.strokeStyle = '#fff'; g.lineWidth = .5; g.beginPath(); g.arc(mx, mz, k < 1 ? 2.6 : 3.4, 0, Math.PI * 2); g.fill(); g.stroke(); }
+      const tl = (window as any).__arlTail as { x: number; z: number } | undefined;
+      if (tl) { const dd = Math.hypot(tl.x - h.x, tl.z - h.z), k = dd > 46 ? 46 / dd : 1; g.fillStyle = '#35d0ff'; g.strokeStyle = '#fff'; g.lineWidth = .5; g.beginPath(); g.arc(h.x + (tl.x - h.x) * k, h.z + (tl.z - h.z) * k, k < 1 ? 2.6 : 3.4, 0, Math.PI * 2); g.fill(); g.stroke(); }   // the dealer (stealth tail mission)
       if (h.vp) { g.fillStyle = '#ff6a00'; g.strokeStyle = '#000'; g.lineWidth = .3; g.fillRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); g.strokeRect(h.vx - 1.6, h.vz - 1.6, 3.2, 3.2); }
       g.save(); g.translate(h.x, h.z); g.rotate(Math.PI - h.r); g.fillStyle = '#ffd23f'; g.strokeStyle = '#000'; g.lineWidth = .3;
       g.beginPath(); g.moveTo(0, -3); g.lineTo(2.1, 2.1); g.lineTo(0, 1); g.lineTo(-2.1, 2.1); g.closePath(); g.fill(); g.stroke(); g.restore();

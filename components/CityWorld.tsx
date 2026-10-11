@@ -253,7 +253,7 @@ function Roads() {
   const idx = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
   return <>{idx.map(i => <group key={i}>
     <mesh position={[i * GRID, .01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[halfW(i) * 2, 250 * WS]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
-    <mesh position={[0, .011, i * GRID]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[250 * WS, halfW(i) * 2]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
+    <mesh position={[0, .02, i * GRID]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[250 * WS, halfW(i) * 2]} /><primitive object={ROAD_MAT} attach="material" /></mesh>
   </group>)}</>;
 }
 /* Trees stand beside each building. On car-park / alley lots the building is pushed to the back of its plot, so some of these spots fell ON the road: those trees are dropped. */
@@ -2063,7 +2063,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0004} />
       <primitive object={sunTarget} />
       <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[700, 700]} /><meshStandardMaterial color="#5d7f55" /></mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.06, 0]} receiveShadow><planeGeometry args={[700, 700]} /><meshStandardMaterial color="#5d7f55" /></mesh>
       <Roads />
       <Billboards />
       <TransportVehicles look={look} />
@@ -2318,7 +2318,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
     <div className="cityWorld">
       <RuntimeStyle css={CSS} />
       <RuntimeStyle css={GAME_LABEL_CSS} />
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x - Math.sin(START.r) * 8, 4.2, START.z - Math.cos(START.r) * 8], fov: 52, far: 600 }}>
+      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [START.x - Math.sin(START.r) * 8, 4.2, START.z - Math.cos(START.r) * 8], fov: 52, near: .4, far: 600 }}>
         <Scene fight={net.punch} shoot={net.shoot} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />

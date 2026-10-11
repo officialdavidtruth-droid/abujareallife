@@ -131,6 +131,48 @@ const OBJ: Obj[] = [
 const GATE: Record<string, string> = { massage: 'massage', aquarium: 'aquarium', treadmill: 'treadmill', gbench: 'gym_room', gbag: 'gym_room', cinema: 'cinema_room', odesk: 'office_room', oshelf: 'office_room' };
 const LUX_IDS = new Set(Object.keys(GATE));
 const has = (id: string) => HOME.own.has(id);
+
+const EMOTES: Act[] = [
+  { k: 'wave', label: 'Wave', e: '👋', dur: 6, fx: { social: 8 }, pose: 'stand', anim: 'wave' },
+  { k: 'edance', label: 'Dance', e: '🕺', dur: 20, fx: { fun: 22, energy: -6 }, pose: 'stand', anim: 'dance' },
+  { k: 'cheer', label: 'Cheer', e: '🙌', dur: 8, fx: { fun: 10 }, pose: 'stand', anim: 'cheer' },
+  { k: 'stretch', label: 'Stretch', e: '🤸', dur: 10, fx: { energy: 4, fun: 4 }, pose: 'stand', anim: 'stretch' },
+  { k: 'think', label: 'Think', e: '🤔', dur: 8, fx: { fun: 3 }, pose: 'stand', anim: 'think' },
+];
+// ── Home data (restored): decor, walls, what you own, the saved layout and look, and the editor state ──
+const DECOR: { id: string; p: [number, number]; rot: number; boxes: Box[]; vis: string }[] = [
+  { id: 'coffee', p: [-4.75, 1.2], rot: 0, boxes: [[-5, -4.5, .75, 1.65]], vis: 'coffee' },
+  { id: 'fan', p: [5.5, -1.8], rot: -Math.PI / 2, boxes: [[5.3, 5.7, -2, -1.6]], vis: 'fan' },
+  { id: 'kbedA', p: [7.5, -3.4], rot: 0, boxes: [[6.85, 8.15, -4.4, -2.4]], vis: 'kbedA' },
+  { id: 'kbedB', p: [10.2, -3.4], rot: 0, boxes: [[9.55, 10.85, -4.4, -2.4]], vis: 'kbedB' },
+  { id: 'nstand', p: [8.85, -4.15], rot: 0, boxes: [[8.6, 9.1, -4.4, -3.9]], vis: 'nstand' },
+  { id: 'kwar', p: [11.0, -1.4], rot: -Math.PI / 2, boxes: [[10.7, 11.3, -2.1, -.7]], vis: 'kwar' },
+];
+// Half-height wall between the flat and the kids' wing, with a doorway at z 1.0 to 2.6.
+const SWALLS: Blk[] = [{ id: 'swall', b: [6.1, 11.4, 4.65, 9.3] }]; // fills the void south of the kids' wing and walls off the east side of the south wing
+const WALLS: Blk[] = [{ id: 'wall', b: [6.1, 6.3, -4.6, 1.0] }, { id: 'wall', b: [6.1, 6.3, 2.6, 4.6] }];
+// What your home has: rooms and luxury items bought under Menu > Home upgrades (saved on the server, see /api/home).
+const HOME = { own: new Set<string>() };
+type HomeLayout = Record<string, { x: number; z: number; r: number }>;
+const HOME_LAYOUT: HomeLayout = {};
+// The layout and look this client LOADED. Saving sends it as `base` so the server only applies what this client changed (see app/api/home/layout/route.ts).
+const HOME_BASE: { layout: HomeLayout; look?: unknown } = { layout: {} };
+const markHomeBase = () => { HOME_BASE.layout = JSON.parse(JSON.stringify(HOME_LAYOUT)); HOME_BASE.look = packHomeLook(HLOOK); };   // call after loading or saving: this is now the baseline the next save is compared against
+// This player's home look (wall paint, floor, rug, sofa, bedding, bed frame). Every account starts with its own (lib/homeLook.ts); HL holds the concrete colours the room reads.
+let HLOOK: HomeLook = defaultHomeLook('guest');
+const HL = resolveHomeLook(HLOOK);
+const setHomeLook = (l: HomeLook) => { HLOOK = l; Object.assign(HL, resolveHomeLook(l)); };
+// Home editor settings: how far one tap moves a piece, how far one tap turns it, which tab is open and which shelf of the inventory is showing.
+const HEDIT = { step: .25, rot: Math.PI / 12, tab: 'move' as 'move' | 'add' | 'style', cat: 'All' };
+const HOME_OWNED: { id:string; itemKey:string; name:string; e:string; cat:string; cost:number; condition:number; x:number; z:number; r:number; fp?:[number,number] }[] = [];
+const HOME_SOLD = new Set<string>();
+// Pieces of a bigger object that can be moved on their own (key = '<object>.<part>', value = pivot in the object's local frame).
+const PART_AT: Record<string, [number, number]> = { 'tv.cab': [0, 2.6], 'tv.side': [1.5, 0], 'desk.chair': [0, .85], 'odesk.chair': [0, .95], 'dining.c1': [0, .8], 'dining.c2': [-.5, .8], 'dining.c3': [-1, 0], 'dining.c4': [1, 0], 'bed.stand': [1.15, -1], 'fridge.counter': [1.34, -.19], 'toilet.sink': [.85, -.3], 'cinema.seats': [0, 1.3] };
+const PART_NAMES: Record<string, string> = { 'tv.cab': 'TV & TV stand', 'tv.side': 'Side table & lamp', 'desk.chair': 'Desk chair', 'odesk.chair': 'Office chair', 'dining.c1': 'Dining chair', 'dining.c2': 'Small dining chair', 'dining.c3': 'Dining chair (left)', 'dining.c4': 'Dining chair (right)', 'bed.stand': 'Bedside table & lamp', 'fridge.counter': 'Kitchen counter', 'toilet.sink': 'Sink & mirror', 'cinema.seats': 'Cinema seats' };
+const BASE_NAMES: Record<string, string> = { tv: 'Sofa', desk: 'Desk', odesk: 'Executive desk', bed: 'Bed', dining: 'Dining table', fridge: 'Fridge', toilet: 'Toilet', coffee: 'Coffee table', fan: 'Standing fan', kbedA: "Kids' bed (left)", kbedB: "Kids' bed (right)", nstand: "Kids' nightstand", kwar: "Kids' wardrobe" };
+const EDITABLE_HOME_IDS = new Set(OBJ.map(o => o.id).concat(DECOR.map(d => d.id), Object.keys(PART_AT)).filter(id => id !== 'door'));
+const homeName = (id: string) => HOME_OWNED.find(i => i.id === id)?.name || PART_NAMES[id] || BASE_NAMES[id] || OBJ.find(o => o.id === id)?.name || id;
+const rotXZ = (a: number, x: number, z: number): [number, number] => [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
 /* Build mode (BUILD-MODE.md): a house with saved rooms is walked from those rooms. Three modes (lib/homeRooms.ts planMode):
    'none'    no saved rooms: the old fixed flat, exactly as before;
    'starter' the original flat as rooms (old look, fixtures and wings stay put) with any rooms the player built around it;
@@ -1121,7 +1163,7 @@ export default function Sim() {
   async function reloadHome(username: string, visitOwner?: string) {
     const q = visitOwner ? '?visit=' + encodeURIComponent(visitOwner) : '';
     try { const r = await fetch('/api/home/rooms' + q, { cache: 'no-store' }); applyPlan(r.ok ? ((await r.json()).rooms || []) : []); } catch { applyPlan([]); }   // build mode: the saved rooms (none = the old fixed flat)
-    try { const h = await fetch('/api/home' + q, { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setHomeLook(defaultHomeLook(username)); try { const l = await fetch('/api/home/layout' + q, { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); setHomeLook(sanitizeHomeLook(ld.look, defaultHomeLook(username))); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture' + q,{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ }
+    try { const h = await fetch('/api/home' + q, { cache: 'no-store' }); if (h.ok) applyHome((await h.json()).owned || []); } catch { /* no upgrades yet */ } setHomeLook(defaultHomeLook(username)); try { const l = await fetch('/api/home/layout' + q, { cache: 'no-store' }); if (l.ok) { const ld=await l.json(); setHomeLook(sanitizeHomeLook(ld.look, defaultHomeLook(username))); resetHomeLayout(); Object.assign(HOME_LAYOUT, ld.layout || {}); markHomeBase(); HOME_SOLD.clear(); (ld.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); blKey = '\0'; } } catch { /* default layout */ } try { const f=await fetch('/api/home/furniture' + q,{cache:'no-store'}); if(f.ok){ const d=await f.json(); HOME_OWNED.splice(0,HOME_OWNED.length,...(d.items||[])); HOME_SOLD.clear(); (d.soldStatic||[]).forEach((id:string)=>HOME_SOLD.add(id)); setHomeItems([...HOME_OWNED]); setHomePlaceable(d.placeable||[]); } } catch { /* furniture unavailable */ }
     markHomeBase();
   }
   async function enter(u: AccountUser) {

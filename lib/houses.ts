@@ -13,6 +13,7 @@ import { ROOFS, WALLS, defaultStyle, sanitizeStyle, type Style } from './houseSt
 import { NO_SEC, unpackSec, type Sec } from './security';
 
 export const HOUSE_W = 6, HOUSE_D = 8, FRONT = 6.2, LOTS_PER_GAP = 3;
+export const ROWS = 6, ROW_STEP = HOUSE_D + FRONT;   // row 0 faces the ring road; each further row stands one house + front yard further out, facing the same way, so its front yard is a lane behind the row before (reached along the cross-road stubs)
 export const DOOR_R = 2.4;   // how close to the door you must stand to use it
 const RING = 5;
 const SIDES: [number, number][] = [[1, 0], [0, 1], [-1, 0], [0, -1]];   // outward direction of east, south, west and north side of the ring road
@@ -20,7 +21,7 @@ const SIDES: [number, number][] = [[1, 0], [0, 1], [-1, 0], [0, -1]];   // outwa
 export type Pt = { x: number; z: number };
 export type Box = { x0: number; x1: number; z0: number; z1: number };
 export type Plot = {
-  slot: number; x: number; z: number;          // centre of the house
+  slot: number; row: number; x: number; z: number;   // row 0 = on the ring road, 1+ = the rows behind it; centre of the house
   rot: number;                                  // three.js rotation.y: local +z (the front) points at the road
   nx: number; nz: number;                       // direction from the road away from the house
   lat: number;                                  // sideways offset of the driveway in the house's own x (0 or +-2 m)
@@ -53,12 +54,15 @@ const KEEP_OUT: Box[] = [
   { x0: AIR.x - 11 * AIR.s - 1.5, x1: AIR.x + 11 * AIR.s + 1.5, z0: AIR.z - 9.5 * AIR.s - 1.5, z1: AIR.z + 3.5 * AIR.s + 1.5 },
 ];
 const hit = (a: Box, b: Box) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
+const RAIL: Box = { x0: -230, x1: 230, z0: 126 * WS - 3, z1: 126 * WS + 3 };   // mirrors RAIL_Z in CityScenery: the railway runs along x, behind the south row
 const hasPost = (b: Box, m: number) => POSTS.some(p => p.x > b.x0 - m && p.x < b.x1 + m && p.z > b.z0 - m && p.z < b.z1 + m);
 
 function build(): Plot[] {
   const out: Plot[] = [];
-  const dist = RING * GRID + halfW(RING) + FRONT + HOUSE_D / 2;      // centre of every house along its side's outward axis
-  for (const [nx, nz] of SIDES) {
+  const dist0 = RING * GRID + halfW(RING) + FRONT + HOUSE_D / 2;     // centre of every row-0 house along its side's outward axis
+  // Row 0 is built first and exactly as before, so slots 0.. keep their places; every extra row only appends new slots after it.
+  for (let row = 0; row < ROWS; row++) for (const [nx, nz] of SIDES) {
+    const dist = dist0 + row * ROW_STEP;
     const tx = nz !== 0 ? 1 : 0, tz = nx !== 0 ? 1 : 0;              // the axis the ring road runs along on this side
     const rot = Math.atan2(-nx, -nz), c = Math.cos(rot), s = Math.sin(rot);
     for (let k = -RING; k < RING; k++) {
@@ -68,16 +72,16 @@ function build(): Plot[] {
         const world = (lx: number, lz: number): Pt => ({ x: x + lx * c + lz * s, z: z - lx * s + lz * c });   // house-local (+z = front) to world
         const box = (p: Pt, hx: number, hz: number): Box => (Math.abs(s) > .5 ? { x0: p.x - hz, x1: p.x + hz, z0: p.z - hx, z1: p.z + hx } : { x0: p.x - hx, x1: p.x + hx, z0: p.z - hz, z1: p.z + hz });
         // the whole lot, from the road edge back past the house
-        const d0 = RING * GRID + halfW(RING), d1 = dist + HOUSE_D / 2 + 1.5;
+        const d0 = dist - HOUSE_D / 2 - FRONT, d1 = dist + HOUSE_D / 2 + 1.5;   // front yard to just behind the house (row 0: from the road edge)
         const lot: Box = tx ? { x0: a - w / 2, x1: a + w / 2, z0: nz > 0 ? d0 : -d1, z1: nz > 0 ? d1 : -d0 } : { x0: nx > 0 ? d0 : -d1, x1: nx > 0 ? d1 : -d0, z0: a - w / 2, z1: a + w / 2 };
-        if (KEEP_OUT.some(b => hit(b, lot))) continue;
+        if (KEEP_OUT.some(b => hit(b, lot)) || (row > 0 && hit(RAIL, lot))) continue;
         const solid = box({ x, z }, HOUSE_W / 2, HOUSE_D / 2);
         if (hasPost(solid, 1)) continue;
         let lat = NaN;
         for (const l of [0, 2, -2]) { if (!hasPost(box(world(l, HOUSE_D / 2 + FRONT / 2), 1.9, FRONT / 2 + .2), .5)) { lat = l; break; } }
         if (Number.isNaN(lat)) continue;
         const door = world(0, HOUSE_D / 2), ex = world(0, HOUSE_D / 2 + .8), car = world(lat, HOUSE_D / 2 + 3.9);
-        out.push({ slot: out.length, x, z, rot, nx, nz, lat, door, exit: { ...ex, r: Math.atan2(-nx, -nz) }, car: { ...car, r: Math.atan2(nz, -nx) }, solid });
+        out.push({ slot: out.length, row, x, z, rot, nx, nz, lat, door, exit: { ...ex, r: Math.atan2(-nx, -nz) }, car: { ...car, r: Math.atan2(nz, -nx) }, solid });
       }
     }
   }
@@ -85,7 +89,7 @@ function build(): Plot[] {
 }
 
 export const PLOTS: Plot[] = build();
-export const PLOT_COUNT = PLOTS.length;   // houses the street has room for; accounts are given plots in sign-up order
+export const PLOT_COUNT = PLOTS.length;   // houses the street has room for; each account is given one free plot and keeps it (User.houseSlot, lib/housePlots.ts)
 
 /** Classic keeps its old random height; Modern and Mansion are two storeys, Villa one. */
 export const floorsFor = (style: Style, u: string): 1 | 2 => (style.d === 0 ? (hsh(u + 'f') < .4 ? 2 : 1) : style.d === 2 ? 1 : 2);

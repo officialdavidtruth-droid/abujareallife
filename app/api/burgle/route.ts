@@ -23,8 +23,7 @@ const POS_MAX_AGE = 30_000;
 
 async function ownerOf(slot: number) {
   if (!Number.isInteger(slot) || slot < 0 || slot >= PLOT_COUNT) return null;
-  const rows = await prisma.user.findMany({ select: { id: true, username: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], skip: slot, take: 1 });   // plots go out in sign-up order (see app/api/houses)
-  return rows[0] ?? null;
+  return (await prisma.user.findFirst({ where: { houseSlot: slot }, select: { id: true, username: true } })) ?? null;   // the plot is stored on the account (lib/housePlots.ts)
 }
 async function secOf(userId: string): Promise<Sec> {
   return secFromRows((await prisma.inventoryItem.findMany({ where: { userId, itemKey: { startsWith: 'sec_' }, quantity: { gt: 0 } }, select: { itemKey: true, quantity: true } })) as { itemKey: string; quantity: number }[]);

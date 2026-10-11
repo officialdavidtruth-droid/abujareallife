@@ -126,7 +126,7 @@ export function layout(list: HouseInfo[]): Buckets {
       K.B.push(mk(h, px, 3.6, fz + 2.8, 2.4, .7, 2.4, '#2f8a45')); K.B.push(mk(h, px + .2, 3.95, fz + 2.9, 1.5, .5, 1.5, '#3aa655'));
     }
     /* gate and boundary wall: the driveway stays open (the gate leaves are swung back) so cars still get in */
-    if (ex(1)) {
+    if (ex(1) && h.row === 0) {   // (the rows behind have only a lane in front, no room for a gate wall)
       const wz = fz + FRONT - .5, lo = h.lat - 1.95, hi = h.lat + 1.95;
       if (lo > -3.9) { S((-3.9 + lo) / 2, .45, wz, lo + 3.9, .9, .22, wall); S((-3.9 + lo) / 2, .93, wz, lo + 3.9, .08, .3, trim); }
       if (hi < 3.9) { S((hi + 3.9) / 2, .45, wz, 3.9 - hi, .9, .22, wall); S((hi + 3.9) / 2, .93, wz, 3.9 - hi, .08, .3, trim); }
@@ -187,7 +187,7 @@ export function HouseMeshes({ list, ver = 0, forceNight }: { list: HouseInfo[]; 
 
 /** A free-standing house at the origin (front towards +z) for the customiser's preview. */
 export function previewHouse(style: Style, u: string, nepo: boolean): HouseInfo {
-  return { slot: -1, x: 0, z: 0, rot: 0, nx: 0, nz: 1, lat: 0, door: { x: 0, z: HOUSE_D / 2 }, exit: { x: 0, z: HOUSE_D / 2 + .8, r: 0 }, car: { x: 0, z: HOUSE_D / 2 + 3.9, r: 0 }, solid: { x0: -HOUSE_W / 2, x1: HOUSE_W / 2, z0: -HOUSE_D / 2, z1: HOUSE_D / 2 },
+  return { slot: -1, row: 0, x: 0, z: 0, rot: 0, nx: 0, nz: 1, lat: 0, door: { x: 0, z: HOUSE_D / 2 }, exit: { x: 0, z: HOUSE_D / 2 + .8, r: 0 }, car: { x: 0, z: HOUSE_D / 2 + 3.9, r: 0 }, solid: { x0: -HOUSE_W / 2, x1: HOUSE_W / 2, z0: -HOUSE_D / 2, z1: HOUSE_D / 2 },
     u, mine: true, nepo, style, wall: WALLS[style.w] ?? WALLS[0], roof: ROOFS[style.r] ?? ROOFS[0], floors: floorsFor(style, u), sec: NO_SEC };
 }
 

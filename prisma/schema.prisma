@@ -50,6 +50,7 @@ model User {
   dateOfBirth DateTime?
   adultContentAcceptedAt DateTime?
   origin       String?   // 'LAPO' | 'NEPO': spun once at sign-up, never changes
+  houseSlot    Int?       @unique // this player's plot on the street (lib/houses.ts PLOTS), assigned once, see lib/housePlots.ts
   name         String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt

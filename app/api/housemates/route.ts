@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err, serverError, throttled } from '../../../lib/auth';
-import { PLOT_COUNT } from '../../../lib/houses';
+import { ensureSlot } from '../../../lib/housePlots';
 import { MAX_MATES, resolveHome } from '../../../lib/housemates';
 // Housemates: invite other players to live in your house. GET = my house situation, POST = invite | accept | decline | cancel | remove | leave.
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ async function snapshot(userId: string) {
   ]);
   return { livesAt: live?.ownerName ?? null, mates: mates.map(m => ({ name: m.mateName, status: m.status })), invites: invites.map(i => i.ownerName), max: MAX_MATES };
 }
-const hasPlot = async (id: string) => (await prisma.user.findMany({ select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: PLOT_COUNT })).some(r => r.id === id);
+const hasPlot = async (id: string) => (await ensureSlot(id)) != null;
 
 export async function GET() {
   try { const u = await currentUser(); if (!u) return err('Not signed in.', 401); return NextResponse.json(await snapshot(u.id)); } catch (e) { return serverError(e); }

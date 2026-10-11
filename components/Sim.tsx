@@ -20,7 +20,7 @@ import { setMusicMood, sfx } from '../lib/audio';
 import { openSettings } from '../lib/settings';
 import GameLayer from './GameLayer';
 import Interior from './Interior';
-import MovieScreen, { type ScreenMode } from './MovieScreen';
+import MovieScreen, { type ScreenMode, type JobInfo } from './MovieScreen';
 import { CITY } from '../lib/cityData';
 import { GAME, buildingExitPoint } from './CityWorld';
 import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
@@ -497,6 +497,9 @@ const watchMode = (fam = true): ScreenMode => {
   if (a && (a.k === 'game' || a.k === 'cgame')) return 'game';
   return fam && F.mem.some(m => !m.away && m.pose === 'sit' && m.anim === 'tv') ? 'movie' : null;
 };
+// what a computer monitor shows: it follows whichever desk activity is running (freelance code, side-hustle ledger, social feed)
+const deskMode = (): ScreenMode => { const k = S.cur?.t === 'act' ? S.cur.a.k : ''; return k === 'work' ? 'work' : k === 'hustle' || k === 'bizplan' ? 'hustle' : k === 'browse' || k === 'obrowse' ? 'browse' : null; };
+const deskJob = (): JobInfo => S.cur?.t === 'act' ? { prog: Math.min(1, S.prog / S.cur.a.dur), pay: S.cur.a.pay || 0 } : { prog: 0, pay: 0 };
 const Chair = ({ p, ry = 0, c = '#6b4a2f', pad = '#8c3a2f' }: { p: V3; ry?: number; c?: string; pad?: string }) => <group position={p} rotation-y={ry}>
   <B p={[0, .4, 0]} s={[.44, .05, .44]} c={c} /><B p={[0, .445, 0]} s={[.4, .04, .4]} c={pad} ro={.95} r={.02} />
   {[[-.19, -.19], [.19, -.19], [-.19, .19], [.19, .19]].map(([x, z]) => <B key={x + '' + z} p={[x, .19, z]} s={[.04, .38, .04]} c={c} r={.01} />)}
@@ -651,7 +654,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     {[.2, .37, .54].map(y => <group key={y}><B p={[.52, y, .36]} s={[.46, .14, .02]} c="#7a5638" ro={.55} /><B p={[.52, y + .04, .375]} s={[.14, .015, .02]} c="#c9ced1" m={.9} ro={.2} /></group>)}
     <B p={[0, .63, -.34]} s={[1.3, .3, .02]} c="#6b4a30" />
     <B p={[0, .79, -.15]} s={[.3, .012, .18]} c="#2b2b2e" m={.6} /><B p={[0, .9, -.2]} s={[.04, .2, .03]} c="#2b2b2e" m={.6} /><B p={[0, 1.2, -.22]} s={[.7, .4, .03]} c="#0d0e10" ro={.3} r={.01} />
-    <Screen p={[0, 1.2, -.2]} w={.64} h={.35} on={ui.power} col="#7fd0ff" /><B p={[.02, .785, .14]} s={[.42, .016, .14]} c="#d8d8d8" ro={.5} /><B p={[.34, .785, .14]} s={[.06, .02, .1]} c="#2b2b2e" r={.02} />
+    <MovieScreen p={[0, 1.2, -.19]} w={.64} h={.35} on={ui.power} watch={deskMode} kind="desk" job={deskJob} /><B p={[.02, .785, .14]} s={[.42, .016, .14]} c="#d8d8d8" ro={.5} /><B p={[.34, .785, .14]} s={[.06, .02, .1]} c="#2b2b2e" r={.02} />
     <C p={[-.62, .79, -.25]} r={.07} h={.02} c="#333" m={.6} /><B p={[-.62, .95, -.25]} s={[.02, .3, .02]} c="#333" /><B p={[-.62, 1.1, -.18]} s={[.03, .03, .2]} c="#333" rot={[.3, 0, 0]} />
     <C p={[.55, .82, 0]} r={.04} h={.09} c="#e8e2d2" ro={.4} /><B p={[-.45, .775, .2]} s={[.22, .012, .3]} c="#f6f4ee" rot={[0, .2, 0]} /><B p={[-.45, .79, .2]} s={[.2, .02, .27]} c="#d9d4c6" rot={[0, -.1, 0]} />
     <Part id="desk.chair" rel><C p={[0, .04, 0]} r={.25} rt={.03} h={.03} c="#2b2b2e" /><C p={[0, .22, 0]} r={.025} h={.36} c="#555" m={.8} /><B p={[0, .43, 0]} s={[.48, .08, .46]} c="#2f3a4a" ro={.95} r={.04} />
@@ -710,7 +713,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[0, .72, 0]} s={[1.8, .06, .8]} c="#3a2418" ro={.4} r={.02} />
     {[[-.82, -.3], [.82, -.3], [-.82, .3], [.82, .3]].map(([x, z]) => <B key={x + '' + z} p={[x, .35, z]} s={[.06, .7, .06]} c="#2a1a10" />)}
     <B p={[.5, .4, 0]} s={[.6, .6, .7]} c="#2f1d13" ro={.5} r={.02} />
-    <B p={[-.2, .93, -.1]} s={[.62, .36, .03]} c="#0d0f12" ro={.3} /><B p={[-.2, .93, -.083]} s={[.56, .3, .005]} c={ui.power ? '#7fb8ff' : '#14161a'} ro={.2} /><B p={[-.2, .76, -.1]} s={[.1, .06, .1]} c="#222" />
+    <B p={[-.2, .93, -.1]} s={[.62, .36, .03]} c="#0d0f12" ro={.3} /><MovieScreen p={[-.2, .93, -.079]} w={.56} h={.3} on={ui.power} watch={deskMode} kind="desk" job={deskJob} /><B p={[-.2, .76, -.1]} s={[.1, .06, .1]} c="#222" />
     <B p={[.55, .76, .1]} s={[.4, .015, .14]} c="#d8d8d8" ro={.4} /><C p={[-.78, .84, .2]} r={.07} rt={.1} h={.18} c="#f2e6c9" e={ui.power ? '#ffd9a0' : undefined} ei={.4} />
     <Part id="odesk.chair"><B p={[0, .38, .95]} s={[.6, .08, .6]} c="#14161a" ro={.5} r={.06} /><B p={[0, .85, 1.22]} s={[.58, .86, .1]} c="#14161a" ro={.5} r={.06} /><C p={[0, .16, .95]} r={.03} h={.34} c="#9aa3a8" m={.7} /></Part>
   </>,

@@ -8,7 +8,7 @@ export type HumanState = 'idle' | 'walk' | 'sit' | 'sleep';
 type J = Record<string, number>;
 const KEYS = ['hipY', 'sX', 'sY', 'sZ', 'hX', 'hY', 'hZ', 'laX', 'laZ', 'raX', 'raZ', 'leX', 'reX', 'llX', 'llZ', 'rlX', 'rlZ', 'lkX', 'rkX'];
 export type Rig = {
-  root: THREE.Group; hips: THREE.Group; spine: THREE.Group; head: THREE.Group; chest: THREE.Mesh; eyes: THREE.Group; weapon: THREE.Group;
+  root: THREE.Group; hips: THREE.Group; spine: THREE.Group; head: THREE.Group; chest: THREE.Mesh; eyes: THREE.Group; weapon: THREE.Group; phone: THREE.Group; fem: boolean;
   la: THREE.Group; ra: THREE.Group; le: THREE.Group; re: THREE.Group; ll: THREE.Group; rl: THREE.Group; lk: THREE.Group; rk: THREE.Group; lf: THREE.Group; rf: THREE.Group;
   cur: J; ph: number; clip: THREE.AnimationClip | null;
   sk: THREE.Group[]; skAmt: number; // skirt halves (index 0 follows the left leg, 1 the right) and how much they swing
@@ -487,9 +487,14 @@ export function buildHuman(look: Look): Rig {
   const barrel = mesh(new THREE.CylinderGeometry(.012, .012, .13, 10), metal('#4b535a', .22)); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, -.275, .19); weapon.add(barrel);
   const grip = mesh(new THREE.BoxGeometry(.035, .085, .045), std('#171a1d', .35)); grip.position.set(0, -.355, .025); grip.rotation.x = -.22; weapon.add(grip);
   weapon.visible = false; B.sh.add(weapon);
+  // a smartphone held in the right hand; only visible while on a call / ordering on the phone (anim 'phone')
+  const phone = new THREE.Group();
+  const phBody = mesh(new RoundedBoxGeometry(.012, .15, .074, 2, .005), metal('#15181c', .3)); phone.add(phBody);
+  const phScr = new THREE.Mesh(new THREE.PlaneGeometry(.066, .138), new THREE.MeshBasicMaterial({ color: '#7fd0ff' })); phScr.rotation.y = Math.PI / 2; phScr.position.x = .0066; phone.add(phScr); // glowing screen faces the head
+  phone.position.set(.034, -.40, .004); phone.rotation.set(-.1, 0, 0); phone.visible = false; B.el.add(phone);
   const cur = Object.fromEntries(KEYS.map(k => [k, 0])) as J;
   const skAmt = M === 'gown' ? .3 : M === 'ankara' ? .38 : .48;
-  return { root, hips, spine, head, chest, eyes, weapon, la: A.sh, ra: B.sh, le: A.el, re: B.el, ll: L.up, rl: R.up, lk: L.kn, rk: R.kn, lf: L.ft, rf: R.ft, cur, ph: 0, clip: null, sk, skAmt };
+  return { root, hips, spine, head, chest, eyes, weapon, phone, fem: f, la: A.sh, ra: B.sh, le: A.el, re: B.el, ll: L.up, rl: R.up, lk: L.kn, rk: R.kn, lf: L.ft, rf: R.ft, cur, ph: 0, clip: null, sk, skAmt };
 }
 
 const sin = Math.sin, cos = Math.cos, mx = Math.max;
@@ -524,7 +529,7 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   if (k === 'eatsit' || k === 'eat') { const b = .5 + .5 * sin(t * 3.2); j.raX = .6 + .3 * b; j.reX = 1.45 + .55 * b; j.raZ = -.04; j.hX = .08 + .05 * b; j.laX = k === 'eatsit' ? .5 : .1; j.leX = k === 'eatsit' ? .9 : .2; if (k === 'eatsit') j.sX = .08; }
   if (k === 'cook') { j.sX = .14; j.hX = .25; j.raX = .5 + .12 * sin(t * 5); j.raZ = -.05; j.reX = 1.0 + .2 * sin(t * 5 + 1); j.laX = .45; j.leX = 1.0; j.sY = .1 * sin(t * 2.5); }
   if (k === 'wash') { j.laX = 2.7; j.raX = 2.7; j.leX = 1.7; j.reX = 1.7; j.laZ = .35; j.raZ = .35; j.hX = -.15; j.sZ = .05 * sin(t * 6); j.hZ = .12 * sin(t * 6); j.leX += .25 * sin(t * 9); j.reX += .25 * sin(t * 9 + 1.5); }
-  if (k === 'phone') { j.raX = .55; j.raZ = -.12; j.reX = 2.3; j.laX = .1; j.hZ = -.16; j.hY = .1; j.sY = .05 * sin(t * 1.5); j.hX = .02 + .05 * mx(0, sin(t * 4)); j.laZ = .2; j.leX = .6; }
+  if (k === 'phone') { j.raX = 1.15; j.raZ = .4; j.reX = 2.65; j.laX = .1; j.hZ = .2; j.hY = .2 + .03 * sin(t * .9); j.sY = .02 * sin(t * 1.5); j.hX = .02 + .04 * mx(0, sin(t * 4)); j.laZ = .2; j.leX = .6; }   // phone held to the right ear (rig.phone is shown by animateHuman)
   if (k === 'chat') { j.laX = .45; j.raX = .45; j.leX = 1.3; j.reX = 1.3; j.hX = .35; j.laZ = .1; j.raZ = .1; j.leX += .08 * sin(t * 12); j.reX += .08 * sin(t * 12 + 2); j.sX = .06; }
   if (k === 'dance') { const s = sin(t * 6.5), c = cos(t * 6.5); j.hipY = -.06 + .05 * Math.abs(s); j.llX = .25 * s; j.rlX = -.25 * s; j.lkX = .45 + .3 * s; j.rkX = .45 - .3 * s; j.laX = 1.8 + .9 * s; j.raX = 1.8 - .9 * s; j.laZ = .5 + .3 * c; j.raZ = .5 - .3 * c; j.leX = .9; j.reX = .9; j.sY = .35 * s; j.sZ = .12 * c; j.hZ = .12 * s; j.hY = -.2 * s; j.llZ = .12; j.rlZ = -.12; }
   if (k === 'wave') { j.raZ = 2.6; j.raX = 0; j.reX = .35 + .6 * sin(t * 9); j.hZ = -.08; j.hY = .2; j.laZ = .08; }
@@ -560,8 +565,10 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 export function animateHuman(rig: Rig, state: HumanState, anim: string | undefined, t: number, dt: number, speed = 1) {
   rig.ph += dt * (state === 'walk' ? 8.5 + Math.min(speed, 3) * 1.1 : 0);
   const tg = target(state, anim, t, rig.ph), c = rig.cur, k = 1 - Math.exp(-dt * 14);
+  if (anim === 'phone' && rig.fem) Object.assign(tg, { raX: .8, raZ: -.4, reX: 2.7, hZ: .3, hY: .35 + .03 * sin(t * .9) }); // narrower shoulders: the hand reaches the ear on a different arm line
   for (const key of KEYS) c[key] = lerp(c[key], tg[key] ?? 0, k);
   rig.weapon.visible = anim === 'shoot' || anim === 'aim' || anim === 'reload';
+  rig.phone.visible = anim === 'phone';
   rig.hips.position.y = .88 + c.hipY;
   rig.hips.rotation.set(0, 0, 0);
   rig.spine.rotation.set(c.sX, c.sY, c.sZ);

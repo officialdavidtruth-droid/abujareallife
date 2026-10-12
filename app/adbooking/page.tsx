@@ -20,13 +20,14 @@ function Board({ title, sub, contact, color }: { title: string; sub: string; con
 }
 
 export default function AdBooking() {
-  const [cfg, setCfg] = useState<Cfg | null>(null), [acc, setAcc] = useState<Acc | null | undefined>(undefined), [books, setBooks] = useState<Bk[]>([]);
+  const [cfg, setCfg] = useState<Cfg | null>(null), [loadErr, setLoadErr] = useState(''), [acc, setAcc] = useState<Acc | null | undefined>(undefined), [books, setBooks] = useState<Bk[]>([]);
   const [tab, setTab] = useState<'book' | 'mine' | 'admin'>('book'), [banner, setBanner] = useState<{ kind: 'ok' | 'bad' | 'info'; text: string } | null>(null);
 
   const refresh = useCallback(async () => { const m = await api('me'); setAcc(m.account || null); setBooks(m.bookings || []); }, []);
   useEffect(() => {
     (async () => {
-      setCfg(await api('slots')); await refresh();
+      const c = await api<Cfg>('slots'); if (c.error || !Array.isArray(c.slots)) { setLoadErr(c.error || 'The booking service did not answer correctly.'); return; }
+      setCfg(c); await refresh();
       const id = new URLSearchParams(location.search).get('paid');   // Paystack sends the advertiser back here
       if (id) {
         history.replaceState(null, '', '/adbooking'); setBanner({ kind: 'info', text: 'Checking your payment…' }); setTab('mine');
@@ -36,6 +37,7 @@ export default function AdBooking() {
     })();
   }, [refresh]);
 
+  if (loadErr) return <main className="abk"><div className="abkLoad"><h2>We could not load the booking page</h2><p>{loadErr}</p><button className="abkBtn" onClick={() => location.reload()}>Try again</button></div></main>;
   if (!cfg || acc === undefined) return <main className="abk"><div className="abkLoad">Loading…</div></main>;
   return <main className="abk">
     <header className="abkTop"><a className="abkBrand" href="/adbooking"><span>▦</span> Abuja Real Life <em>Ads</em></a>

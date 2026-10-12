@@ -196,3 +196,34 @@ body .jbCard,body .huCard,body .carCard,body .lbRow,body .frow{border:3px solid 
 .mcMissionList::-webkit-scrollbar-track,.mcWeaponList::-webkit-scrollbar-track,.modal .box::-webkit-scrollbar-track{background:#000a;border-radius:8px}
 
 @media (prefers-reduced-motion:reduce){body .top>.pill::after,body .mcMission>button::after,body .mcPanel header::after{animation:none}body .mcMission>button:not(:disabled){animation:none}}
+
+/* ================= FIXES v2.1: Mission Control on short landscape screens ================= */
+/* the panel covers the whole HUD (needs strip, top pills, dock) instead of sitting under it */
+body .mcBackdrop{z-index:300!important}
+/* cards keep their height; the LIST scrolls instead of squashing them */
+body .mcPanel{max-height:calc(100dvh - 16px)!important;min-height:0}
+body .mcMissionList,body .mcWeaponList{flex:1 1 auto;min-height:0!important;overflow-y:auto;overscroll-behavior:contain;padding:2px 4px 6px 2px}
+body .mcMission,body .mcWeapon{flex:none!important}
+body .mcMissionText p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+body .mcPanel header,body .mcPanel nav,body .mcPanel footer{flex:none}
+/* phones in landscape (about 360-500px tall): compact the chrome so 2-3 cards fit on screen */
+@media (max-height:620px){
+  body .mcBackdrop{padding:8px!important}
+  body .mcPanel{border-width:4px!important;border-radius:16px!important;padding:0 10px 8px!important;gap:6px!important;
+    box-shadow:0 0 0 2px var(--gy-gold),0 0 0 4px #000,0 8px 0 4px #000,0 16px 30px #000c!important}
+  body .mcPanel header{margin:0 -10px;padding:7px 56px 7px 14px;border-bottom-width:4px}
+  body .mcPanel header::after{height:4px;bottom:-4px}
+  body .mcPanel header small{font-size:9px!important;letter-spacing:.18em!important}
+  body .mcPanel h2{font-size:22px!important;-webkit-text-stroke:1.5px #000;text-shadow:0 3px 0 #000!important}
+  body .mcClose{width:36px!important;height:36px!important;font-size:22px!important;border-width:3px!important;right:10px}
+  body .mcPanel nav{margin-top:4px;gap:6px!important}
+  body .mcPanel nav button{padding:6px!important;font-size:15px;border-width:2px!important;border-radius:10px!important;box-shadow:inset 0 2px 0 #ffffff33,0 3px 0 #000}
+  body .mcMission,body .mcWeapon{padding:7px 8px!important;gap:8px!important;border-width:2px!important;border-left-width:8px!important;border-radius:12px!important}
+  body .mcMissionIcon,body .mcWeaponIcon{width:34px!important;height:34px!important;font-size:20px!important;border-width:2px!important;border-radius:10px!important}
+  body .mcMissionText b,body .mcWeapon b{font-size:15px!important}
+  body .mcMeta{font-size:9px!important}
+  body .mcMissionText p{font-size:10px!important;margin:2px 0!important;-webkit-line-clamp:1}
+  body .mcMissionText small,body .mcWeapon small{font-size:10px!important;margin-top:2px!important}
+  body .mcMission>button,body .mcWeapon>button,body .mcReload{padding:8px 12px!important;font-size:14px!important;border-width:2px!important;border-radius:10px!important}
+  body .mcPanel footer{display:none}
+}

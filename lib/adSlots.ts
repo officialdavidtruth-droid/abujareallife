@@ -3,13 +3,15 @@
 export type AdSlot = { index: number; name: string; where: string; perDay: number; views: string };
 
 /* DEFAULT PRICES (naira per day). The admin changes the real prices at /adminad (stored in the AdSlotPrice table, 0 = free); these are only used for a board the admin has not priced yet. */
+/* Each board is named after the real in-game building it stands next to (nearest business building to the board's post in the 3D city),
+   and "views" uses the game's own district traffic figure (lib/livingCity.ts). If you move a board in components/CityScenery.tsx, rename it here. */
 export const AD_SLOTS: AdSlot[] = [
-  { index: 0, name: 'City Centre North', where: 'Main road, near the city centre', perDay: 8000, views: 'Very high traffic' },
-  { index: 1, name: 'City Centre South', where: 'Main road, near the city centre', perDay: 8000, views: 'Very high traffic' },
-  { index: 2, name: 'Central Crossroads East', where: 'Busy junction, east side', perDay: 6000, views: 'High traffic' },
-  { index: 3, name: 'Central Crossroads West', where: 'Busy junction, west side', perDay: 6000, views: 'High traffic' },
-  { index: 4, name: 'Boulevard East', where: 'Long straight road, east', perDay: 4000, views: 'Medium traffic' },
-  { index: 5, name: 'Boulevard North', where: 'Long straight road, north', perDay: 4000, views: 'Medium traffic' },
+  { index: 0, name: 'Central Area Market', where: 'By Central Area Market, Central Area crossroads', perDay: 8000, views: 'Central Area · 90% district traffic' },
+  { index: 1, name: 'Central Area Logistics', where: 'By Central Area Logistics, Central Area crossroads', perDay: 8000, views: 'Central Area · 90% district traffic' },
+  { index: 2, name: 'National Civic Centre', where: 'Next to the National Civic Centre, Central Area', perDay: 6000, views: 'Central Area · 90% district traffic' },
+  { index: 3, name: 'Central Area School', where: 'By Central Area School, Central Area crossroads', perDay: 6000, views: 'Central Area · 90% district traffic' },
+  { index: 4, name: 'Jabi Market', where: 'By Jabi Market, east of the National Civic Centre', perDay: 4000, views: 'Jabi · 82% district traffic' },
+  { index: 5, name: 'Garki Gun Shop', where: 'By Garki Gun Shop, south of the Central Area', perDay: 4000, views: 'Garki · 86% district traffic' },
 ];
 export const slotOf = (i: unknown) => AD_SLOTS.find(s => s.index === Number(i));
 

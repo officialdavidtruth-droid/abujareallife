@@ -26,3 +26,6 @@ Real businesses sign up, pick one of the city billboards and dates, write an ad,
 
 ## Not included yet
 Logo upload separate from the flyer, emails (receipt and approval notices), password reset, and a view counter. Ask for any of these next.
+
+## Board names
+Boards are named after the real in-game building each one stands next to (found with the nearest business building in `BUILDS_WORLD`): Central Area Market, Central Area Logistics, National Civic Centre, Central Area School, Jabi Market, Garki Gun Shop. If you move a billboard in `components/CityScenery.tsx`, update its name in `lib/adSlots.ts`.

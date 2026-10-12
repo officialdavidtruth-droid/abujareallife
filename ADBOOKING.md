@@ -17,5 +17,12 @@ Real businesses sign up, pick one of the city billboards and dates, write an ad,
 - After payment the booking is IN_REVIEW. The reviewer approves (goes live on the start date) or rejects with a reason (refunded through the Paystack refund API; if that fails the page tells you to refund it in the Paystack dashboard).
 - The game reads `GET /api/ads/live` (cached 60 s) every 5 minutes.
 
+## Flyers, admin portal and prices (migration 0031)
+- **Flyer upload.** On /adbooking step 3 the advertiser can upload a JPG / PNG / WebP flyer. The browser cuts it to the board's exact shape (1600 x 708, the same ratio as the 3D board face) with two choices: *Show all of it* (whole picture, board colour fills the gaps) or *Fill the board* (crops the edges). Only that finished JPEG is sent, so the game can never stretch it; it is also fitted by its real width and height when drawn. With a flyer, the headline is just a name for your review team and the tagline is optional. Flyers are stored in the database (table `AdImage`, under 900 KB each) and served by `GET /api/ads/image/<bookingId>`: public once approved, otherwise only the advertiser and admins can open it.
+- **Admin portal: abujareallife.online/adminad.** Log in with an advertiser account whose email is in `ADMIN_EMAILS` (create the account at /adbooking first, then log in at /adminad). Tabs: *To review* (big flyer preview, open full size, Approve / Reject with reason), *All ads* (filter, and *Take down* for a live ad), *Prices*.
+- **Prices set by you.** *Prices* tab: type a per-day price for each board and Save, or press *Make free*. 0 means free. A paid price must be at least 100 a day (Paystack will not take tiny payments). A free booking skips Paystack and goes straight to your review queue (limit: 3 free ads waiting per advertiser). Rejecting a free ad needs no refund. The defaults in `lib/adSlots.ts` apply only to a board you have not priced. Bookings already made keep the price they were made at.
+- The old *Review queue* tab on /adbooking was replaced by an *Admin portal* link for admins.
+- **To apply:** run `prisma/migrations/0031_ad_images_prices/migration.sql` in the Supabase SQL Editor (safe to re-run), copy the files over, `npx prisma generate`, deploy.
+
 ## Not included yet
-Image / logo upload (needs file storage), emails (receipt and approval notices), password reset, and a view counter. Ask for any of these next.
+Logo upload separate from the flyer, emails (receipt and approval notices), password reset, and a view counter. Ask for any of these next.

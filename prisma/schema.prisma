@@ -756,10 +756,28 @@ model AdBooking {
   paidAt     DateTime?
   refund     String    @default("")       // "" | "REQUESTED" | "FAILED: ..."
   note       String    @default("")       // reviewer's note (shown to the advertiser on rejection)
+  hasImage   Boolean   @default(false)    // the advertiser uploaded a flyer (bytes live in AdImage)
+  image      AdImage?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   @@index([accountId])
   @@index([slot, startDate])
   @@index([status])
+}
+
+/* Flyer picture for a billboard ad. Kept in its own table so listing bookings never loads the bytes. */
+model AdImage {
+  bookingId String    @id
+  booking   AdBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  mime      String    @default("image/jpeg")
+  data      Bytes
+  createdAt DateTime  @default(now())
+}
+
+/* Price per day for a billboard, set by the admin at /adminad. 0 = free. A board with no row uses the default in lib/adSlots.ts. */
+model AdSlotPrice {
+  slot      Int      @id
+  perDay    Int
+  updatedAt DateTime @updatedAt
 }

@@ -283,7 +283,23 @@ export const BILLBOARDS = ([
 ] as const).map(([axis, road, along, side, title, sub], i) => ({ ...billboardSpot(axis, road, along, side), ax: axis === 'x' ? 1 : 0, az: axis === 'x' ? 0 : 1, title, sub, i }));
 
 /* Paid ads from /adbooking: fetched once and then every 5 minutes. A board with no live ad keeps its default message. */
-type LiveAd = { slot: number; title: string; sub: string; contact: string; color: string };
+type LiveAd = { slot: number; title: string; sub: string; contact: string; color: string; img?: string };
+
+/* An advertiser's uploaded flyer drawn on the board face. The picture is already cut to the face's shape (5.2 x 2.3) by the booking page,
+   and it is still fitted by its real width / height here, so it can never come out stretched. It uses an unlit material so the colours stay true. */
+function FlyerFace({ url }: { url: string }) {
+  const [tex, setTex] = useState<THREE.Texture | null>(null);
+  useEffect(() => {
+    let dead = false, t: THREE.Texture | null = null;
+    new THREE.TextureLoader().load(url, x => { if (dead) { x.dispose(); return; } x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; x.needsUpdate = true; t = x; setTex(x); }, undefined, () => {});
+    return () => { dead = true; t?.dispose(); };
+  }, [url]);
+  if (!tex) return null;
+  const im = tex.image as { width: number; height: number }, asp = (im.width || 1) / (im.height || 1), FW = 5.2, FH = 2.3;
+  const w = Math.min(FW, FH * asp), h = w / asp;
+  return <mesh position={[0, 4.5, -.145]} rotation-y={Math.PI}><planeGeometry args={[w, h]} /><meshBasicMaterial map={tex} toneMapped={false} /></mesh>;
+}
+
 export function Billboards() {
   const [ads, setAds] = useState<Record<number, LiveAd>>({});
   useEffect(() => {
@@ -295,10 +311,12 @@ export function Billboards() {
     {[-1.7, 1.7].map(o => <mesh key={o} position={[o, 1.8, 0]} castShadow><boxGeometry args={[.16, 3.6, .16]} /><meshStandardMaterial color="#2f343a" metalness={.3} roughness={.6} /></mesh>)}
     <mesh position={[0, 4.5, 0]} castShadow><boxGeometry args={[5.6, 2.7, .22]} /><meshStandardMaterial color="#14201b" roughness={.6} /></mesh>
     <mesh position={[0, 4.5, -.12]}><boxGeometry args={[5.2, 2.3, .04]} /><meshStandardMaterial color={col} emissive={col} emissiveIntensity={.45} roughness={.5} /></mesh>
+    {ad?.img ? <FlyerFace key={ad.img} url={ad.img} /> : <>
     {/* the front of the board faces -z (towards the road); drei Text faces +z, so it is turned round */}
     <Text position={[0, 4.85, -.16]} rotation-y={Math.PI} fontSize={.46} color="#fff" outlineWidth={.02} outlineColor="#0b0b0b" anchorX="center" anchorY="middle" maxWidth={4.9}>{title}</Text>
     <Text position={[0, 4.12, -.16]} rotation-y={Math.PI} fontSize={.22} color="#fff7e0" anchorX="center" anchorY="middle" maxWidth={4.9}>{sub}</Text>
     {ad?.contact ? <Text position={[0, 3.62, -.16]} rotation-y={Math.PI} fontSize={.17} color="#ffffff" anchorX="center" anchorY="middle" maxWidth={4.9}>{ad.contact}</Text> : null}
+    </>}
     {[-1.8, 0, 1.8].map(x => <mesh key={x} position={[x, 6.0, -.35]}><boxGeometry args={[.5, .1, .3]} /><meshStandardMaterial color="#fff2c4" emissive="#ffe29a" emissiveIntensity={.9} /></mesh>)}
   </group>; })}</>;
 }

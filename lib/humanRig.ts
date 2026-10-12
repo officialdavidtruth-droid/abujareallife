@@ -525,7 +525,7 @@ function target(state: HumanState, anim: string | undefined, t: number, ph: numb
   if (k === 'chill') { j.sX = -.28; j.hX = -.1; j.laX = .5; j.raX = .5; j.leX = .6; j.reX = .6; j.laZ = .35; j.raZ = .35; }
   if (k === 'work') { j.sX = .1; j.hX = .2; j.laX = .55; j.raX = .55; j.laZ = .05; j.raZ = .05; j.leX = 1.0 + .1 * sin(t * 15); j.reX = 1.0 + .1 * sin(t * 15 + 2); j.hY = .08 * sin(t * .8); }
   if (k === 'browse') { j.sX = .05; j.hX = .25; j.raX = .6; j.leX = 1.0; j.reX = 1.5; j.laX = .4; j.laZ = .15; j.hY = .1 * sin(t * .5); j.raZ = -.1; }
-  if (k === 'wc') { j.sX = .22; j.hX = .15; j.laX = .55; j.raX = .55; j.leX = .5; j.reX = .5; }
+  if (k === 'wc') { j.hipY = -.32; j.sX = .22; j.hX = .15; j.laX = .55; j.raX = .55; j.leX = .5; j.reX = .5; }
   if (k === 'eatsit' || k === 'eat') { const b = .5 + .5 * sin(t * 3.2); j.raX = .6 + .3 * b; j.reX = 1.45 + .55 * b; j.raZ = -.04; j.hX = .08 + .05 * b; j.laX = k === 'eatsit' ? .5 : .1; j.leX = k === 'eatsit' ? .9 : .2; if (k === 'eatsit') j.sX = .08; }
   if (k === 'cook') { j.sX = .14; j.hX = .25; j.raX = .5 + .12 * sin(t * 5); j.raZ = -.05; j.reX = 1.0 + .2 * sin(t * 5 + 1); j.laX = .45; j.leX = 1.0; j.sY = .1 * sin(t * 2.5); }
   if (k === 'wash') { j.laX = 2.7; j.raX = 2.7; j.leX = 1.7; j.reX = 1.7; j.laZ = .35; j.raZ = .35; j.hX = -.15; j.sZ = .05 * sin(t * 6); j.hZ = .12 * sin(t * 6); j.leX += .25 * sin(t * 9); j.reX += .25 * sin(t * 9 + 1.5); }

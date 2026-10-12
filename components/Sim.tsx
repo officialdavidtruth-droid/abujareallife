@@ -723,7 +723,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[0, 1.0, -.86]} s={[.14, .06, .05]} c="#c9ced1" m={.9} ro={.2} /><B p={[-.45, 1.1, -.82]} s={[.34, .03, .12]} c="#c9ced1" m={.9} ro={.2} /><C p={[-.5, 1.19, -.82]} r={.03} h={.14} c="#e8742a" ro={.3} /><C p={[-.4, 1.17, -.82]} r={.028} h={.1} c="#3f9ad6" ro={.3} /></>,
   toilet: () => <>
     <B p={[0, .64, -.42]} s={[.44, .42, .16]} c="#f6f6f3" ro={.2} r={.05} /><B p={[0, .86, -.42]} s={[.46, .03, .18]} c="#eeeeea" ro={.2} /><C p={[.12, .89, -.42]} r={.03} h={.015} c="#c9ced1" m={.9} />
-    <B p={[0, .17, -.15]} s={[.3, .34, .36]} c="#f6f6f3" ro={.2} r={.08} /><B p={[0, .4, -.02]} s={[.4, .22, .56]} c="#f6f6f3" ro={.2} r={.1} />
+    <B p={[0, .17, -.15]} s={[.3, .34, .36]} c="#f6f6f3" ro={.2} r={.08} /><B p={[0, .37, -.02]} s={[.4, .16, .56]} c="#f6f6f3" ro={.2} r={.1} /><B p={[0, .47, .02]} s={[.36, .04, .5]} c="#f6f6f3" ro={.2} r={.06} />
     <mesh position={[0, .52, .0]} rotation-x={Math.PI / 2} scale={[1, 1.22, 1]} castShadow><torusGeometry args={[.16, .028, 10, 28]} /><meshStandardMaterial color="#fbfbf8" roughness={.25} /></mesh>
     <mesh position={[0, .506, 0]} rotation-x={-Math.PI / 2} scale={[1, 1.22, 1]}><circleGeometry args={[.14, 24]} /><meshStandardMaterial color="#bfe0ee" roughness={.05} /></mesh>
     <B p={[0, .55, -.28]} s={[.36, .02, .08]} c="#fbfbf8" ro={.25} />

@@ -238,7 +238,7 @@ function fenceRun(axis: 'x' | 'z', fixed: number, a: number, b2: number, kind: '
     const type = b.business?.type ?? 'Office', R = (k: string) => hs(b.id + k);
     if (b.lay === 'lot') {
       const fz = b.z + b.d / 2, front = b.front ?? fz + 4.4, hw = BUILDABLE, cz = fz + 1.9, cx = b.x;   // cx = block centre: lot buildings are never shifted sideways
-      BOX.push({ x: cx, y: .015, z: (fz + front) / 2, sx: hw * 2, sy: .03, sz: front - fz, c: YARD.has(type) ? '#4a4d52' : '#5b5e63' });   // paving
+      BOX.push({ x: cx, y: .03, z: (fz + front) / 2, sx: hw * 2, sy: .06, sz: front - fz, c: YARD.has(type) ? '#4a4d52' : '#5b5e63' });   // paving: top at 6 cm, above the 3 cm sidewalk slab under every block (equal heights z-fought and flickered, worst on phones)
       const slots: (-1 | 1)[] = [-1, 1], pCar = type === 'Car Dealer' ? 1 : .8;
       slots.forEach((sd, k) => { if (R('pc' + k) < pCar) parkedCar(cx + sd * (GATE / 2 + 2.1), cz, R('ph' + k) > .5 ? 1 : -1, CAR_COL[Math.floor(R('pk' + k) * CAR_COL.length)]); });
       const kind = YARD.has(type) ? 'chain' : FORMAL.has(type) ? 'iron' : 'wall';
@@ -247,7 +247,7 @@ function fenceRun(axis: 'x' | 'z', fixed: number, a: number, b2: number, kind: '
       for (const sd of [-1, 1]) BOX.push({ x: cx + sd * GATE / 2, y: .65, z: front, sx: .22, sy: 1.3, sz: .22, c: '#2a2d31' });   // gate posts
     } else {
       const sd = b.side ?? 1, aw = 2 * BUILDABLE - 6.8 * WS, ax = b.x + sd * (b.w / 2 + aw / 2), bz = b.z - b.d / 2, fz = b.z + b.d / 2, ox = b.x + sd * (b.w / 2 + aw);   // alley centre line, street-side wall x
-      BOX.push({ x: ax, y: .015, z: b.z, sx: aw, sy: .03, sz: b.d, c: '#3a3d41' });
+      BOX.push({ x: ax, y: .03, z: b.z, sx: aw, sy: .06, sz: b.d, c: '#3a3d41' });
       fenceRun('z', ox, bz, fz - 2.6, 'wall');                                   // street-side wall, open at the front end (the alley mouth)
       fenceRun('x', bz + .12, b.x + sd * b.w / 2, ox - 1.1 * sd, 'wall');       // back wall of the alley, with a 1.1 m gap at the street side
       const cx2 = ax - sd * .35;   // props along the building wall

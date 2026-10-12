@@ -8,7 +8,7 @@ import Human from './Human';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 import { NIGHT } from './cityShared';
-import { TRIM_MAT, WHEEL_AT, WHEEL_MAT, WHEEL_R, WHEELBASE, trimGeo, wheelGeo } from './carParts';
+import { TRIM_MAT, WHEEL_AT, WHEEL_MAT, WHEEL_R, WHEELBASE, trimGeo, wheelGeo } from '../lib/carParts';
  // 0 = full day, 1 = full night
 export let PKIT: Kit | null = null;
 
@@ -64,11 +64,6 @@ export function WheelSet({ rim, steer }: { rim: string; steer?: () => number }) 
   </group>;
 }
 
-const rimMesh = <mesh rotation-y={Math.PI / 2} material={drvMat('#0e0f11', .5, .3)}><torusGeometry args={[.13, .014, 8, 18]} /></mesh>;
-const rimSpokes = <>
-  <mesh material={drvMat('#0e0f11', .5, .3)}><boxGeometry args={[.012, .012, .26]} /></mesh>
-  <mesh position={[0, -.065, 0]} material={drvMat('#0e0f11', .5, .3)}><boxGeometry args={[.012, .13, .012]} /></mesh>
-</>;
 /** the steering wheel in the cabin: turns with the front wheels (about 3x, like a real car) */
 function SteerRim({ steer }: { steer: () => number }) {
   const g = useRef<THREE.Group>(null), s = useRef(0);
@@ -90,6 +85,12 @@ export const drvHash = (str: string) => { let h = 2166136261; for (let i = 0; i 
 export const DRV_MATS = new Map<string, THREE.MeshStandardMaterial>();
 
 export const drvMat = (c: string, rough = .8, metal = .05) => { const k = c + rough + metal; let m = DRV_MATS.get(k); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal }); DRV_MATS.set(k, m); } return m; };
+
+const rimMesh = <mesh rotation-y={Math.PI / 2} material={drvMat('#0e0f11', .5, .3)}><torusGeometry args={[.13, .014, 8, 18]} /></mesh>;
+const rimSpokes = <>
+  <mesh material={drvMat('#0e0f11', .5, .3)}><boxGeometry args={[.012, .012, .26]} /></mesh>
+  <mesh position={[0, -.065, 0]} material={drvMat('#0e0f11', .5, .3)}><boxGeometry args={[.012, .13, .012]} /></mesh>
+</>;
 
 export const driverStyle = (seed: string, shirt?: string) => { const h = drvHash(seed); return { skin: DRV_SKINS[h % DRV_SKINS.length], top: shirt || DRV_SHIRTS[(h >> 3) % DRV_SHIRTS.length], hair: DRV_HAIRS[(h >> 6) % DRV_HAIRS.length] }; };
 

@@ -215,3 +215,6 @@
     top:auto!important;bottom:calc(112px + var(--sab,0px))!important;left:calc(var(--edge) + 128px)!important;right:calc(var(--edgeR) + 240px)!important;max-width:none!important;
   }
 }
+
+/* soft screen-edge darkening, gives the 3D view a cinematic frame (cheap: one static gradient, no filter) */
+.cityWorld::after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at 50% 46%,transparent 58%,rgba(0,0,0,.30) 100%)}

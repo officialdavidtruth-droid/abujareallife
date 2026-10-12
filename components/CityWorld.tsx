@@ -22,6 +22,7 @@ import { BUILDING_DESTS } from '../lib/destinations';
 import ChopYards from './ChopYards';
 import PlayerHouses from './PlayerHouses';
 import { HOUSES, nearDoor } from '../lib/houses';
+import { Atmosphere } from './CityAtmosphere';
 import { Graffiti, LookDriver, PowerLines, Puddles, ShopGlow, StreetClutter } from './CityLook';
 import { pushCrime } from '../lib/witness';
 import { sidewalkSpawn } from '../lib/roadRoute';
@@ -91,12 +92,12 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     NIGHT.n = n;
     const bg = st.scene.background as THREE.Color | null; if (bg) bg.copy(SKY.night).lerp(SKY.day, day).lerp(SKY.dusk, dusk);
     const fg = st.scene.fog as THREE.Fog | null; if (fg) fg.color.copy(SKY.fogNight).lerp(SKY.fogDay, day).lerp(SKY.fogDusk, dusk);
-    hemi.current.intensity = .22 + 1.03 * day;
+    hemi.current.intensity = .2 + .86 * day;   /* the sky reflection map (CityAtmosphere) now supplies the rest of the ambient light */
     sun.current.intensity = .5 + 2.3 * day; sun.current.color.copy(SKY.moon).lerp(SKY.sun, day).lerp(SKY.sunLow, dusk * day);
     { // shared weather (same for every player): overcast sky, harmattan dust, rain-thinned fog, dimmer sun, lightning
       const W = weatherAt(), gray = Math.max(W.cloud * .55, W.rain * .75, W.storm * .9), lit = .14 + .86 * day;
       WX.tmp.copy(WX.over).multiplyScalar(lit); if (bg) bg.lerp(WX.tmp, gray * .9); if (fg) fg.color.lerp(WX.tmp, gray * .85);
-      WX.tmp.copy(WX.dust).multiplyScalar(lit); if (bg) bg.lerp(WX.tmp, W.haze * .7); if (fg) { fg.color.lerp(WX.tmp, W.haze * .85); fg.near = 90 - W.haze * 55 - W.rain * 35; fg.far = 270 - W.haze * 130 - W.rain * 115; }
+      WX.tmp.copy(WX.dust).multiplyScalar(lit); if (bg) bg.lerp(WX.tmp, W.haze * .7); if (fg) { fg.color.lerp(WX.tmp, W.haze * .85); fg.near = 70 - W.haze * 40 - W.rain * 28; fg.far = 290 - W.haze * 150 - W.rain * 130; }
       hemi.current.intensity *= 1 - gray * .3; sun.current.intensity *= 1 - gray * .8 - W.haze * .25;
       const fl = lightningAt(Date.now(), W.storm); if (fl) { hemi.current.intensity += fl * 2.4; if (bg) bg.lerp(WX.flash, fl * .55); }
     }
@@ -443,10 +444,11 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   return (
     <>
       <color attach="background" args={['#8fc3ea']} />
-      <fog attach="fog" args={['#c9dff0', 90, 270]} />
-      <hemisphereLight ref={hemi} args={['#dff0ff', '#6b7a5a', 1.25]} />
-      <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={LOW_END ? [1024, 1024] : [2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0004} />
+      <fog attach="fog" args={['#c9dff0', 70, 290]} />
+      <hemisphereLight ref={hemi} args={['#cfe6ff', '#7d6d52', 1.05]} />
+      <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={LOW_END ? [1024, 1024] : [2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0003} shadow-normalBias={0.035} />
       <primitive object={sunTarget} />
+      <Atmosphere sun={sun} />
       <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.06, 0]} receiveShadow><planeGeometry args={[1900, 1900]} /><meshStandardMaterial color="#5d7f55" /></mesh>
       <Roads />

@@ -12,6 +12,16 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 
 ---
 
+## Unreleased — better lighting and sky
+- New `components/CityAtmosphere.tsx`: gradient sky dome with drifting clouds and a sun glow (follows time of day and weather), a generated sky reflection map so car paint, glass and metal reflect the sky, and Neutral tone mapping for richer colours.
+- `CityWorld.tsx`: wired in the atmosphere, longer/softer depth haze (fog 70 to 290), warmer hemisphere light, cleaner shadows (normalBias).
+- `CityCars.tsx`: clear-coat paint on non-touch devices (phones keep standard paint, which still reflects the sky), glossier glass.
+- `cityShared.ts`: warmer sun and sunset colours.
+- `app/gtahud.css`: soft screen-edge vignette.
+- Not included: real depth-of-field blur (needs the postprocessing package).
+
+---
+
 ## Unreleased — GTA pause-menu skin
 - New `app/gtamenus.css` (imported last in `app/layout.tsx`): every panel (missions, phone, market, inventory, home, store, wallet, side panels, sheets) gets one flat GTA pause-menu look: black panel with gold top rule, gold eyebrow and white uppercase title, flat tabs with a solid gold selected tab, list rows with a left edge bar, square gold action buttons. Visual only.
 - The HUD (needs, minimap, buttons, cash) now hides while a menu is open, which fixes the needs bars showing on top of the Missions panel.

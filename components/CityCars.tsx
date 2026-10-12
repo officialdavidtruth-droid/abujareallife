@@ -27,16 +27,18 @@ export function carKit(): Kit {
     body: ext([[-2.12, .34], [2.12, .34], [2.16, .6], [1.55, .8], [-1.92, .84], [-2.16, .68]], 1.7, .08),
     cabin: ext([[-1.25, .84], [1.0, .84], [.5, 1.34], [-.85, 1.34]], 1.46, .04),
     wheels, head: mergeGeometries(lamp(2.2, .6))!, tail: mergeGeometries(lamp(-2.2, .68))!,
-    glass: new THREE.MeshStandardMaterial({ color: '#cfe6f2', metalness: .05, roughness: .04, transparent: true, opacity: .16, depthWrite: false }), // clear glass: you can see the driver through the windshield
+    glass: new THREE.MeshStandardMaterial({ color: '#cfe6f2', metalness: .05, roughness: .04, transparent: true, opacity: .24, depthWrite: false, envMapIntensity: 1.6 }), // clear glass: you can see the driver through the windshield
     tire: new THREE.MeshStandardMaterial({ color: '#141619', roughness: .9 }),
     headM: new THREE.MeshStandardMaterial({ color: '#fff7d6', emissive: '#fff2b0', emissiveIntensity: 1.4 }),
     tailM: new THREE.MeshStandardMaterial({ color: '#ff3030', emissive: '#ff1a1a', emissiveIntensity: 1.2 }),
   };
 }
 
+/* clear-coat paint (extra shader cost) only on non-touch devices; phones keep the cheaper standard paint, which still reflects the sky map */
+const HQ_PAINT = typeof window !== 'undefined' && !window.matchMedia?.('(pointer: coarse)').matches;
 export const BODYMATS = new Map<string, THREE.MeshStandardMaterial>();
 
-export const bodyMat = (c: string) => { let m = BODYMATS.get(c); if (!m) { m = new THREE.MeshStandardMaterial({ color: c, metalness: .55, roughness: .32 }); BODYMATS.set(c, m); } return m; };
+export const bodyMat = (c: string) => { let m = BODYMATS.get(c); if (!m) { m = HQ_PAINT ? new THREE.MeshPhysicalMaterial({ color: c, metalness: .6, roughness: .26, clearcoat: .9, clearcoatRoughness: .07, envMapIntensity: 1.25 }) : new THREE.MeshStandardMaterial({ color: c, metalness: .55, roughness: .32 }); BODYMATS.set(c, m); } return m; };
 
 /* ───────── clear-glass interior: seats, dash, steering wheel and a driver you can see through the windshield ───────── */
 export const DRV_SKINS = ['#f1c9a5', '#d9a577', '#c68642', '#8d5524', '#5c3a21', '#3b2417'], DRV_SHIRTS = ['#e8e8e8', '#2a4a7a', '#7a2a2a', '#2f6b4a', '#d99a42', '#444b55', '#6b3a7a'], DRV_HAIRS = ['#111', '#1b1410', '#2b1d12', '#555'];

@@ -108,7 +108,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const cam = st.camera, t = oc.target as THREE.Vector3;
     // Player-follow camera: the local player's head is the camera anchor.
     // The view is intentionally first-person so every real user experiences Abuja from their own character's perspective.
-    const headY = VEH.drv ? 1.55 : 1.62 + p.y * .5;
+    const headY = VEH.drv ? 1.55 : 1.62 + p.y * .5 - (c.crouch ? .5 : 0);
     const viewFx = Math.sin(p.r), viewFz = Math.cos(p.r);
     if (c.look.x || c.look.y) {
       const lx = THREE.MathUtils.clamp(c.look.x, -80, 80), ly = THREE.MathUtils.clamp(c.look.y, -80, 80);
@@ -336,7 +336,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       moving.current = mag > .08; running.current = wantRun;
       const wx = ix * -fz + iy * fx, wz = ix * fx + iy * fz;
       if (moving.current) {
-        const sp = wantRun ? 9 : 4.6;
+        if (wantRun && c.crouch) c.crouch = false;
+        const sp = c.crouch ? 2.3 : wantRun ? 9 : 4.6;
         p.x += wx * sp * dt; p.z += wz * sp * dt;
         p.r += wrap(Math.atan2(wx, wz) - p.r) * Math.min(1, dt * 12);
       }
@@ -367,7 +368,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     }
     c.jump = false;
     GAME.player.x = p.x; GAME.player.z = p.z; GAME.player.r = p.r;
-    group.current.rotation.order = 'YXZ'; const lying = me.ko > nowMs || JACK.victimUntil > nowMs; group.current.position.set(p.x, p.y + (lying ? .28 : 0), p.z); group.current.rotation.y = p.r; group.current.rotation.x = lying ? -Math.PI / 2 : 0; // knocked out: lying on the ground
+    group.current.rotation.order = 'YXZ'; const lying = me.ko > nowMs || JACK.victimUntil > nowMs; group.current.position.set(p.x, p.y + (lying ? .28 : 0), p.z); { const cs = c.crouch && !VEH.drv && !lying ? .8 : 1; group.current.scale.y += (cs - group.current.scale.y) * Math.min(1, dt * 10); } group.current.rotation.y = p.r; group.current.rotation.x = lying ? -Math.PI / 2 : 0; // knocked out: lying on the ground
     group.current.visible = !VEH.drv;
     if (JACK.ph) moving.current = JACK.walk;
     if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';
@@ -532,6 +533,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   });
   const net = useCityNet(look, onSocial);
   const [sel, setSel] = useState<string | null>(null);
+  const nearBiz = useRef<any>(null);   // the building you are standing next to, for the Interact button
   const ctl = useRef<Ctl>({ shoot: false, joy: { x: 0, y: 0 }, look: { x: 0, y: 0 }, keys: new Set(), run: false, jump: false, recenter: false, interact: false, taxi: false, horn: false, punch: false });
   const hud = useRef<Hud>({ x: START.x, z: START.z, fx: Math.sin(START.r), fz: Math.cos(START.r), r: START.r, vx: 0, vz: 0, vp: false, spd: 0, drv: false, prompt: '' });
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
@@ -593,7 +595,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <RuntimeStyle css={CSS} />
       <RuntimeStyle css={GAME_LABEL_CSS} />
       <Canvas shadows dpr={LOW_END ? [1, 1.25] : [1, 1.5]} gl={{ powerPreference: 'high-performance' }} camera={{ position: [START.x - Math.sin(START.r) * 8, 4.2, START.z - Math.cos(START.r) * 8], fov: 52, near: .4, far: 600 }}>
-        <Scene fight={net.punch} shoot={net.shoot} look={look} ctl={ctl} hud={hud} setNear={onNear} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
+        <Scene fight={net.punch} shoot={net.shoot} look={look} ctl={ctl} hud={hud} setNear={(b: any) => { nearBiz.current = b; onNear(b); }} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
       <Minimap hud={hud} onOpen={onOpenMap} />
       <CityPeople net={net} sel={sel} setSel={setSel} />
@@ -605,13 +607,17 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <MissionsCombat />
       <button className="cwMute" aria-label="Toggle sound" onClick={() => { unlockAudio(); setMuted(!cfg.muteAll); }}>{cfg.muteAll ? '🔇' : '🔊'}</button>
       <button className="cwMute cwGear" aria-label="Settings" onClick={openSettings}>⚙️</button>
+      <button type="button" className="cwPhoneBtn" aria-label="Phone" onClick={() => window.dispatchEvent(new Event('arl-open-phone'))}>📱</button>
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
         {(pl === 'fly' || pl === 'near') && <HoldBtn cls="cwTouch" label={pl === 'fly' ? 'Exit plane' : 'Board plane'} icon="✈️" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         {(pl === 'fly' || pl === 'pax') && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
+        <HoldBtn cls="" label="Interact" icon="🖐️" down={() => { unlockAudio(); if (nearBiz.current?.id) window.dispatchEvent(new CustomEvent('arl-enter', { detail: nearBiz.current.id })); else ctl.current.interact = true; }} />
+        <HoldBtn cls="" label="Phone" icon="📱" down={() => { window.dispatchEvent(new Event('arl-open-phone')); }} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
+        <HoldBtn cls="" label="Crouch" icon="🧎" down={() => { ctl.current.crouch = !ctl.current.crouch; }} />
         {armed && <HoldBtn cls="" label="Fire" icon="🔫" down={() => { window.dispatchEvent(new Event('arl-trigger-fire')); }} />}
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />

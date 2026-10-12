@@ -64,5 +64,5 @@ html body :is(.glPanel,.cityPanel.sheet,.cpChat,.cpSheet,.modal .box,.mkBox,.uwS
 
 /* ---- 8. pause-menu behaviour: HUD steps aside while a menu is open ---- */
 body:has(.mcBackdrop,.glModal,.wlBackdrop,.hsWrap,.mkWrap,.ivWrap,.huWrap,.hmWrap,.hdWrap,.rcWrap,.jgWrap,.phoneWrap,.glPanel,.cityPanel.sheet) :is(
-  .needs,.cwMapBtn,.cwBtns,.cwStick,.cwSpeed,.ctxStack,.mcQuick,.mcTracker,.cwGear,.cpOnline,.cpEmoteBtn,.top>.pill,.glToast~.glToast
+  .needs,.cwMapBtn,.cwBtns,.cwStick,.cwSpeed,.ctxStack,.mcQuick,.mcTracker,.cwGear,.cpOnline,.cpEmoteBtn,.top>.pill,.glToast~.glToast,.qaRow,.cwPhoneBtn
 ){visibility:hidden!important}

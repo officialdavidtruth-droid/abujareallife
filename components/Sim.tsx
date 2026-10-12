@@ -10,6 +10,7 @@ import { OrbitControls, RoundedBox, Html } from '@react-three/drei';
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import Human from './Human';
+import HudCard from './HudCard';
 import Creator from './Creator';
 import Account, { type AccountUser } from './Account';
 import AuthScreen from './AuthScreen';
@@ -1283,9 +1284,9 @@ export default function Sim() {
     {mates && user && look && <Housemates onClose={() => setMates(false)} onChanged={async () => { await reloadHome(user.username); loadHouses(); setUi(snap()); }} />}
     {homeSec && user && look && <HomeSecurity onClose={() => setHomeSec(false)} onChange={cash => { S.cash = cash; }} />}
     {ready && user && (editing || !look) && <Creator initial={look || { ...DEFAULT_LOOK, name: user.username }} initialProfile={look ? profile : null} onDone={async (l, pf) => { const n = { ...l, name: user.username }; const r = await fetch('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ look: n, profile: pf }) }), d = await r.json().catch(() => ({})); if (!r.ok) { say(d.error || 'Could not save.'); return; } if (typeof d.cash === 'number') S.cash = d.cash; setProfile(d.profile); setLook(n); saveNow(n); setEditing(false); }} />}
-    <div className={'top' + (menu ? ' open' : '')}><div className="pill">{worldCalendar(ui.min).weekday} · {String(h).padStart(2, '0')}:{String(m).padStart(2, '0')} {hr > 6 && hr < 18 ? '☀️' : '🌙'}</div>
-      <div className="pill gold">{naira(ui.cash)}</div>
-      {user && look && <button className="pill" onClick={() => { setSel(null); if (outside) setOutside(false); else goOutside(); setMenu(false); }}>{outside ? '🏠' : '🏙️'}<em> {outside ? 'Go home' : 'Neighborhood'}</em></button>}
+    <div className={'top' + (menu ? ' open' : '')}><div className="pill clockPill"><span className="cpWx">{outside ? weatherAt().e : (hr > 6 && hr < 18 ? '☀️' : '🌙')}</span><span className="cpTime">{worldCalendar(ui.min).weekday} · {(h % 12) || 12}:{String(m).padStart(2, '0')} {h >= 12 ? 'PM' : 'AM'}</span><span className="cpLoc">📍 Abuja, Nigeria</span></div>
+      <div className="pill gold"><span className="cashIc">💵</span>{naira(ui.cash)}</div>
+      {user && look && <button className="pill qaBtn" onClick={() => { setSel(null); if (outside) setOutside(false); else goOutside(); setMenu(false); }}><span className="qaIc">{outside ? '🏠' : '🏙️'}</span><em>{outside ? 'Home' : 'City'}</em></button>}
       <button className="pill menuBtn" aria-label="Menu" onClick={() => setMenu(v => !v)}>{menu ? '✕' : '☰'}</button>
       <div className="topMore"><div className="pill">{worldCalendar(ui.min).season.e} {worldCalendar(ui.min).season.label} · {weatherAt().e} {weatherAt().label}</div>
         <div className="pill">{ui.power ? '💡 Power on' : '🕯️ NEPA off'}</div>
@@ -1296,8 +1297,7 @@ export default function Sim() {
         <button className="pill" onClick={() => { openSettings(); setMenu(false); }}>⚙️ Settings</button>
         <button className={'pill ' + (ui.free ? 'on' : '')} onClick={() => { S.free = !S.free; AUTO.free = S.free; fetch('/api/autowork', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ freeWill: S.free }) }).catch(() => {}); }}>🧠 Free will {ui.free ? 'ON' : 'OFF'}</button>
       </div></div>
-    <div className="needs"><div className="mood">{moodFace(ui.mood)} <b>{look?.name || 'You'}</b><span>Mood {Math.round(ui.mood)}%</span></div>
-      {NEEDS.map(([k, l, e]) => <div key={k} className={'nrow' + (ui.needs[k] < 25 ? ' low' : '')}><span>{e}<em> {l}</em></span><div className="bar"><i style={{ width: ui.needs[k] + '%', background: `hsl(${ui.needs[k] * 1.25},70%,48%)` }} /></div></div>)}</div>
+    <HudCard look={look} profile={profile} needs={ui.needs as any} mood={ui.mood} />
     
     <div className="queue">{ui.cur && <div className="cur"><span>{ui.cur.e} {ui.cur.label}</span><div className="bar"><i style={{ width: ui.prog * 100 + '%', background: '#f0b94a' }} /></div></div>}{ui.q.map((e, i) => <span key={i} className="chip">{e}</span>)}</div>
     {ui.toast && <div key={ui.toast} className="toast">{ui.toast}</div>}

@@ -15,6 +15,7 @@ import { sfx } from '../lib/audio';
 import { businessStatus } from '../lib/businessHours';
 import { CRIMES, FAME_TIERS, checkAccess, HELP_FAME, HELP_TIP, JAIL_CELL_POS, POLICE_ARREST_RANGE, POLICE_STATION_POS, PROFESSIONS, QUESTS, RELATIONSHIPS, SKILLS, skillLevel, type CrimeId, type Origin, type Profile } from '../lib/profile';
 
+import { openSettings } from '../lib/settings';
 import RuntimeStyle from './RuntimeStyle';
 import { GoalsPanel, GuideChip } from './Goals';
 import { RacingPanel } from './Racing';
@@ -148,6 +149,7 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const help = async (name: string) => { const r = await post('/api/help', { target: name }); say(r.ok ? `🤝 You helped ${name}: -${naira(r.d.tip)} · +${r.d.fame} fame` : r.d.error); refresh(); };
   const love = async (body: object) => { const r = await post('/api/relationship', body); say(r.ok ? 'Done.' : r.d.error); refresh(); setTab('love'); };
   if (!st) return null;
+  useEffect(() => { const f = () => setTab('phone'); window.addEventListener('arl-open-phone', f); return () => window.removeEventListener('arl-open-phone', f); }, []);   // the Phone buttons on the action pad
   const items: [string, string, () => void][] = [
     ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🎒', 'My Stuff', () => setStuff(true)], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
     ['🎯', 'Goals', () => setTab('goals')], ['🏁', 'Racing', () => setTab('racing')], ['🎰', 'Casino', () => setTab('casino')], ['🛡️', 'Crew', () => setTab('crew')], ['🎉', 'Parties', () => setTab('party')], ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],
@@ -160,6 +162,14 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
     <div className="glBar"><div className="glRow"><span>{prof?.e} {prof?.label} · R{st.rank}</span><span className={st.wanted ? 'hot' : ''}>{st.wanted ? '🚨 WANTED' : st.heat > 0 ? `🔥 ${st.heat}` : '✅ Clean'}</span></div>
       <button className="glFame" onClick={() => setTab(tab === 'fame' ? null : 'fame')} aria-label="Popularity">
         <span>{st.tier.e} {st.tier.label}</span><div className="fbar"><i style={{ width: st.tier.pct + '%' }} /></div><small>{st.tier.next ? `${st.fame}/${st.tier.next.at}` : `${st.fame} · MAX`}</small></button></div>
+    {/* labelled shortcuts, top-right under the clock and cash (Home is the matching button in Sim.tsx) */}
+    <div className="qaRow">
+      <button className="qaBtn" onClick={() => onCityTab(cityTab === 'map' ? null : 'map')}><span className="qaIc">🗺️</span><em>Map</em></button>
+      <button className="qaBtn" onClick={() => setTab('phone')}><span className="qaIc">📱</span><em>Phone</em>{unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>
+      <button className="qaBtn" onClick={() => onCityTab(cityTab === 'jobs' ? null : 'jobs')}><span className="qaIc">💼</span><em>Jobs</em></button>
+      <button className="qaBtn" onClick={() => setStuff(true)}><span className="qaIc">🎒</span><em>Inventory</em></button>
+      <button className="qaBtn" onClick={() => openSettings()}><span className="qaIc">⚙️</span><em>Settings</em></button>
+    </div>
     <div className="dock">
       <button className="dockToggle" onClick={onToggle} aria-label="Menu">{open ? '✕' : '☰'}{!open && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>
       {near && !st.jailLeft && <button className="enter" disabled={entering} onClick={tryEnter}>{entering ? '⏳ Entering…' : businessStatus(near.type as any, getMinute ? getMinute() : 0).open ? '🚪 Enter' : '🔒 Closed'}</button>}

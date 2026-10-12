@@ -6,7 +6,7 @@ import { BUILDS_WORLD } from '../lib/destinations';
 import { GRID, WS, halfW } from '../lib/roadRoute';
  // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
-export type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean };
+export type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean; crouch?: boolean };
 
 export type Hud = { x: number; z: number; fx: number; fz: number; r: number; vx: number; vz: number; vp: boolean; spd: number; drv: boolean; prompt: string };
 

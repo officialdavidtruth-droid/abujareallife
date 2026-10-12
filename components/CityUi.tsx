@@ -46,12 +46,13 @@ export function LookPad({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
 }
 
 export function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onOpen?: () => void }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+  const ref = useRef<HTMLCanvasElement>(null), north = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const cv = ref.current!, g = cv.getContext('2d')!, S = cv.width; let raf = 0, last = 0;
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw); if (now - last < 50) return; last = now;
       const h = hud.current, sc = S / 100;
+      if (north.current) { const th = Math.atan2(h.fx, -h.fz); north.current.style.left = (50 - Math.sin(th) * 46) + '%'; north.current.style.top = (50 - Math.cos(th) * 46) + '%'; }   // 'N' rides the rim of the map and always points north
       g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#35553f'; g.fillRect(0, 0, S, S);
       g.translate(S / 2, S / 2); g.rotate(-Math.atan2(h.fx, -h.fz)); g.scale(sc, sc); g.translate(-h.x, -h.z);
       g.fillStyle = '#6a6f77'; for (let i = -5; i <= 5; i++) { g.fillRect(i * GRID - halfW(i), -125 * WS, halfW(i) * 2, 250 * WS); g.fillRect(-125 * WS, i * GRID - halfW(i), 250 * WS, halfW(i) * 2); }
@@ -76,7 +77,7 @@ export function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onO
     };
     raf = requestAnimationFrame(draw); return () => cancelAnimationFrame(raf);
   }, [hud]);
-  return <button type="button" className="cwMapBtn" aria-label="Open game map" onClick={onOpen}><canvas ref={ref} className="cwMap" width={280} height={280} /></button>;
+  return <button type="button" className="cwMapBtn" aria-label="Open game map" onClick={onOpen}><canvas ref={ref} className="cwMap" width={280} height={280} /><span ref={north} className="cwN">N</span></button>;
 }
 
 export function DriveHud({ hud }: { hud: React.MutableRefObject<Hud> }) {

@@ -12,6 +12,17 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 
 ---
 
+## Unreleased — reference-style HUD
+- New `components/HudCard.tsx`: profile card (avatar, name with fame badge, level + XP bar) with labelled Health, Energy, Hunger and Mood bars; the other four needs are a thin row of small bars under it. Level = total skill XP (1 + floor(sqrt(xp/25))). Health is live.
+- Minimap has an N marker that rides the rim and always points north (`CityUi.tsx`).
+- Top-right: time with weather and location, cash, menu, and a labelled shortcut row (Home, Map, Phone, Jobs, Inventory, Settings). Home is in `Sim.tsx`, the rest in `GameLayer.tsx`. 🌍 players and 🕺 emotes are small buttons under it. The separate ⚙️ and 🔊 buttons are gone (Settings is in the row, mute is inside Settings).
+- Action pad on a 3-column grid: Interact, Phone, Jump, Car, Fight, Crouch, Sprint. Taxi, Camera, Horn / plane view and Fire are small extras beside it. A Phone button sits next to the joystick.
+- New: Crouch (slower, lower camera, smaller model; sprinting cancels it) and Interact (enters the building you stand next to, else enter/exit vehicle).
+- Contextual pills (Carjack, Chop shop, Break in, Help) stack above the building card.
+- Everything scales with screen height. `app/gtahud.css` rewritten, `app/gtamenus.css` hides the new HUD parts while a menu is open.
+
+---
+
 ## Unreleased — better lighting and sky
 - New `components/CityAtmosphere.tsx`: gradient sky dome with drifting clouds and a sun glow (follows time of day and weather), a generated sky reflection map so car paint, glass and metal reflect the sky, and Neutral tone mapping for richer colours.
 - `CityWorld.tsx`: wired in the atmosphere, longer/softer depth haze (fog 70 to 290), warmer hemisphere light, cleaner shadows (normalBias).

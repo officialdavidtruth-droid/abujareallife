@@ -1,20 +1,21 @@
 'use client';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Human from './Human';
 import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 import { NIGHT } from './cityShared';
+import { TRIM_MAT, WHEEL_AT, WHEEL_MAT, WHEEL_R, WHEELBASE, trimGeo, wheelGeo } from './carParts';
  // 0 = full day, 1 = full night
 export let PKIT: Kit | null = null;
 
 export const pkit = (): Kit => { if (!PKIT) PKIT = carKit(); return PKIT; };
 
 
-export type Kit = { body: THREE.BufferGeometry; cabin: THREE.BufferGeometry; wheels: THREE.BufferGeometry; head: THREE.BufferGeometry; tail: THREE.BufferGeometry; glass: THREE.Material; tire: THREE.Material; headM: THREE.Material; tailM: THREE.Material };
+export type Kit = { body: THREE.BufferGeometry; cabin: THREE.BufferGeometry; wheels: THREE.BufferGeometry; head: THREE.BufferGeometry; tail: THREE.BufferGeometry; trim: THREE.BufferGeometry; glass: THREE.Material; tire: THREE.Material; headM: THREE.Material; tailM: THREE.Material };
 
 export function carKit(): Kit {
   const ext = (pts: [number, number][], depth: number, bevel: number) => {
@@ -26,12 +27,53 @@ export function carKit(): Kit {
   return {
     body: ext([[-2.12, .34], [2.12, .34], [2.16, .6], [1.55, .8], [-1.92, .84], [-2.16, .68]], 1.7, .08),
     cabin: ext([[-1.25, .84], [1.0, .84], [.5, 1.34], [-.85, 1.34]], 1.46, .04),
-    wheels, head: mergeGeometries(lamp(2.2, .6))!, tail: mergeGeometries(lamp(-2.2, .68))!,
+    wheels, head: mergeGeometries(lamp(2.2, .6))!, tail: mergeGeometries(lamp(-2.2, .68))!, trim: trimGeo(),
     glass: new THREE.MeshStandardMaterial({ color: '#cfe6f2', metalness: .05, roughness: .04, transparent: true, opacity: .24, depthWrite: false, envMapIntensity: 1.6 }), // clear glass: you can see the driver through the windshield
     tire: new THREE.MeshStandardMaterial({ color: '#141619', roughness: .9 }),
     headM: new THREE.MeshStandardMaterial({ color: '#fff7d6', emissive: '#fff2b0', emissiveIntensity: 1.4 }),
     tailM: new THREE.MeshStandardMaterial({ color: '#ff3030', emissive: '#ff1a1a', emissiveIntensity: 1.2 }),
   };
+}
+
+/* ───────── rolling, steering wheels: speed and turn rate are read from how the car actually moves, so EVERY car (traffic, taxis, police, other players, yours) rolls and steers.
+   Your own car passes a `steer` function so the wheels turn from your input even when you are standing still. ───────── */
+const _wp = new THREE.Vector3(), _wf = new THREE.Vector3(), _wq = new THREE.Quaternion();
+export function WheelSet({ rim, steer }: { rim: string; steer?: () => number }) {
+  const geo = useMemo(() => wheelGeo(rim), [rim]);
+  const root = useRef<THREE.Group>(null), front = useRef<(THREE.Group | null)[]>([]), spin = useRef<(THREE.Group | null)[]>([]);
+  const S = useRef({ ok: false, x: 0, z: 0, h: 0, a: 0, v: 0, w: 0, s: 0 });
+  useFrame((_, dt) => {
+    const g = root.current; if (!g || dt <= 0) return;
+    g.getWorldPosition(_wp); g.getWorldQuaternion(_wq); _wf.set(1, 0, 0).applyQuaternion(_wq);
+    const s = S.current, h = Math.atan2(_wf.z, _wf.x); let v = 0, w = 0;
+    if (s.ok && dt < .25) {
+      const dx = _wp.x - s.x, dz = _wp.z - s.z;
+      if (Math.abs(dx) + Math.abs(dz) < 8) { v = (dx * _wf.x + dz * _wf.z) / dt; const dh = Math.atan2(Math.sin(h - s.h), Math.cos(h - s.h)); w = -dh / dt; }
+    }
+    s.ok = true; s.x = _wp.x; s.z = _wp.z; s.h = h;
+    const k = Math.min(1, dt * 15); s.v += (v - s.v) * k; s.w += (w - s.w) * k;   // smoothing hides frame-order jitter
+    s.a += s.v * dt / WHEEL_R;
+    const tgt = steer ? steer() : Math.abs(s.v) > .8 ? THREE.MathUtils.clamp(Math.atan(WHEELBASE * s.w / s.v), -.55, .55) : 0;
+    s.s += (tgt - s.s) * Math.min(1, dt * 12);
+    for (let i = 0; i < 4; i++) { const sp = spin.current[i], fr = front.current[i]; if (sp) sp.rotation.z = WHEEL_AT[i][1] > 0 ? -s.a : s.a; if (fr && WHEEL_AT[i][2]) fr.rotation.y = s.s; }
+  });
+  return <group ref={root}>
+    {WHEEL_AT.map(([x, z], i) => <group key={i} ref={el => { front.current[i] = el; }} position={[x, WHEEL_R, z]}>
+      <group rotation-y={z < 0 ? Math.PI : 0}><group ref={el => { spin.current[i] = el; }}><mesh geometry={geo} material={WHEEL_MAT} /></group></group>
+    </group>)}
+  </group>;
+}
+
+const rimMesh = <mesh rotation-y={Math.PI / 2} material={drvMat('#0e0f11', .5, .3)}><torusGeometry args={[.13, .014, 8, 18]} /></mesh>;
+const rimSpokes = <>
+  <mesh material={drvMat('#0e0f11', .5, .3)}><boxGeometry args={[.012, .012, .26]} /></mesh>
+  <mesh position={[0, -.065, 0]} material={drvMat('#0e0f11', .5, .3)}><boxGeometry args={[.012, .13, .012]} /></mesh>
+</>;
+/** the steering wheel in the cabin: turns with the front wheels (about 3x, like a real car) */
+function SteerRim({ steer }: { steer: () => number }) {
+  const g = useRef<THREE.Group>(null), s = useRef(0);
+  useFrame((_, dt) => { if (!g.current) return; s.current += (steer() - s.current) * Math.min(1, dt * 14); g.current.rotation.x = -s.current * 3; });
+  return <group ref={g}>{rimMesh}{rimSpokes}</group>;
 }
 
 /* clear-coat paint (extra shader cost) only on non-touch devices; phones keep the cheaper standard paint, which still reflects the sky map */
@@ -57,7 +99,7 @@ export type DrvLook = { skin?: string; outfit?: string; hairColor?: string };
 export const PAX_AT: [number, number][] = [[0, .4], [-.62, -.4], [-.62, .4]];
 export type PaxFig = { look?: DrvLook; seed: string; seat: number };
 
-export function CarInterior({ seed, shirt, suv, driverRef, look, pax }: { seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Object3D | null) => void; look?: DrvLook; pax?: PaxFig[] }) {
+export function CarInterior({ seed, shirt, suv, driverRef, look, pax, steer }: { steer?: () => number; seed: string; shirt?: string; suv?: boolean; driverRef?: (g: THREE.Object3D | null) => void; look?: DrvLook; pax?: PaxFig[] }) {
   const st = driverStyle(seed, shirt), skin = look?.skin || st.skin, top = look?.outfit || st.top, hair = look?.hairColor || st.hair, seatC = '#2a2d31', dash = '#15181b';
   const w = suv ? 1.34 : 1.26;
   return <group>
@@ -72,7 +114,7 @@ export function CarInterior({ seed, shirt, suv, driverRef, look, pax }: { seed: 
       <mesh position={[-.27, 1.27, 0]} material={drvMat(skin, .6)}><sphereGeometry args={[.095, 14, 12]} /></mesh>
       <mesh position={[-.28, 1.29, 0]} material={drvMat(hair, .9)}><sphereGeometry args={[.1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 1.9]} /></mesh>
       {[-.15, .15].map(z => <mesh key={z} position={[0, 1.04, z]} rotation-z={.12} material={drvMat(top)}><boxGeometry args={[.56, .07, .07]} /></mesh>)}
-      <group position={[.3, 1.02, 0]} rotation-z={.65}><mesh rotation-y={Math.PI / 2} material={drvMat('#0e0f11', .5, .3)}><torusGeometry args={[.13, .014, 8, 18]} /></mesh></group>
+      <group position={[.3, 1.02, 0]} rotation-z={.65}>{steer ? <SteerRim steer={steer} /> : rimMesh}</group>
     </group>
     {pax && pax.map(px => { const ps = driverStyle(px.seed), at = PAX_AT[px.seat] || PAX_AT[0]; return <group key={px.seed + px.seat} position={[at[0], 0, at[1]]}>
       <mesh position={[-.3, 1.06, 0]} material={drvMat(px.look?.outfit || ps.top)}><boxGeometry args={[.24, .32, .36]} /></mesh>
@@ -82,15 +124,15 @@ export function CarInterior({ seed, shirt, suv, driverRef, look, pax }: { seed: 
   </group>;
 }
 
-export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax }: { pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
+export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax, steer }: { steer?: () => number; pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
-  const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims==='sport' ? '#d8dde3' : style?.rims==='black' ? '#111' : '#141619';
+  const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims === 'sport' ? '#d8dde3' : style?.rims === 'black' ? '#15171a' : '#b4bac1';
   return <group scale={sc}>
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
-    {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} look={look} pax={pax} />}
+    {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} look={look} pax={pax} steer={steer} />}
     {/* driver-side door: hinged at the front edge, swings outward. Closed it is a normal door; open it shows a recessed door well, an inner trim panel and an empty window frame */}
     <mesh position={[.05, .58, -.936]} material={drvMat('#17191c', .9)}><boxGeometry args={[1.0, .4, .02]} /></mesh>
     <group ref={doorRef} position={[.55, 0, -.95]}>
@@ -109,7 +151,8 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
     <mesh position={[-.17, suv ? 1.43 : 1.38, 0]} material={bodyMat(color)}><boxGeometry args={[suv ? 1.48 : 1.32, .07, suv ? 1.56 : 1.5]} /></mesh>
     <mesh position={[2.14, .62, 0]} material={new THREE.MeshStandardMaterial({ color: grille, metalness: .75, roughness: .2 })}><boxGeometry args={[.08, .28, suv ? .95 : .78]} /></mesh>
     <mesh position={[1.8, .55, 0]} material={new THREE.MeshStandardMaterial({ color: '#111820', metalness: .3, roughness: .4 })}><boxGeometry args={[.18, .08, suv ? 1.05 : .9]} /></mesh>
-    <mesh geometry={kit.wheels} material={style?.rims ? new THREE.MeshStandardMaterial({color:rimColor,metalness:.75,roughness:.25}) : kit.tire} />
+    <WheelSet rim={rimColor} steer={steer} />
+    <mesh geometry={kit.trim} material={TRIM_MAT} />
     <mesh geometry={kit.head} material={kit.headM} /><mesh geometry={kit.tail} material={kit.tailM} />
     <mesh position={[-1.55, .58, .91]} material={new THREE.MeshStandardMaterial({ color: '#111', metalness: .25, roughness: .55 })}><boxGeometry args={[.5, .05, .05]} /></mesh>
   </group>;

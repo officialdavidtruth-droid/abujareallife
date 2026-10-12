@@ -12,6 +12,12 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 
 ---
 
+## Unreleased — GTA pause-menu skin
+- New `app/gtamenus.css` (imported last in `app/layout.tsx`): every panel (missions, phone, market, inventory, home, store, wallet, side panels, sheets) gets one flat GTA pause-menu look: black panel with gold top rule, gold eyebrow and white uppercase title, flat tabs with a solid gold selected tab, list rows with a left edge bar, square gold action buttons. Visual only.
+- The HUD (needs, minimap, buttons, cash) now hides while a menu is open, which fixes the needs bars showing on top of the Missions panel.
+
+---
+
 ## Unreleased — GTA-style outdoor HUD
 - Re-arranged the phone HUD so each corner has one job: radar + needs bars top-left, clock/cash as plain text with the menu and one row of small round buttons top-right, toasts and the nearby-building card top-centre, joystick bottom-left, and the action buttons in an arc around the right thumb (Fight/Fire big in the corner, Jump above, Sprint beside, Car/Camera/Taxi/Horn further out).
 - Contextual buttons (Carjack, Chop shop, Break in, Help) are now one stack of pills to the left of the arc instead of round buttons on top of Jump. New wrapper `.ctxStack` in `components/GameLayer.tsx`.

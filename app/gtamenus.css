@@ -1,0 +1,68 @@
+/* ===== GTA PAUSE-MENU SKIN for every panel. Loaded LAST (after gtahud.css). Visual only.
+   Look: near-black flat panel, thin gold top rule, small gold eyebrow + big white uppercase title,
+   flat tabs (selected = gold block, black text), rows with a left edge bar that lights up,
+   square flat buttons. The HUD hides while a menu is open, like GTA's pause screen.
+   Remove the import in app/layout.tsx to go back. */
+
+:root{--m-bg:#080b0aF2;--m-row:#ffffff0d;--m-row2:#ffffff17;--m-line:#ffffff24;--m-gold:#f0b94a;--m-ink:#0a0d0c;--m-txt:#f2f5f3;--m-dim:#9aa9a1}
+
+/* ---- 1. every panel container ---- */
+html body :is(.mcPanel,.glPanel,.glBox,.cityPanel.sheet,.wlPanel,.wdPanel,.uwSheet,.trSheet,.snSheet,.roSheet,.rcPanel,
+  .hsBox,.hdBox,.stoBox,.stoCmpBox,.stBox,.smBox,.mkBox,.ivBox,.huBox,.hmBox,.msCashBox,.cpSheet,.cpChat,.cpEmotes,.modal .box,.inMenu,.fam){
+  background:var(--m-bg)!important;background-image:none!important;
+  border:1px solid var(--m-line)!important;border-top:3px solid var(--m-gold)!important;border-radius:3px!important;
+  box-shadow:0 20px 60px #000d!important;color:var(--m-txt);
+  backdrop-filter:blur(10px);
+}
+html body :is(.mcBackdrop,.glModal,.wlBackdrop,.hsWrap,.mkWrap,.ivWrap,.huWrap,.hmWrap,.hdWrap,.rcWrap,.jgWrap){background:#000000b8!important}
+
+/* ---- 2. titles: gold eyebrow, big white uppercase heading with a rule ---- */
+html body :is(.mcPanel,.glPanel,.glBox,.cityPanel.sheet,.wlPanel,.wdPanel,.uwSheet,.trSheet,.snSheet,.roSheet,.rcPanel,.hsBox,.hdBox,.stoBox,.stBox,.smBox,.mkBox,.ivBox,.huBox,.hmBox,.cpSheet,.cpChat,.modal .box) :is(h1,h2,h3){
+  font-family:var(--font-game),Inter,system-ui,sans-serif!important;text-transform:uppercase;letter-spacing:.07em;
+  color:#fff!important;text-shadow:none!important;margin:0 0 10px!important;padding-bottom:8px;border-bottom:1px solid var(--m-line);
+}
+html body :is(.mcPanel,.glPanel,.cityPanel.sheet,.wlPanel,.uwSheet,.hsBox,.mkBox,.ivBox,.huBox,.hmBox) h4,
+html body .mcPanel header small{color:var(--m-gold)!important;text-transform:uppercase;letter-spacing:.16em;font-size:10px!important}
+html body .mcPanel header{border-bottom:1px solid var(--m-line);padding-bottom:8px}
+html body .mcPanel header h2{border:0!important;padding:0!important;font-size:26px!important}
+
+/* ---- 3. tabs: flat strip, selected = solid gold ---- */
+html body :is(.mcPanel nav button,.tabs button,.jbChips button,.dockGrid button){
+  border-radius:2px!important;box-shadow:none!important;background:var(--m-row)!important;border:1px solid var(--m-line)!important;color:var(--m-dim)!important;
+  font-family:var(--font-game),Inter,system-ui,sans-serif!important;text-transform:uppercase;letter-spacing:.08em;text-shadow:none!important;
+}
+html body :is(.mcPanel nav button.on,.tabs button.on,.tabs button.active,.tabs button[aria-selected=true],.jbChips button.on){
+  background:var(--m-gold)!important;color:var(--m-ink)!important;border-color:var(--m-gold)!important;
+}
+
+/* ---- 4. list rows: dark strip, left edge bar, gold when pressed ---- */
+html body :is(.mcMission,.mcWeapon,.jbCard,.huCard,.carCard,.lbRow,.frow,.uwRow,.row){
+  background:var(--m-row)!important;border:0!important;border-left:4px solid #ffffff30!important;border-radius:2px!important;box-shadow:none!important;
+}
+html body :is(.mcMission,.mcWeapon,.jbCard.btn,.huCard,.carCard):is(:hover,:active,.selected){border-left-color:var(--m-gold)!important;background:var(--m-row2)!important}
+html body :is(.mcMissionIcon,.mcWeaponIcon,.jbIc){background:#ffffff12!important;border-radius:2px!important}
+html body .diff{border-radius:2px!important;background:#ffffff1f!important;color:#fff!important}
+html body .diff.hard{background:#7a2a24!important}html body .diff.medium{background:#6a5220!important}
+
+/* ---- 5. buttons: flat, square, uppercase; primary = gold ---- */
+html body :is(.mcPanel,.glPanel,.glBox,.cityPanel.sheet,.wlPanel,.uwSheet,.trSheet,.snSheet,.roSheet,.hsBox,.hdBox,.stoBox,.stBox,.smBox,.mkBox,.ivBox,.huBox,.hmBox,.cpSheet,.cpChat,.modal .box) button:not(.x):not(.close):not(.mcClose):not(.cpX){
+  border-radius:2px!important;box-shadow:none!important;text-transform:uppercase;letter-spacing:.06em;
+  font-family:var(--font-game),Inter,system-ui,sans-serif;
+}
+html body :is(.mcMission>button,.mcWeapon>button,.mcReload,.jbApply,.go,.cpRow .ok,.ncEnter){
+  background:var(--m-gold)!important;color:var(--m-ink)!important;border:0!important;border-radius:2px!important;box-shadow:none!important;
+}
+html body :is(.mcMission>button:disabled){background:#ffffff1a!important;color:var(--m-dim)!important}
+html body :is(.mcClose,.x,.close,.cpX){border-radius:2px!important;background:#ffffff14!important;color:#fff!important;border:1px solid var(--m-line)!important}
+html body :is(.mcClose,.x,.close,.cpX):active{background:var(--m-gold)!important;color:var(--m-ink)!important}
+
+/* ---- 6. footer hint line like GTA's control legend ---- */
+html body .mcPanel footer{border-top:1px solid var(--m-line);color:var(--m-dim);text-transform:uppercase;letter-spacing:.12em;font-size:9px}
+
+/* ---- 7. inputs ---- */
+html body :is(.glPanel,.cityPanel.sheet,.cpChat,.cpSheet,.modal .box,.mkBox,.uwSheet,.hsBox) :is(input,select,textarea){border-radius:2px!important;background:#000!important;border:1px solid var(--m-line)!important}
+
+/* ---- 8. pause-menu behaviour: HUD steps aside while a menu is open ---- */
+body:has(.mcBackdrop,.glModal,.wlBackdrop,.hsWrap,.mkWrap,.ivWrap,.huWrap,.hmWrap,.hdWrap,.rcWrap,.jgWrap,.phoneWrap,.glPanel,.cityPanel.sheet) :is(
+  .needs,.cwMapBtn,.cwBtns,.cwStick,.cwSpeed,.ctxStack,.mcQuick,.mcTracker,.cwGear,.cpOnline,.cpEmoteBtn,.top>.pill,.glToast~.glToast
+){visibility:hidden!important}

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NET } from '../lib/cityNet';
 import { createRoot, type Root } from 'react-dom/client';
 import { GRID, WS, halfW } from '../lib/roadRoute';
-import { BUILDS, Ctl, GAME, Hud } from './cityShared';
+import { BUILDS, CAMV, Ctl, GAME, Hud, toggleDriveCam } from './cityShared';
 
 /** Renders plain DOM into document.body from inside <Canvas>. react-dom's createPortal can't be used there: R3F's reconciler would try to build <button>/<small> as THREE objects. */
 export function BodyDom({ children }: { children: ReactNode }) {
@@ -130,7 +130,7 @@ function PadBtn({ b }: { b: Hold }) {
 }
 
 export function DrivePad({ ctl, hud }: { ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud> }) {
-  const [drv, setDrv] = useState(false), [auto, setAuto] = useState(false);
+  const [drv, setDrv] = useState(false), [auto, setAuto] = useState(false), [, setCamTick] = useState(0);
   const inp = useRef({ l: false, r: false, gas: false, brake: false, auto: false, steer: 0 });
   useEffect(() => { const id = setInterval(() => { const d = !!hud.current.drv; setDrv(p => (p === d ? p : d)); document.body.classList.toggle('cwDriving', d); }, 100); return () => { clearInterval(id); document.body.classList.remove('cwDriving'); }; }, [hud]);
   useEffect(() => {
@@ -144,6 +144,7 @@ export function DrivePad({ ctl, hud }: { ctl: React.MutableRefObject<Ctl>; hud: 
     };
     raf = requestAnimationFrame(loop); return () => { cancelAnimationFrame(raf); ctl.current.joy = { x: 0, y: 0 }; };
   }, [drv, ctl]);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key.toLowerCase() === 'k' && !e.repeat && hud.current.drv) { toggleDriveCam(); setCamTick(n => n + 1); ctl.current.recenter = true; } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [hud, ctl]);
   if (!drv) return null;
   const i = inp.current, k = ctl.current.keys;
   const B: Record<string, Hold> = {
@@ -153,13 +154,14 @@ export function DrivePad({ ctl, hud }: { ctl: React.MutableRefObject<Ctl>; hud: 
     brake: { id: 'b', cls: 'brake', label: 'Brake', icon: '⏬', on: () => { i.brake = true; }, off: () => { i.brake = false; } },
     nitro: { id: 'n', cls: 'nitro', label: 'Nitro', icon: '🔥', on: () => { k.add('shift'); }, off: () => { k.delete('shift'); } },
     hand: { id: 'h', cls: 'hand', label: 'Drift', icon: '🅿️', on: () => { k.add(' '); }, off: () => { k.delete(' '); } },
+    cam: { id: 'c', cls: 'cam', label: CAMV.mode ? 'Chase' : 'Inside', icon: '🎥', on: () => { toggleDriveCam(); setCamTick(n => n + 1); ctl.current.recenter = true; } },
     horn: { id: 'o', cls: 'horn', label: 'Horn', icon: '📣', on: () => { ctl.current.horn = true; } },
     exit: { id: 'x', cls: 'exit', label: 'Exit', icon: '🚪', on: () => { ctl.current.interact = true; } },
   };
   return <div className="dpRoot" onContextMenu={e => e.preventDefault()}>
     <div className="dpLeft"><PadBtn b={B.left} /><PadBtn b={B.right} /></div>
     <div className="dpRight">
-      <div className="dpSmall"><PadBtn b={B.exit} /><PadBtn b={B.horn} /><PadBtn b={B.hand} /><PadBtn b={B.nitro} /><button type="button" className={'dpBtn auto' + (auto ? ' on' : '')} aria-label="Auto drive" aria-pressed={auto} onClick={() => { i.auto = !i.auto; setAuto(i.auto); }}><span>🔁</span><small>Auto</small></button></div>
+      <div className="dpSmall"><PadBtn b={B.cam} /><PadBtn b={B.exit} /><PadBtn b={B.horn} /><PadBtn b={B.hand} /><PadBtn b={B.nitro} /><button type="button" className={'dpBtn auto' + (auto ? ' on' : '')} aria-label="Auto drive" aria-pressed={auto} onClick={() => { i.auto = !i.auto; setAuto(i.auto); }}><span>🔁</span><small>Auto</small></button></div>
       <div className="dpPedals"><PadBtn b={B.brake} /><PadBtn b={B.gas} /></div>
     </div>
   </div>;

@@ -26,7 +26,7 @@ import { Atmosphere } from './CityAtmosphere';
 import { Graffiti, LookDriver, PowerLines, Puddles, ShopGlow, StreetClutter } from './CityLook';
 import { pushCrime } from '../lib/witness';
 import { sidewalkSpawn } from '../lib/roadRoute';
-import { BUILDS, CELL, Ctl, GAME, Hud, LIM, NIGHT, OBS, OWN, PEDPOS, SKY, START, TPOS, VEH, WX, distTo, pick, sm, updateDetails, wrap } from './cityShared';
+import { CAMV, BUILDS, CELL, Ctl, GAME, Hud, LIM, NIGHT, OBS, OWN, PEDPOS, SKY, START, TPOS, VEH, WX, distTo, pick, sm, updateDetails, wrap } from './cityShared';
 import { Airport, Billboards, Building, Inst, LampGlow, MARKS, MATS, Roads, SLABS, StreetLamps, TrainLine, Trees } from './CityScenery';
 import { BL, BODY, CAR_POSTS, findPath, pushOut } from './CityCollision';
 import { CINE, JACK, JackGhost, JackNpc, ROAM, Signals, TRANSPORT_SOLIDS, Traffic, TransportVehicles, isHail, stepJack } from './CityTraffic';
@@ -43,6 +43,7 @@ import { PAX, stepPax } from './cityPax';
 import { PlaneTag, planeBroadcast, stepPlaneNet } from './planeNet';
 import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane, togglePlaneView } from './cityPlane';
 import { hint } from '../lib/touch';
+import { vehicleById, vehicleByName } from '../lib/vehicles';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
 export { POLICE_CARS } from './CityPolice';
@@ -158,7 +159,13 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       GAME.player.x = p.x; GAME.player.z = p.z; OBS[0].on = false; OBS[1].on = VEH.placed;
       { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = 0; M.drv = false; M.rd = 0; M.pa = ''; M.ps = 0; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; planeBroadcast(); }
       hud.current = { x: p.x, z: p.z, fx: Math.sin(PLANE.h), fz: Math.cos(PLANE.h), r: PLANE.h, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: PLANE.speed * 3.6, drv: false, prompt: planePrompt() };
-      sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
+      if (VEH.drv && CAMV.mode === 1) {   // cockpit: sit in the driver's seat (left-hand drive) and look through the windscreen
+      CAMV.saved.x = cam.position.x; CAMV.saved.y = cam.position.y; CAMV.saved.z = cam.position.z; CAMV.saved.on = true;
+      const spec = vehicleById(GAME.vehicleModel) || vehicleByName(GAME.vehicleModel), big = !JACK.on && (spec?.type === 'SUV' || /land rover|lx/i.test(spec?.model || '')), cr = Math.cos(VEH.r), sr = Math.sin(VEH.r), lx = big ? -.11 : -.1, lz = big ? -.46 : -.4;
+      const hx = VEH.x + cr * lx + sr * lz, hz = VEH.z - sr * lx + cr * lz;
+      cam.position.set(hx, big ? 1.76 : 1.34, hz); cam.lookAt(hx + cr * 20, big ? 1.6 : 1.2, hz - sr * 20);
+    }
+    sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
       c.taxi = false; c.horn = false;
       updateDetails(p.x, p.z, performance.now());
       if (!PLANE.on) firstCam.current = true;   // just stepped out: the walking camera takes over again
@@ -393,6 +400,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const ca = camA.current;
     if (!Number.isFinite(ca.x) || c.recenter || snapCam || firstCam.current || Math.hypot(p.x - ca.x, p.z - ca.z) > 6) { ca.x = p.x; ca.y = targetY; ca.z = p.z; }
     else { const kk = 1 - Math.exp(-dt * (VEH.drv ? 40 : 24)); ca.x += (p.x - ca.x) * kk; ca.y += (targetY - ca.y) * kk; ca.z += (p.z - ca.z) * kk; }
+    if (CAMV.saved.on) { cam.position.set(CAMV.saved.x, CAMV.saved.y, CAMV.saved.z); CAMV.saved.on = false; }   // undo last frame's cockpit override so the orbit keeps its chase position
     const dx0 = ca.x - t.x, dy0 = ca.y - t.y, dz0 = ca.z - t.z;
     cam.position.x += dx0; cam.position.y += dy0; cam.position.z += dz0; // carry the camera along with the player
     t.set(ca.x, ca.y, ca.z);

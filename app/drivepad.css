@@ -18,9 +18,9 @@
   .dpBtn.steer{width:calc(var(--db)*1.15);height:var(--db);border-radius:18px}.dpBtn.steer span{font-size:calc(var(--db)*.5)}
   .dpBtn.gas{width:calc(var(--db)*1.05);height:calc(var(--db)*1.55);border-radius:22px;border-color:#6dffa6}.dpBtn.gas.on{background:rgba(70,220,130,.92)}
   .dpBtn.brake{width:calc(var(--db)*1.05);height:var(--db);border-radius:22px;border-color:#ff8a7a}.dpBtn.brake.on{background:rgba(255,100,80,.92)}
-  .dpBtn.nitro,.dpBtn.hand,.dpBtn.horn,.dpBtn.exit,.dpBtn.auto{width:calc(var(--db)*.62);height:calc(var(--db)*.62);border-radius:50%}
-  .dpBtn.nitro span,.dpBtn.hand span,.dpBtn.horn span,.dpBtn.exit span,.dpBtn.auto span{font-size:calc(var(--db)*.26)}
-  .dpBtn.nitro small,.dpBtn.hand small,.dpBtn.horn small,.dpBtn.exit small,.dpBtn.auto small{font-size:8px}
+  .dpBtn.nitro,.dpBtn.hand,.dpBtn.horn,.dpBtn.exit,.dpBtn.auto,.dpBtn.cam{width:calc(var(--db)*.62);height:calc(var(--db)*.62);border-radius:50%}
+  .dpBtn.cam span,.dpBtn.nitro span,.dpBtn.hand span,.dpBtn.horn span,.dpBtn.exit span,.dpBtn.auto span{font-size:calc(var(--db)*.26)}
+  .dpBtn.cam small,.dpBtn.nitro small,.dpBtn.hand small,.dpBtn.horn small,.dpBtn.exit small,.dpBtn.auto small{font-size:8px}
   .dpBtn.nitro{border-color:#ffb347}.dpBtn.exit{border-color:#8ad7ff}.dpBtn.auto.on{background:rgba(109,255,166,.9)}
 }
 /* keyboard hints (the "E" badges) mean nothing on a phone */

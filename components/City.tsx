@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import CityWorld, { GAME } from './CityWorld';
 import { ALL_DESTS, BUILDING_DESTS, BUILDS_WORLD } from '../lib/destinations';
 import { CITY } from '../lib/cityData';
@@ -76,6 +76,24 @@ function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSele
   const doorOf = useMemo(() => { const m = new Map<string, { x: number; z: number }>(); BUILDING_DESTS.forEach(d => m.set(d.id, { x: d.x, z: d.z })); return m; }, []);
   const places = useMemo(() => ALL_DESTS.filter(d => d.type === 'District'), []);
   const roads = useMemo(() => Array.from({ length: 11 }, (_, n) => n - 5), []);
+  /* pan + zoom: drag with one finger to move the map, pinch with two to zoom (mouse wheel and the + / − buttons work too). A tap without dragging still picks a place or drops a pin. */
+  const [view, setView] = useState({ x: 130, y: 130, z: 1 });
+  const ptrs = useRef(new Map<number, { x: number; y: number }>()), drag = useRef({ moved: 0, pinch: 0 });
+  const clampView = (v: { x: number; y: number; z: number }) => { const z = Math.max(1, Math.min(6, v.z)), h = 130 / z; return { z, x: Math.max(h, Math.min(260 - h, v.x)), y: Math.max(h, Math.min(260 - h, v.y)) }; };
+  const zoomAt = (el: SVGSVGElement, cx: number, cy: number, f: number) => setView(v => { const r = el.getBoundingClientRect(), u = 260 / v.z / r.width, wx = v.x - 130 / v.z + (cx - r.left) * u, wy = v.y - 130 / v.z + (cy - r.top) * u, z = Math.max(1, Math.min(6, v.z * f)), k = 260 / z / r.width; return clampView({ z, x: wx - (cx - r.left) * k + 130 / z, y: wy - (cy - r.top) * k + 130 / z }); });
+  const mapDown = (e: React.PointerEvent<SVGSVGElement>) => { ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); drag.current.moved = 0; if (ptrs.current.size === 2) { const [a, b] = [...ptrs.current.values()]; drag.current.pinch = Math.hypot(a.x - b.x, a.y - b.y); } };
+  const mapMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const prev = ptrs.current.get(e.pointerId); if (!prev) return; const el = e.currentTarget, r = el.getBoundingClientRect();
+    ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.current.size >= 2) { const [a, b] = [...ptrs.current.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (drag.current.pinch > 0 && d > 0) { drag.current.moved = 99; zoomAt(el, (a.x + b.x) / 2, (a.y + b.y) / 2, d / drag.current.pinch); } drag.current.pinch = d; return; }
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y; drag.current.moved += Math.abs(dx) + Math.abs(dy);
+    if (drag.current.moved < 8) return;   // still a tap
+    try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    setView(v => { const k = 260 / v.z / r.width; return clampView({ ...v, x: v.x - dx * k, y: v.y - dy * k }); });
+  };
+  const mapUp = (e: React.PointerEvent<SVGSVGElement>) => { ptrs.current.delete(e.pointerId); drag.current.pinch = 0; if (ptrs.current.size === 1) drag.current.moved = 99; };
+  const zoomBtn = (f: number) => setView(v => clampView({ ...v, z: v.z * f }));
+  const vbS = 260 / view.z, viewBox = `${view.x - vbS / 2} ${view.y - vbS / 2} ${vbS} ${vbS}`;
   const select = (b: Business) => { setSelected(b); onSelect(b); };
   const navigate = (b: Business) => { const d = doorOf.get(b.id); if (!d) return; GAME.nav = { x: d.x, z: d.z, name: b.name }; };
   const goTo = (d: { x: number; z: number; name: string }) => { GAME.nav = { x: d.x, z: d.z, name: d.name }; setSelected(null); };
@@ -91,7 +109,7 @@ function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSele
   return <div className="realMap">
     <div className="realMapHead"><div><h3>🗺️ Abuja Real Life Map</h3><small>Tap a place, or tap anywhere on the map to drop a pin · the route shows up in red</small></div><button className="mapClose" onClick={onClose}>×</button></div>
     <div className="mapViewport">
-      <svg viewBox="0 0 260 260" role="application" aria-label="Interactive game map of Abuja Real Life" onClick={pickPoint} style={{ cursor: 'crosshair', touchAction: 'manipulation' }}>
+      <svg viewBox={viewBox} role="application" aria-label="Interactive game map of Abuja Real Life" onClick={pickPoint} onClickCapture={e => { if (drag.current.moved >= 8) { e.stopPropagation(); e.preventDefault(); drag.current.moved = 0; } }} onPointerDown={mapDown} onPointerMove={mapMove} onPointerUp={mapUp} onPointerCancel={mapUp} onWheel={e => zoomAt(e.currentTarget, e.clientX, e.clientY, e.deltaY < 0 ? 1.2 : 1 / 1.2)} style={{ cursor: 'grab', touchAction: 'none' }}>
         <rect x="0" y="0" width="260" height="260" fill="#14231d" />
         {shops.map(b => <rect key={b.id} x={mx(b.x - b.w / 2)} y={my(b.z - b.d / 2)} width={b.w} height={b.d} fill="#2b3f36" />)}
         {roads.map(k => { const major = k % 2 === 0, w = major ? 3.4 : 2.2, c = major ? '#8a7f5c' : '#5d6a63'; return <g key={k}><rect x={mx(k * 22) - w / 2} y={5} width={w} height={250} fill={c} /><rect x={5} y={my(k * 22) - w / 2} width={250} height={w} fill={c} /></g>; })}
@@ -103,6 +121,7 @@ function GameMap({ onClose, onSelect, getMinute }: { onClose: () => void; onSele
         {fin && <g style={{ pointerEvents: 'none' }}><circle cx={mx(fin.x)} cy={my(fin.z)} r="6" fill="#ffd23f" fillOpacity=".25" stroke="#ffd23f" strokeWidth="1.4" /><text x={mx(fin.x)} y={my(fin.z) + 2} textAnchor="middle" style={{ fontSize: '7px' }}>🏁</text><text x={mx(fin.x)} y={my(fin.z) - 8} textAnchor="middle" className="navLabel" style={{ fontSize: '5px', fill: '#ffd23f' }}>Final: {fin.name}</text></g>}
         <g transform={`translate(${mx(pos.x)} ${my(pos.z)}) rotate(${heading})`} style={{ pointerEvents: 'none' }}><circle r="5" fill="#4ba3ff" stroke="#fff" strokeWidth="1.2" /><path d="M0 -11 L-4 -4 L4 -4 Z" fill="#4ba3ff" stroke="#fff" strokeWidth=".8" /></g>
       </svg>
+      <div className="mapZoom"><button type="button" aria-label="Zoom in" onClick={() => zoomBtn(1.5)}>+</button><button type="button" aria-label="Zoom out" onClick={() => zoomBtn(1 / 1.5)}>−</button><button type="button" aria-label="Centre on me" onClick={() => setView(clampView({ x: 130 + pos.x, y: 130 + pos.z, z: Math.max(view.z, 2.5) }))}>◎</button></div>
       <div className="mapLegend"><span><i className="youDot" />You</span><span><i className="bizDot" />Business</span><span><i style={{ background: '#ff5b52' }} />Gun Shop</span><span><i style={{ background: '#ff3b30' }} />Route</span>{fin && <span><i style={{ background: '#ffd23f' }} />Final destination</span>}</div>
     </div>
     {HOUSES.mine && !selected && <div className="mapPlace"><div><b>🏠 Your house</b><small>On the street outside the ring road · {HOUSES.mine.u}</small></div><button onClick={() => { const m = HOUSES.mine!; GAME.nav = { x: m.exit.x, z: m.exit.z, name: 'Your house' }; }}>📍 Route home</button></div>}

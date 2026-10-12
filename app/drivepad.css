@@ -25,3 +25,8 @@
 }
 /* keyboard hints (the "E" badges) mean nothing on a phone */
 @media (pointer:coarse),(max-width:700px){.kbd,button kbd,.cwBtn kbd,.mcQuick kbd{display:none!important}}
+
+/* ===== Map zoom buttons (the map itself pans with one finger and zooms with a pinch) ===== */
+.mapZoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.mapZoom button{width:40px;height:40px;border-radius:12px;border:1px solid #ffffff44;background:#09130fe8;color:#fff;font:700 20px system-ui;line-height:1;cursor:pointer;padding:0;touch-action:manipulation}
+.mapZoom button:active{background:#d99a42;color:#111}

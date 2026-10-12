@@ -710,3 +710,17 @@ model HomeRoom {
 
   @@index([homeId, createdAt])
 }
+
+/// Seasonal leaderboards (28-day seasons, see lib/season.ts and lib/seasonServer.ts)
+model SeasonScore {
+  id        String   @id @default(cuid())
+  userId    String
+  season    Int
+  board     String
+  score     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, season, board])
+  @@index([season, board, score])
+}

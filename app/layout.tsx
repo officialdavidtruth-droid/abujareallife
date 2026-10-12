@@ -5,7 +5,6 @@ import './clean.css';
 import './phone.css';
 import './game.css';
 import './hudfix.css';
-import './gamey.css';
 import type { Metadata, Viewport } from 'next';
 import { Lilita_One } from 'next/font/google';
 import PWARegister from '../components/PWARegister';

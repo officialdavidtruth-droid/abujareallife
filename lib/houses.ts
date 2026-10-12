@@ -12,7 +12,8 @@ import { YARDS } from './chopData';
 import { ROOFS, WALLS, defaultStyle, sanitizeStyle, type Style } from './houseStyle';
 import { NO_SEC, unpackSec, type Sec } from './security';
 
-export const HOUSE_W = 6, HOUSE_D = 8, FRONT = 6.2, LOTS_PER_GAP = 3;
+export const HOUSE_W = 6, HOUSE_D = 8, FRONT = 9.5, LOTS_PER_GAP = 3;   // FRONT was 6.2. 9.5 m is the deepest yard that leaves every plot (and so every player's slot) exactly where it was in the list
+export const PAD_W = 6.8, PAD_START = 3.0;   // parking pad: two 3.4 m bays side by side, starting 3 m in front of the door (the porch, hedges and columns stay clear of it)
 export const ROWS = 6, ROW_STEP = HOUSE_D + FRONT;   // row 0 faces the ring road; each further row stands one house + front yard further out, facing the same way, so its front yard is a lane behind the row before (reached along the cross-road stubs)
 export const DOOR_R = 2.4;   // how close to the door you must stand to use it
 const RING = 5;
@@ -25,6 +26,8 @@ export type Plot = {
   rot: number;                                  // three.js rotation.y: local +z (the front) points at the road
   nx: number; nz: number;                       // direction from the road away from the house
   lat: number;                                  // sideways offset of the driveway in the house's own x (0 or +-2 m)
+  pad: number;                                  // width of the paved parking pad: PAD_W (two bays) when the lot is free of posts, else a single 3.8 m driveway
+  bay: number;                                  // house-local x of the bay your own car parks in (the other bay stays free)
   door: Pt; exit: Pt & { r: number };           // front door, and where you stand when you step out (r = facing, same convention as START.r)
   car: Pt & { r: number };                      // where your car is parked on the driveway (nose to the road)
   solid: Box;                                   // footprint of the house body
@@ -80,8 +83,11 @@ function build(): Plot[] {
         let lat = NaN;
         for (const l of [0, 2, -2]) { if (!hasPost(box(world(l, HOUSE_D / 2 + FRONT / 2), 1.9, FRONT / 2 + .2), .5)) { lat = l; break; } }
         if (Number.isNaN(lat)) continue;
-        const door = world(0, HOUSE_D / 2), ex = world(0, HOUSE_D / 2 + .8), car = world(lat, HOUSE_D / 2 + 3.9);
-        out.push({ slot: out.length, row, x, z, rot, nx, nz, lat, door, exit: { ...ex, r: Math.atan2(-nx, -nz) }, car: { ...car, r: Math.atan2(nz, -nx) }, solid });
+        const wide = !hasPost(box(world(0, HOUSE_D / 2 + (PAD_START + FRONT) / 2), PAD_W / 2, (FRONT - PAD_START) / 2 + .2), .5);   // no lamp or pole anywhere on the pad
+        if (wide) lat = 0;
+        const pad = wide ? PAD_W : 3.8, bay = wide ? -PAD_W / 4 : lat;
+        const door = world(0, HOUSE_D / 2), ex = world(0, HOUSE_D / 2 + .8), car = world(bay, HOUSE_D / 2 + FRONT - 2.3);   // nose to the road, 2.3 m from its edge
+        out.push({ slot: out.length, row, x, z, rot, nx, nz, lat, pad, bay, door, exit: { ...ex, r: Math.atan2(-nx, -nz) }, car: { ...car, r: Math.atan2(nz, -nx) }, solid });
       }
     }
   }

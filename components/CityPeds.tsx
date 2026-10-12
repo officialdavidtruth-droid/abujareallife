@@ -18,7 +18,7 @@ import { JACK, nextCenter } from './CityTraffic';
 import { PAX, guestsOf } from './cityPax';
 import { BikeBody, BusBody, CarModel, DrvLook, PoliceBody, TaxiBody, pkit } from './CityCars';
 import { CAR_R } from './CityWeather';
-import { CAR_POSTS } from './CityCollision';
+import { CAR_POSTS, pedHit, pushPed } from './CityCollision';
 
 
 /* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
@@ -34,8 +34,8 @@ export const PED_N = 32;
 
 export function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {
-    const ri = Math.floor(hs('pi' + n) * 11) - 5, side = hs('ps' + n) < .5 ? 1 : -1, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
-    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * 118 * WS, dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0, lat:0, latT:0, rc:0 };
+    const ri = Math.floor(hs('pi' + n) * 11) - 5, side0 = hs('ps' + n) < .5 ? 1 : -1, side = Math.abs(ri) === 5 ? -Math.sign(ri) : side0, axis: 'x' | 'z' = hs('pa' + n) < .5 ? 'x' : 'z';
+    const homes=['Gwarinpa','Kubwa','Maitama','Jabi','Asokoro','Utako'], works=['Central Area','Wuse','Garki','Maitama','Jabi','Airport Corridor']; const home=homes[n%homes.length], work=works[(n*3)%works.length]; return { axis, line: ri * GRID + side * (halfW(ri) + 2 + (hs('po' + n) - .5)), u: (hs('pu' + n) * 2 - 1) * Math.min(118 * WS, PED_LIM - 1), dir: (hs('pd' + n) < .5 ? 1 : -1) as 1 | -1, sp: 1.1 + hs('pv' + n) * .7, ph: hs('pp' + n) * 6.28, down: 0, x: 0, z: 0, moving: true, shirt: pick(SHIRTS, 'sh' + n), pants: pick(PANTS, 'pn' + n), skin: pick(SKINS, 'sk' + n), home, work, mode:'work', hidden:false, target:[0,0], vis:1, yaw:NaN, off:hs('po' + n) - .5, vf:.88 + hs('pf' + n) * .24, tc:0, rest:0, ox:0, oz:0, lat:0, latT:0, rc:0 };
   });
 }
 
@@ -46,6 +46,8 @@ export const canCross = (t: number, carAxis: 'x' | 'z') => lightState(t, carAxis
 /* ───────────── solid bodies ─────────────
  * Nobody walks or drives through anybody else. Pedestrians sidestep what is in their way and stop when there is no room; you, other players and cars are pushed out of each other. */
 export const BODY_R = .3, PED_PUSH = .6;
+const PED_LIM = 5 * GRID + halfW(5) - .4;   // pedestrians stay inside the outer ring road: past it are the player houses, yards and gate walls
+const sideFor = (k: number, o: number) => (Math.abs(k) === 5 ? -Math.sign(k) : (o >= k * GRID ? 1 : -1));   // on the ring road only the city-side pavement is used
    // body radius of a person; how close two people's centres may get
 export type Spot = { x: number; z: number };
 
@@ -174,10 +176,10 @@ export function Pedestrians() {
           const tx=p.target[0],tz=p.target[1],ox=p.x,oz=p.z;
           if(p.tc<=0){ // walk the pavements: go along the road to the junction nearest the target, turn there, never cut across blocks
             if(p.axis==='x'){
-              if(Math.abs(tz-oz)>6){ const kt=Math.max(-5,Math.min(5,Math.round(tx/GRID))); if(Math.abs(ox-kt*GRID)<halfW(kt)+2.5){ p.axis='z'; p.line=kt*GRID+(ox>=kt*GRID?1:-1)*(halfW(kt)+2+p.off); p.u=oz; p.dir=tz>oz?1:-1; p.tc=2.5; } else p.dir=kt*GRID>ox?1:-1; }
+              if(Math.abs(tz-oz)>6){ const kt=Math.max(-5,Math.min(5,Math.round(tx/GRID))); if(Math.abs(ox-kt*GRID)<halfW(kt)+2.5){ p.axis='z'; p.line=kt*GRID+sideFor(kt,ox)*(halfW(kt)+2+p.off); p.u=oz; p.dir=tz>oz?1:-1; p.tc=2.5; } else p.dir=kt*GRID>ox?1:-1; }
               else p.dir=tx>ox?1:-1;
             } else {
-              if(Math.abs(tx-ox)>6){ const kr=Math.max(-5,Math.min(5,Math.round(tz/GRID))); if(Math.abs(oz-kr*GRID)<halfW(kr)+2.5){ p.axis='x'; p.line=kr*GRID+(oz>=kr*GRID?1:-1)*(halfW(kr)+2+p.off); p.u=ox; p.dir=tx>ox?1:-1; p.tc=2.5; } else p.dir=kr*GRID>oz?1:-1; }
+              if(Math.abs(tx-ox)>6){ const kr=Math.max(-5,Math.min(5,Math.round(tz/GRID))); if(Math.abs(oz-kr*GRID)<halfW(kr)+2.5){ p.axis='x'; p.line=kr*GRID+sideFor(kr,oz)*(halfW(kr)+2+p.off); p.u=ox; p.dir=tx>ox?1:-1; p.tc=2.5; } else p.dir=kr*GRID>oz?1:-1; }
               else p.dir=tz>oz?1:-1;
             }
           }
@@ -198,10 +200,15 @@ export function Pedestrians() {
         }
         const nx = nextCenter(p.u, p.dir), rj = Math.round(nx / GRID);
         if (Math.abs(rj) <= 5) { const dist = (nx - p.u) * p.dir - (halfW(rj) + .3); if (dist > -.05 && dist < .5 && signalised(rj, Math.round(p.line / GRID)) && !canCross(t, p.axis === 'x' ? 'z' : 'x') && rk !== 'flee') go = false; } // wait at the kerb for a red light (not when running for your life)
-        if (go) { const activityFactor = rk === 'flee' ? 1 : night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > 124 * WSCALE) p.dir = -1; else if (p.u < -124 * WSCALE) p.dir = 1; }
+        if (go && rk !== 'flee') {   // solid ahead (a wall, fence, building, parked car or house)? don't walk into it: turn round and pick another destination
+          const ax2 = p.axis === 'x', au = p.u + p.dir * .9, hx = ax2 ? au : p.line + p.lat, hz = ax2 ? p.line + p.lat : au;
+          if (pedHit(hx, hz, BODY_R)) { p.dir = (-p.dir) as 1 | -1; p.tc = 3; p.rest = 0; p.ox = wander(); p.oz = wander(); go = false; }
+        }
+        if (go) { const activityFactor = rk === 'flee' ? 1 : night ? .55 : rain ? .72 : (wc.hh >= 7 && wc.hh < 10 ? 1.15 : 1); p.u += p.dir * p.sp * activityFactor * dt; p.ph += dt * p.sp * 5; p.moving = true; if (p.u > PED_LIM) { p.u = PED_LIM; p.dir = -1; } else if (p.u < -PED_LIM) { p.u = -PED_LIM; p.dir = 1; } }
       }
       if (p.axis === 'x') { p.x = p.u; p.z = p.line; } else { p.x = p.line; p.z = p.u; }
       p.lat += (p.latT - p.lat) * Math.min(1, dt * 3.5); if (p.axis === 'x') p.z += p.lat; else p.x += p.lat;   // the sidestep
+      pushPed(p, BODY_R);   // never stand inside a wall, fence, building, parked car or house
       if (p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 3.5) { const dx = p.x - VEH.x, dz = p.z - VEH.z; if (dx * dx + dz * dz < 3.6) { p.down = 3.2; VEH.v *= .9; thud(.5); pushCrime({ kind: 'runover', x: p.x, z: p.z, victim: i }); } } // clipped by the player's car
       const yawT = react && rk !== 'flee' ? Math.atan2(-((react as Reaction).fz - p.z), (react as Reaction).fx - p.x) : p.axis === 'x' ? (p.dir > 0 ? 0 : Math.PI) : -p.dir * Math.PI / 2, sw = p.moving ? Math.sin(p.ph) : 0;   // witnesses turn to look at the crime
       if (Number.isNaN(p.yaw)) p.yaw = yawT; let dyw = yawT - p.yaw; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw)); p.yaw += dyw * Math.min(1, dt * (react ? 14 : 9)); const pv = PEDVIEW[i] || (PEDVIEW[i] = { x: 0, z: 0, yaw: 0, on: false }); pv.x = p.x; pv.z = p.z; pv.yaw = p.yaw; pv.on = !p.hidden && p.down <= 0; // turn smoothly instead of snapping 180°

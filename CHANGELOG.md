@@ -12,6 +12,12 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 
 ---
 
+## Unreleased — bigger parking, pedestrians stay out of walls
+- Player houses: front yard deepened from 6.2 m to 9.5 m (the deepest that keeps every plot, and so every player's slot, exactly where it was). Most houses (607 of 660) now get a paved two-bay parking pad 6.8 m wide with painted bay lines and a path from the porch; the rest keep a single, wider (3.8 m) driveway because a lamp or pole stands in the way. Your car parks in the left bay, the right bay stays free. Gate opening, gate posts and palms follow the pad width. (`lib/houses.ts`, `components/PlayerHouses.tsx`)
+- Pedestrians walked fixed pavement lines that ran straight through the player-house strip: 120 of 132 lines crossed a house. They now stay inside the outer ring road (and use only its city-side pavement), look ahead and turn round instead of walking into a wall, fence, building, parked car or house, and are pushed out of any solid they still overlap. Fast grid lookup, so many pedestrians stay cheap. (`components/CityPeds.tsx`, `components/CityCollision.ts`)
+
+---
+
 ## Unreleased — reference-style HUD
 - New `components/HudCard.tsx`: profile card (avatar, name with fame badge, level + XP bar) with labelled Health, Energy, Hunger and Mood bars; the other four needs are a thin row of small bars under it. Level = total skill XP (1 + floor(sqrt(xp/25))). Health is live.
 - Minimap has an N marker that rides the rim and always points north (`CityUi.tsx`).

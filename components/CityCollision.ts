@@ -25,6 +25,37 @@ export const SOLIDS = [
   { x0: AIR.x - 4.5 * AIR.s, x1: AIR.x + 4.5 * AIR.s, z0: AIR.z - 7 * AIR.s - 2.5 * AIR.s, z1: AIR.z - 7 * AIR.s + 2.5 * AIR.s },
 ];
 
+/* Pedestrians: a coarse grid over SOLIDS (buildings, fences, walls, parked cars, houses) so each of the many pedestrians only looks at the few solids near it.
+   Rebuilt whenever the list changes (player houses are added to SOLIDS when they load). */
+const CELL = 16;
+let GIDX = new Map<number, typeof SOLIDS>(), GLEN = -1, GLAST: unknown = null;
+function nearSolids(x: number, z: number) {
+  if (GLEN !== SOLIDS.length || GLAST !== SOLIDS[SOLIDS.length - 1]) {
+    GLEN = SOLIDS.length; GLAST = SOLIDS[SOLIDS.length - 1]; GIDX = new Map();
+    for (const s of SOLIDS) for (let cx = Math.floor((s.x0 - 1) / CELL); cx <= Math.floor((s.x1 + 1) / CELL); cx++) for (let cz = Math.floor((s.z0 - 1) / CELL); cz <= Math.floor((s.z1 + 1) / CELL); cz++) {
+      const k = cx * 10007 + cz; let l = GIDX.get(k); if (!l) { l = []; GIDX.set(k, l); } l.push(s);
+    }
+  }
+  return GIDX.get(Math.floor(x / CELL) * 10007 + Math.floor(z / CELL));
+}
+/** true when a body of radius `rad` standing at (x, z) would overlap a solid */
+export function pedHit(x: number, z: number, rad = BODY) {
+  const l = nearSolids(x, z); if (!l) return false;
+  for (const s of l) if (x > s.x0 - rad && x < s.x1 + rad && z > s.z0 - rad && z < s.z1 + rad) return true;
+  return false;
+}
+/** nudge a pedestrian out of anything solid (same push as pushOut, but only against the solids around it) */
+export function pushPed(p: { x: number; z: number }, rad = BODY) {
+  const l = nearSolids(p.x, p.z); if (!l) return;
+  for (const s of l) {
+    if (p.x < s.x0 - rad || p.x > s.x1 + rad || p.z < s.z0 - rad || p.z > s.z1 + rad) continue;
+    const cx = Math.min(Math.max(p.x, s.x0), s.x1), cz = Math.min(Math.max(p.z, s.z0), s.z1), dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
+    if (d2 >= rad * rad) continue;
+    if (d2 > 1e-6) { const d = Math.sqrt(d2); p.x = cx + dx / d * rad; p.z = cz + dz / d * rad; }
+    else { const lf = p.x - s.x0, r = s.x1 - p.x, t = p.z - s.z0, b = s.z1 - p.z, m = Math.min(lf, r, t, b); if (m === lf) p.x = s.x0 - rad; else if (m === r) p.x = s.x1 + rad; else if (m === t) p.z = s.z0 - rad; else p.z = s.z1 + rad; }
+  }
+}
+
 export function pushOut(p: { x: number; z: number }, rad = BODY) {
   for (const s of SOLIDS) {
     if (p.x < s.x0 - rad || p.x > s.x1 + rad || p.z < s.z0 - rad || p.z > s.z1 + rad) continue;

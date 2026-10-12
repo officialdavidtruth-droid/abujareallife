@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { HOUSES, HOUSE_D, HOUSE_W, FRONT, floorsFor, loadHouses, type HouseInfo } from '../lib/houses';
+import { HOUSES, HOUSE_D, HOUSE_W, FRONT, PAD_START, PAD_W, floorsFor, loadHouses, type HouseInfo } from '../lib/houses';
 import { DESIGNS, DOORS, ROOFS, TRIMS, WALLS, type Style } from '../lib/houseStyle';
 import { GAME, NIGHT } from './cityShared';
 import { NO_SEC, hasGuards, secLine, type GuardId } from '../lib/security';
@@ -41,7 +41,16 @@ export function layout(list: HouseInfo[]): Buckets {
 
     /* ground: porch pad + driveway */
     S(0, des === 'mansion' ? .04 : .03, fz + padD / 2, pad, des === 'mansion' ? .08 : .06, padD, des === 'mansion' ? STONE : PAD);
-    S(h.lat, .035, fz + FRONT / 2, 3.2, .05, FRONT, DRIVE);
+    {
+      const wide = h.pad > 4, ps = wide ? PAD_START : 0;
+      S(h.lat, .035, fz + (ps + FRONT) / 2, h.pad, .05, FRONT - ps, DRIVE);                  // the parking pad (wide = two bays)
+      if (wide) {
+        S(0, .03, fz + (1.5 + ps) / 2, 1.6, .05, ps - 1.5 + .1, PAD);                         // path from the porch to the pad
+        const zc = fz + (ps + FRONT) / 2, dd = FRONT - ps - .5;
+        for (const bx of [-h.pad / 2 + .12, 0, h.pad / 2 - .12]) S(h.lat + bx, .062, zc, .1, .012, dd, '#e8e8e0');   // bay lines
+        S(h.lat, .062, fz + ps + .3, h.pad - .2, .012, .1, '#e8e8e0');
+      }
+    }
 
     /* body */
     let frontZ = fz + .02;   // the z of the front face windows sit on
@@ -121,18 +130,18 @@ export function layout(list: HouseInfo[]): Buckets {
       for (const sd of [-1, 1]) { S(sd * (des === 'mansion' ? 3.1 : 1.85), .32, hz, 1.5, .64, .6, GREEN); for (const k of [-1, 1]) S(sd * (des === 'mansion' ? 3.1 : 1.85) + k * .4, .7, hz, .25, .14, .3, k > 0 ? '#e0568a' : '#ffd23f'); }
     }
     /* palms: one each side of the front yard, never on the driveway */
-    if (ex(8)) for (const px of [-3.3, 3.3]) if (Math.abs(px - h.lat) > 2.3) {
+    if (ex(8)) for (const px of [-3.3, 3.3]) if (Math.abs(px - h.lat) > h.pad / 2 + .7) {
       col(px, fz + 2.8, 3.4, .13, '#7a5a3a');
       K.B.push(mk(h, px, 3.6, fz + 2.8, 2.4, .7, 2.4, '#2f8a45')); K.B.push(mk(h, px + .2, 3.95, fz + 2.9, 1.5, .5, 1.5, '#3aa655'));
     }
     /* gate and boundary wall: the driveway stays open (the gate leaves are swung back) so cars still get in */
     if (ex(1) && h.row === 0) {   // (the rows behind have only a lane in front, no room for a gate wall)
-      const wz = fz + FRONT - .5, lo = h.lat - 1.95, hi = h.lat + 1.95;
-      if (lo > -3.9) { S((-3.9 + lo) / 2, .45, wz, lo + 3.9, .9, .22, wall); S((-3.9 + lo) / 2, .93, wz, lo + 3.9, .08, .3, trim); }
-      if (hi < 3.9) { S((hi + 3.9) / 2, .45, wz, 3.9 - hi, .9, .22, wall); S((hi + 3.9) / 2, .93, wz, 3.9 - hi, .08, .3, trim); }
+      const wz = fz + FRONT - .5, gh = h.pad / 2 + .35, lo = h.lat - gh, hi = h.lat + gh;
+      if (lo > -3.9 + .3) { S((-3.9 + lo) / 2, .45, wz, lo + 3.9, .9, .22, wall); S((-3.9 + lo) / 2, .93, wz, lo + 3.9, .08, .3, trim); }
+      if (hi < 3.9 - .3) { S((hi + 3.9) / 2, .45, wz, 3.9 - hi, .9, .22, wall); S((hi + 3.9) / 2, .93, wz, 3.9 - hi, .08, .3, trim); }
       for (const sd of [-1, 1]) {
-        S(h.lat + sd * 1.85, .8, wz, .5, 1.6, .5, wall); S(h.lat + sd * 1.85, 1.63, wz, .62, .1, .62, trim); K.LG.push(mk(h, h.lat + sd * 1.85, 1.85, wz, .3, .3, .3));
-        S(h.lat + sd * 1.45, .62, wz - .8, .05, 1.1, 1.4, IRON);                                              // open gate leaf
+        S(h.lat + sd * (h.pad / 2 + .25), .8, wz, .5, 1.6, .5, wall); S(h.lat + sd * (h.pad / 2 + .25), 1.63, wz, .62, .1, .62, trim); K.LG.push(mk(h, h.lat + sd * (h.pad / 2 + .25), 1.85, wz, .3, .3, .3));
+        S(h.lat + sd * (h.pad / 2 - .15), .62, wz - .8, .05, 1.1, 1.4, IRON);                                              // open gate leaf
         S(sd * 3.9, .42, fz + (wz - fz) / 2, .16, .84, wz - fz, wall);                                          // side walls
       }
     }
@@ -187,7 +196,7 @@ export function HouseMeshes({ list, ver = 0, forceNight }: { list: HouseInfo[]; 
 
 /** A free-standing house at the origin (front towards +z) for the customiser's preview. */
 export function previewHouse(style: Style, u: string, nepo: boolean): HouseInfo {
-  return { slot: -1, row: 0, x: 0, z: 0, rot: 0, nx: 0, nz: 1, lat: 0, door: { x: 0, z: HOUSE_D / 2 }, exit: { x: 0, z: HOUSE_D / 2 + .8, r: 0 }, car: { x: 0, z: HOUSE_D / 2 + 3.9, r: 0 }, solid: { x0: -HOUSE_W / 2, x1: HOUSE_W / 2, z0: -HOUSE_D / 2, z1: HOUSE_D / 2 },
+  return { slot: -1, row: 0, x: 0, z: 0, rot: 0, nx: 0, nz: 1, lat: 0, pad: PAD_W, bay: -PAD_W / 4, door: { x: 0, z: HOUSE_D / 2 }, exit: { x: 0, z: HOUSE_D / 2 + .8, r: 0 }, car: { x: -PAD_W / 4, z: HOUSE_D / 2 + FRONT - 2.3, r: 0 }, solid: { x0: -HOUSE_W / 2, x1: HOUSE_W / 2, z0: -HOUSE_D / 2, z1: HOUSE_D / 2 },
     u, mine: true, nepo, style, wall: WALLS[style.w] ?? WALLS[0], roof: ROOFS[style.r] ?? ROOFS[0], floors: floorsFor(style, u), sec: NO_SEC };
 }
 

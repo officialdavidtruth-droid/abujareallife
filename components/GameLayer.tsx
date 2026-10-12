@@ -164,12 +164,15 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
       <button className="dockToggle" onClick={onToggle} aria-label="Menu">{open ? '✕' : '☰'}{!open && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>
       {near && !st.jailLeft && <button className="enter" disabled={entering} onClick={tryEnter}>{entering ? '⏳ Entering…' : businessStatus(near.type as any, getMinute ? getMinute() : 0).open ? '🚪 Enter' : '🔒 Closed'}</button>}
       <IntoxOverlay drunk={Number(st.drunk) || 0} high={Number(st.high) || 0} />
-      {!st.jailLeft && st.profile.profession !== 'police' && <CrimeActions username={username} say={say} refresh={refresh} />}
-      {!st.jailLeft && st.profile.profession !== 'police' && <BreakIn username={username} say={say} refresh={refresh} />}
+      {/* contextual action pills (carjack, chop shop, break in, help): one tidy stack left of the action arc, see app/gtahud.css */}
+      <div className="ctxStack">
+        {!st.jailLeft && st.profile.profession !== 'police' && <CrimeActions username={username} say={say} refresh={refresh} />}
+        {!st.jailLeft && st.profile.profession !== 'police' && <BreakIn username={username} say={say} refresh={refresh} />}
+        {(() => { const h = !st.jailLeft && helpNear(); return h ? <button className="help" onClick={() => help(h)}>🤝 Help {h}</button> : null; })()}
+      </div>
       {!st.jailLeft && st.profile.profession !== 'police' && <ChopShop say={say} refresh={refresh} />}
       {!st.jailLeft && <StreetEscort say={say} refresh={refresh} />}
       {!st.jailLeft && <StreetNpcUI say={say} refresh={refresh} />}
-      {(() => { const h = !st.jailLeft && helpNear(); return h ? <button className="help" onClick={() => help(h)}>🤝 Help {h}</button> : null; })()}
       {open && <div className="dockGrid">{items.map(([e, l, f]) => <button key={l} onClick={() => { f(); onToggle(); }}><span>{e}</span><small>{l}</small>{l === 'Phone' && unread > 0 && <i className="dockBadge">{unread > 9 ? '9+' : unread}</i>}</button>)}</div>}
     </div>
     <RuntimeStyle id="arl-badge" css=".dockBadge{position:absolute;top:2px;right:2px;background:#e5484d;color:#fff;border-radius:999px;font-size:10px;font-weight:900;font-style:normal;padding:1px 6px;pointer-events:none;line-height:1.3}.dockGrid button,.dockToggle{position:relative}" />

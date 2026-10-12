@@ -1,0 +1,217 @@
+/* ===== GTA-STYLE OUTDOOR HUD (touch screens). Loaded LAST, after hudfix.css. =====
+
+   One idea per screen corner, like GTA on a phone:
+
+     TOP-LEFT      radar (minimap) with the needs bars tucked beside it
+     TOP-RIGHT     clock + cash as plain text, menu button, one row of small round buttons
+     TOP-CENTRE    toasts, then the "near a building" card (only when something is happening)
+     BOTTOM-LEFT   joystick (+ missions / weapon keys), speedometer above it when driving
+     BOTTOM-RIGHT  action buttons in an ARC around the thumb: Fight big in the corner,
+                   Jump above it, Sprint beside it, small extras further out
+     LEFT OF ARC   contextual pills (Carjack, Chop shop, Break in, Help...) stacked, only when relevant
+
+   Everything is scoped to `body .sim.outside` so the indoor screens are untouched.
+   If you ever want the old layout back, remove the import of this file in app/layout.tsx. */
+
+@media (pointer:coarse),(max-width:900px){
+
+  body .sim.outside{
+    --gr:clamp(78px,23vh,104px);              /* radar size */
+    --ink:rgba(7,14,11,.62);                  /* shared glass colour */
+    --ring:rgba(255,255,255,.82);
+    --gold:#f3c56f;
+    --edge:max(12px,var(--sal,0px));
+    --edgeR:max(12px,var(--sar,0px));
+  }
+
+  /* ---------- TOP-LEFT: radar + needs ---------- */
+  body .sim.outside .cwMapBtn{
+    left:var(--edge)!important;top:calc(12px + var(--sat,0px))!important;
+    width:var(--gr)!important;height:var(--gr)!important;
+    border-radius:50%!important;border:0!important;padding:0!important;
+    box-shadow:0 0 0 3px var(--ring),0 0 0 5px #000a,0 6px 16px #0009!important;
+    z-index:18!important;
+  }
+  body .sim.outside .cwMapBtn .cwMap{width:100%!important;height:100%!important;border:0!important;border-radius:50%!important}
+
+  body .sim.outside .needs{
+    left:calc(var(--edge) + var(--gr) + 14px)!important;top:calc(12px + var(--sat,0px))!important;
+    height:var(--gr)!important;width:112px!important;max-width:none!important;
+    flex-direction:column!important;align-items:stretch!important;justify-content:space-between!important;gap:0!important;
+    padding:3px 8px 3px 9px!important;
+    background:var(--ink)!important;border:0!important;border-left:3px solid #d99a42!important;border-radius:6px!important;
+    box-shadow:0 4px 12px #0007!important;backdrop-filter:blur(4px)!important;
+  }
+  body .sim.outside .needs .mood{padding:0!important;border:0!important;font-size:14px!important;line-height:1!important;justify-content:flex-start}
+  body .sim.outside .needs .mood b,body .sim.outside .needs .mood span{display:none!important}
+  body .sim.outside .needs .nrow{flex-direction:row!important;align-items:center!important;gap:7px!important;width:100%}
+  body .sim.outside .needs .nrow>span{width:14px!important;font-size:11px!important;text-align:center;flex:none}
+  body .sim.outside .needs .nrow .bar{flex:1!important;height:5px!important;margin:0!important;min-width:0}
+
+  /* mission tracker + guide chip: objective text lives under the radar, like GTA */
+  body .sim.outside .mcTracker,body .mcTracker{
+    left:var(--edge)!important;top:calc(20px + var(--gr) + var(--sat,0px))!important;
+    max-width:min(210px,32vw)!important;min-width:0!important;transform:none!important;
+  }
+  body .gcChip{top:calc(116px + var(--sat,0px))!important}
+  body .tlHud{top:calc(172px + var(--sat,0px))!important}
+
+  /* ---------- TOP-RIGHT: money + clock as plain text, menu, quick-button row ---------- */
+  body .sim.outside .top{display:contents!important}
+  body .sim.outside .top>.pill{
+    position:absolute!important;right:calc(var(--edgeR) + 54px)!important;left:auto!important;
+    background:none!important;border:0!important;box-shadow:none!important;backdrop-filter:none!important;
+    padding:0!important;min-height:0!important;width:auto!important;max-width:none!important;
+    text-align:right;white-space:nowrap;overflow:visible!important;pointer-events:none;
+    font-family:var(--font-game),Inter,system-ui,sans-serif!important;
+  }
+  body .sim.outside .top>.pill:first-child{            /* clock */
+    top:calc(13px + var(--sat,0px))!important;font-size:12px!important;letter-spacing:.08em;color:#e9f2ed!important;
+    text-shadow:0 1px 0 #000,0 0 6px #000c!important;
+  }
+  body .sim.outside .top>.pill.gold{                    /* cash */
+    top:calc(27px + var(--sat,0px))!important;font-size:25px!important;line-height:1.05;letter-spacing:.03em;color:var(--gold)!important;
+    text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 3px 8px #000b!important;
+  }
+  body .sim.outside .top>button.pill:not(.menuBtn){      /* home / neighbourhood */
+    right:calc(var(--edgeR) + 3*44px)!important;top:calc(62px + var(--sat,0px))!important;pointer-events:auto;
+  }
+
+  /* the round quick buttons share one row under the menu button */
+  body .sim.outside .top>button.pill:not(.menuBtn),
+  body .sim.outside .cwGear,
+  body .sim.outside .cpOnline.cpOnline,
+  body .sim.outside .cpEmoteBtn.cpEmoteBtn{
+    position:absolute!important;top:calc(62px + var(--sat,0px))!important;
+    width:36px!important;height:36px!important;min-width:36px!important;min-height:36px!important;padding:0!important;
+    display:flex!important;align-items:center!important;justify-content:center!important;flex-direction:column;gap:0;
+    border-radius:50%!important;border:1px solid #ffffff55!important;border-left-width:1px!important;
+    background:var(--ink)!important;backdrop-filter:blur(4px)!important;color:#fff;font-size:16px!important;line-height:1;
+    box-shadow:0 3px 8px #0007!important;transform:none!important;z-index:14!important;cursor:pointer;
+  }
+  body .sim.outside .cwGear{right:var(--edgeR)!important;left:auto!important}
+  body .sim.outside .cpEmoteBtn.cpEmoteBtn{right:calc(var(--edgeR) + 44px)!important;left:auto!important}
+  body .sim.outside .cpOnline.cpOnline{right:calc(var(--edgeR) + 2*44px)!important;left:auto!important}
+  body .sim.outside .cpOnline.cpOnline span{font-size:15px!important}
+  body .sim.outside .cpOnline.cpOnline b{font-size:8px!important;line-height:1;margin-top:-1px}
+  body .sim.outside .cwMute:not(.cwGear){display:none!important}   /* "Mute everything" is in Settings (⚙️) */
+
+  body .sim.outside .dock{top:calc(10px + var(--sat,0px))!important;right:var(--edgeR)!important}
+  body .sim.outside .dockToggle{width:42px!important;height:42px!important;border-radius:50%!important;background:var(--ink)!important}
+
+  /* ---------- TOP-CENTRE: toasts, then the nearby-building card ---------- */
+  body .sim.outside .glToast{
+    top:calc(12px + var(--sat,0px))!important;
+    left:calc(var(--edge) + var(--gr) + 14px + 112px + 10px)!important;right:calc(var(--edgeR) + 54px + 118px)!important;
+    transform:none!important;margin-inline:auto!important;width:fit-content!important;max-width:none!important;
+    padding:7px 12px!important;font-size:12px!important;line-height:1.3!important;text-align:center;
+  }
+  body .sim.outside .glToast~.glToast{top:calc(52px + var(--sat,0px))!important}
+  body .glPing{top:calc(12px + var(--sat,0px))!important}
+  body .glToast+.glPing,body .glPing+.glToast{top:calc(56px + var(--sat,0px))!important}
+
+  body .sim.outside .nearCard{
+    top:calc(52px + var(--sat,0px))!important;bottom:auto!important;
+    left:calc(var(--edge) + var(--gr) + 14px + 112px + 10px)!important;right:calc(var(--edgeR) + 54px + 118px)!important;
+    transform:none!important;margin-inline:auto!important;width:fit-content!important;
+    max-width:calc(100vw - 2*(var(--edge) + var(--gr) + 14px + 112px + 10px) + 60px)!important;
+  }
+  body .sim.outside .nearCopy b,body .sim.outside .nearCopy span{max-width:26vw!important}
+  body .chHud{top:calc(116px + var(--sat,0px))!important}
+  body .chWin{top:calc(170px + var(--sat,0px))!important}
+
+  /* ---------- BOTTOM-LEFT: joystick, keys, speedometer ---------- */
+  body .sim.outside .cwStick{left:var(--edge)!important;bottom:calc(18px + var(--sab,0px))!important}
+  body .sim.outside .mcQuick{left:calc(var(--edge) + 120px)!important;bottom:calc(22px + var(--sab,0px))!important;top:auto!important;right:auto!important}
+  body .sim.outside .cwSpeed{
+    left:var(--edge)!important;right:auto!important;bottom:calc(136px + var(--sab,0px))!important;
+    background:var(--ink)!important;border:0!important;border-left:3px solid #d99a42!important;border-radius:6px!important;padding:3px 10px!important;
+  }
+  body .sim.outside .cwSpeed b{font-size:24px!important;min-width:38px!important}
+
+  /* ---------- BOTTOM-RIGHT: action buttons in an arc ----------
+     Each button is placed by its distance from the corner (right / bottom). Sizes:
+     P=76 (Fight / Fire)  A,B=62 (Jump, Sprint)  C=54 (Car / Plane)  D,E,F=46 (Camera, Taxi, Horn)  */
+  body .sim.outside .cwBtns{
+    display:block!important;position:absolute!important;grid-template-columns:none!important;gap:0!important;
+    right:var(--edgeR)!important;bottom:calc(14px + var(--sab,0px))!important;
+    width:226px!important;height:204px!important;pointer-events:none;z-index:12!important;
+  }
+  body .sim.outside .cwBtns>.cwBtn{
+    position:absolute!important;grid-column:auto!important;grid-row:auto!important;pointer-events:auto;
+    width:62px!important;height:62px!important;
+    background:var(--ink)!important;border:2px solid var(--ring)!important;backdrop-filter:blur(3px);
+    box-shadow:0 4px 10px #0008!important;
+  }
+  body .sim.outside .cwBtns>.cwBtn span{font-size:22px!important}
+  body .sim.outside .cwBtns>.cwBtn small{font-size:9px!important}
+  body .sim.outside .cwBtns>.cwBtn:active{background:#d99a42!important;color:#111}
+
+  /* P: primary */
+  body .sim.outside .cwBtns>[aria-label="Fight"]{right:0!important;bottom:0!important;width:76px!important;height:76px!important;border-color:#ff8a6b!important}
+  body .sim.outside .cwBtns>[aria-label="Fire"]{right:0!important;bottom:0!important;width:76px!important;height:76px!important;border-color:#ff5147!important;background:#7f1d1dd0!important}
+  body .sim.outside .cwBtns:has([aria-label="Fire"])>[aria-label="Fight"]{right:164px!important;bottom:74px!important;width:54px!important;height:54px!important}
+  /* A, B */
+  body .sim.outside .cwBtns>[aria-label="Jump"]{right:10px!important;bottom:88px!important}
+  body .sim.outside .cwBtns>[aria-label="Sprint"]{right:92px!important;bottom:6px!important}
+  /* C: enter / exit vehicle or plane */
+  body .sim.outside .cwBtns>[aria-label="Car"],
+  body .sim.outside .cwBtns>[aria-label="Board plane"],
+  body .sim.outside .cwBtns>[aria-label="Exit plane"]{right:86px!important;bottom:86px!important;width:54px!important;height:54px!important;border-color:#8ad7ff!important}
+  /* D, E, F: small extras */
+  body .sim.outside .cwBtns>[aria-label="Camera"]{right:16px!important;bottom:160px!important;width:46px!important;height:46px!important}
+  body .sim.outside .cwBtns>[aria-label="Taxi"]{right:166px!important;bottom:10px!important;width:46px!important;height:46px!important}
+  body .sim.outside .cwBtns>[aria-label="Horn"],
+  body .sim.outside .cwBtns>[aria-label="View"]{right:108px!important;bottom:148px!important;width:46px!important;height:46px!important}
+  body .sim.outside .cwBtns>.cwBtn.cam small,body .sim.outside .cwBtns>[aria-label="Taxi"] small{display:none!important}
+
+  /* look-around pad: everything right of the middle, above the arc */
+  body .sim.outside .cwLookPad{right:0!important;top:22%!important;width:48%!important;height:42%!important}
+
+  /* ---------- LEFT OF THE ARC: contextual pills ---------- */
+  .ctxStack{
+    position:fixed;right:calc(max(14px,var(--sar,0px)) + 236px);bottom:calc(18px + var(--sab,0px));z-index:30;
+    display:flex;flex-direction:column-reverse;align-items:flex-end;gap:6px;pointer-events:none;
+  }
+  .ctxStack .crimeActs,.ctxStack .biWrap{
+    position:static!important;right:auto!important;bottom:auto!important;
+    display:flex;flex-direction:column-reverse;align-items:flex-end;gap:6px;
+  }
+  body .sim.outside .ctxStack .cwBtn,.ctxStack .help{
+    pointer-events:auto;position:relative;
+    width:auto!important;height:40px!important;min-width:152px;
+    display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;gap:7px!important;
+    padding:0 16px 0 12px!important;border-radius:999px!important;
+    font-family:var(--font-game),Inter,system-ui,sans-serif;letter-spacing:.05em;white-space:nowrap;
+  }
+  body .sim.outside .ctxStack .cwBtn span{font-size:18px!important;line-height:1}
+  body .sim.outside .ctxStack .cwBtn small{font-size:12px!important;text-transform:uppercase;padding:0!important;line-height:1}
+  body .sim.outside .ctxStack .cwBtn em{display:none!important}
+  .ctxStack .help{background:#14532df0;color:#fff;border:2px solid #86efac99;font-size:12px;box-shadow:0 4px 12px #0009}
+  .ctxStack .biChip{font-size:10px!important;padding:3px 8px!important}
+
+  /* lock-picking panel keeps the free band between the stick and the pills */
+  body .biBar{right:calc(max(14px,var(--sar,0px)) + 236px)!important;left:auto!important;transform:none!important;bottom:calc(18px + var(--sab,0px))!important;width:min(300px,calc(100vw - 520px))!important;max-width:none!important}
+
+  /* install button: out of the corners */
+  body .installBtn{top:auto!important;right:auto!important;left:50%!important;bottom:calc(52px + var(--sab,0px))!important;transform:translateX(-50%)!important}
+}
+
+/* Very short phones (360px tall and below): a little tighter */
+@media (pointer:coarse) and (max-height:380px){
+  body .sim.outside{--gr:76px}
+  body .sim.outside .top>.pill.gold{font-size:22px!important;top:calc(25px + var(--sat,0px))!important}
+  body .sim.outside .needs{padding-top:2px!important;padding-bottom:2px!important}
+  body .sim.outside .needs .mood{font-size:12px!important}
+  body .sim.outside .needs .nrow>span{font-size:9px!important}
+  body .sim.outside .needs .nrow .bar{height:4px!important}
+  body .sim.outside .cwBtns{transform:scale(.88);transform-origin:100% 100%}
+  .ctxStack{transform:scale(.92);transform-origin:100% 100%}
+}
+
+/* Narrow landscape (under ~720px wide): the building card goes back to the bottom band */
+@media (pointer:coarse) and (max-width:720px){
+  body .sim.outside .nearCard{
+    top:auto!important;bottom:calc(112px + var(--sab,0px))!important;left:calc(var(--edge) + 128px)!important;right:calc(var(--edgeR) + 240px)!important;max-width:none!important;
+  }
+}

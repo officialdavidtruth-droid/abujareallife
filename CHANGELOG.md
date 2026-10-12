@@ -12,6 +12,14 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 
 ---
 
+## Unreleased — GTA-style outdoor HUD
+- Re-arranged the phone HUD so each corner has one job: radar + needs bars top-left, clock/cash as plain text with the menu and one row of small round buttons top-right, toasts and the nearby-building card top-centre, joystick bottom-left, and the action buttons in an arc around the right thumb (Fight/Fire big in the corner, Jump above, Sprint beside, Car/Camera/Taxi/Horn further out).
+- Contextual buttons (Carjack, Chop shop, Break in, Help) are now one stack of pills to the left of the arc instead of round buttons on top of Jump. New wrapper `.ctxStack` in `components/GameLayer.tsx`.
+- The separate 🔊 button is hidden on the outdoor HUD ("Mute everything" is in ⚙️ Settings).
+- All of it is one new stylesheet, `app/gtahud.css`, imported last in `app/layout.tsx`. Outdoor, touch screens only; interiors and desktop are unchanged. To go back to the old layout, remove that import.
+
+---
+
 ## Unreleased — shared world (this session)
 
 Goal: every player sees the same AI cars and NPCs at the same positions, seeded from the shared clock in `lib/worldClock.ts`. Done step by step.

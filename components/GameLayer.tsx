@@ -148,8 +148,8 @@ export default function GameLayer({ username, onCash, near, role, onEnter, onDen
   const helpNear = () => { let best: string | null = null, bd = 7; for (const [n, p] of Object.entries(NET.peers)) { const d = Math.hypot(p.x - NET.me.x, p.z - NET.me.z); if (d < bd) { bd = d; best = n; } } return best; };
   const help = async (name: string) => { const r = await post('/api/help', { target: name }); say(r.ok ? `🤝 You helped ${name}: -${naira(r.d.tip)} · +${r.d.fame} fame` : r.d.error); refresh(); };
   const love = async (body: object) => { const r = await post('/api/relationship', body); say(r.ok ? 'Done.' : r.d.error); refresh(); setTab('love'); };
+  useEffect(() => { const f = () => setTab('phone'); window.addEventListener('arl-open-phone', f); return () => window.removeEventListener('arl-open-phone', f); }, []);   // (above the early return: hooks must run on every render) the Phone buttons on the action pad
   if (!st) return null;
-  useEffect(() => { const f = () => setTab('phone'); window.addEventListener('arl-open-phone', f); return () => window.removeEventListener('arl-open-phone', f); }, []);   // the Phone buttons on the action pad
   const items: [string, string, () => void][] = [
     ['🗺️', 'Map', () => onCityTab(cityTab === 'map' ? null : 'map')], ['🎒', 'My Stuff', () => setStuff(true)], ['🛒', 'Market', () => setMarket({})], ['👥', 'Players', () => setTab('players')], ['💼', 'Jobs', () => onCityTab(cityTab === 'jobs' ? null : 'jobs')], ['🏪', 'Shops', () => onCityTab(cityTab === 'businesses' ? null : 'businesses')],
     ['🎯', 'Goals', () => setTab('goals')], ['🏁', 'Racing', () => setTab('racing')], ['🎰', 'Casino', () => setTab('casino')], ['🛡️', 'Crew', () => setTab('crew')], ['🎉', 'Parties', () => setTab('party')], ['📜', 'Quests', () => setTab('quests')], ['🏆', 'Fame', () => setTab('fame')], ['🧍', 'My Life', () => setTab('me')],

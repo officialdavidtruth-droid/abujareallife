@@ -73,7 +73,7 @@ export default function PaxUi() {
       <span><b>@{p.from}</b><small>{p.k === 'invite' ? `invites you to ride with them · ${Math.max(0, Math.ceil((p.until - Date.now()) / 1000))}s` : `asks to ride along with you · ${Math.max(0, Math.ceil((p.until - Date.now()) / 1000))}s`}</small></span>
       <button className="ok" onClick={() => answer(p, true)}>{p.k === 'invite' ? 'Get in' : 'Let in'}</button><button className="no" onClick={() => answer(p, false)}>✕</button>
     </div>)}
-    {PAX.host && <button className="paxOut" onClick={() => { PAX.wantOut = true; PAX.forced = false; PAX.msg = ''; }} aria-label="Get out"><span>🚪 Get out</span><small>E</small><em>riding with @{PAX.host}</em></button>}
+    {PAX.host && <button className="paxOut" onClick={() => { PAX.wantOut = true; PAX.forced = false; PAX.msg = ''; }} aria-label="Get out"><span>🚪 Get out</span><small className="kbd">E</small><em>riding with @{PAX.host}</em></button>}
     {!PAX.host && guests.length > 0 && <div className="paxChip"><span>👥 With you: {guests.map(n => '@' + n).join(', ')}</span><button onClick={() => dropAll('You got dropped off.')}>Drop off</button></div>}
     <RuntimeStyle id="arl-pax-ui" css={`.paxCard{position:fixed;left:0;right:0;margin:0 auto;width:fit-content;z-index:98;display:flex;align-items:center;gap:10px;max-width:min(440px,calc(100vw - 20px));background:#0b1a13f8;border:2px solid #2fc66b;border-radius:16px;padding:9px 12px;color:#fff;box-shadow:0 8px 24px #000a;font-family:system-ui,sans-serif}
 .paxCard i{font-style:normal;font-size:26px}.paxCard span{display:flex;flex-direction:column;min-width:0}.paxCard small{color:#b9d3c6;font-size:11px}

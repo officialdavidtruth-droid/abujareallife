@@ -1,0 +1,27 @@
+/* ===== Driving pad (phones). Loaded last. While you drive on a touch device the walking joystick and action pad are replaced by
+   Call of Duty style direction buttons: steer left/right on the left thumb, gas + brake pedals on the right thumb. ===== */
+.dpRoot{display:none}
+@media (pointer:coarse),(max-width:900px){
+  body.cwDriving .cwStick,body.cwDriving .cwBtns,body.cwDriving .cwPhoneBtn,body.cwDriving .mcQuick,body.cwDriving .sim.outside .cwStick,body.cwDriving .sim.outside .cwBtns,body.cwDriving .sim.outside .cwPhoneBtn,body.cwDriving .sim.outside .mcQuick{display:none!important}
+  body.cwDriving .cwLookPad,body.cwDriving .sim.outside .cwLookPad{top:8%!important;height:34%!important;width:46%!important}           /* the lower right belongs to the pedals */
+  body.cwDriving .sim.outside .cwSpeed{bottom:calc(112px + var(--sab,0px))!important}
+  .dpRoot{display:block;position:absolute;inset:0;z-index:16;pointer-events:none;--db:clamp(56px,19vh,92px)}
+  .dpLeft{position:absolute;left:max(14px,var(--sal,0px));bottom:calc(16px + var(--sab,0px));display:flex;gap:14px;pointer-events:auto}
+  .dpRight{position:absolute;right:max(14px,var(--sar,0px));bottom:calc(16px + var(--sab,0px));display:flex;flex-direction:column;align-items:flex-end;gap:10px;pointer-events:auto}
+  .dpPedals{display:flex;align-items:flex-end;gap:12px}
+  .dpSmall{display:flex;gap:8px}
+  .dpBtn{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;cursor:pointer;padding:0;color:#fff;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:rgba(8,13,12,.55);border:2px solid rgba(255,255,255,.7);box-shadow:0 4px 12px #0007;
+    transition:transform .06s,background .06s}
+  .dpBtn span{font-size:calc(var(--db)*.38);line-height:1;pointer-events:none}.dpBtn small{font:800 10px system-ui;letter-spacing:.06em;text-transform:uppercase;opacity:.9;pointer-events:none}
+  .dpBtn.on{transform:scale(.94);background:rgba(217,154,66,.92);color:#111;border-color:#fff}
+  .dpBtn.steer{width:calc(var(--db)*1.15);height:var(--db);border-radius:18px}.dpBtn.steer span{font-size:calc(var(--db)*.5)}
+  .dpBtn.gas{width:calc(var(--db)*1.05);height:calc(var(--db)*1.55);border-radius:22px;border-color:#6dffa6}.dpBtn.gas.on{background:rgba(70,220,130,.92)}
+  .dpBtn.brake{width:calc(var(--db)*1.05);height:var(--db);border-radius:22px;border-color:#ff8a7a}.dpBtn.brake.on{background:rgba(255,100,80,.92)}
+  .dpBtn.nitro,.dpBtn.hand,.dpBtn.horn,.dpBtn.exit,.dpBtn.auto{width:calc(var(--db)*.62);height:calc(var(--db)*.62);border-radius:50%}
+  .dpBtn.nitro span,.dpBtn.hand span,.dpBtn.horn span,.dpBtn.exit span,.dpBtn.auto span{font-size:calc(var(--db)*.26)}
+  .dpBtn.nitro small,.dpBtn.hand small,.dpBtn.horn small,.dpBtn.exit small,.dpBtn.auto small{font-size:8px}
+  .dpBtn.nitro{border-color:#ffb347}.dpBtn.exit{border-color:#8ad7ff}.dpBtn.auto.on{background:rgba(109,255,166,.9)}
+}
+/* keyboard hints (the "E" badges) mean nothing on a phone */
+@media (pointer:coarse),(max-width:700px){.kbd,button kbd,.cwBtn kbd,.mcQuick kbd{display:none!important}}

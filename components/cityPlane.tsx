@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { AIR } from './CityScenery';
 import { BUILDS, GAME } from './cityShared';
+import { hint } from '../lib/touch';
 
 /* ───────────── The airport plane (STEP 1: flying, single pilot) ─────────────
  * One plane waits on the runway. Walk up to it and press E to get in, then:
@@ -77,7 +78,7 @@ type P = { x: number; z: number; y: number; vy: number; r: number };
 export function boardPlane(p: P) {
   PLANE.on = true; PLANE.throttle = 0; PLANE.cam = 'out'; camInit = false; applyView(); ping();
   p.x = PLANE.x; p.z = PLANE.z; p.y = 0; p.vy = 0;
-  GAME.notice = '✈️ In the cockpit: hold Shift for throttle, pull back (S) after ~100 km/h to take off. V switches camera. E to get out on the ground.';
+  GAME.notice = '✈️ In the cockpit: ' + hint('hold Sprint for throttle, pull the stick down after ~100 km/h to take off. Tap View to switch camera. Tap Exit plane to get out on the ground.', 'hold Shift for throttle, pull back (S) after ~100 km/h to take off. V switches camera. E to get out on the ground.');
 }
 
 function crash(p: P, why: string) {

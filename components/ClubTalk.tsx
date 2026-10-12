@@ -72,7 +72,7 @@ export default function ClubTalk({ toast }: { toast: (m: string, bad?: boolean) 
   };
 
   return <>
-    {idx < 0 && near >= 0 && <button className="ctPrompt" onClick={() => open(near)}><b>E</b> Talk to {clubPerson(near)?.name}</button>}
+    {idx < 0 && near >= 0 && <button className="ctPrompt" onClick={() => open(near)}><b className="kbd">E</b> Talk to {clubPerson(near)?.name}</button>}
     {phase === 'inside' && comp && <div className="ctTrip"><span>💋</span><div><b>{comp} is with you</b><small>Walk to the exit and head out together.</small></div><button onClick={() => { endCompanion(); setPhase('none'); setComp(''); toast(`${comp} says goodnight and walks off.`); }}>Call it off</button></div>}
     {p && <div className="ctSheet" role="dialog" aria-label={`Talking to ${p.name}`}>
       <button className="ctX" aria-label="Walk away" onClick={close}>✕</button>

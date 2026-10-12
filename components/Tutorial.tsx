@@ -27,7 +27,7 @@ const STEPS: Step[] = [
   { id: 'sprint', e: '🏃', where: 'city', desktopOnly: true, title: 'Sprint and jump', text: 'Hold Shift to run, tap Space to jump. Try both.', keys: ['Shift', 'Space'], done: c => c.keys.has('shift') || c.keys.has(' ') },
   { id: 'dock', e: '📱', where: 'city', title: 'Open your city menu', text: 'Tap ☰ at the bottom: Map, Jobs, Market, Phone and more live here.', glow: '.dockToggle', done: c => c.hud },
   { id: 'goals', e: '🎯', where: 'city', title: 'Open Goals', text: 'Goals teach you the game and pay real cash for each step.', glow: 'dock:Goals', done: () => !!document.querySelector('.gcPanel') },
-  { id: 'enter', e: '🚪', where: 'city', title: 'Go inside a building', text: 'Walk up to any shop, bank or club and press Enter (or E).', keys: ['E'], done: c => c.inside || c.enteredEv },
+  { id: 'enter', e: '🚪', where: 'city', title: 'Go inside a building', text: 'Walk up to any shop, bank or club and press Enter (or E).', touchText: 'Walk up to any shop, bank or club and tap the 🖐️ Interact button.', keys: ['E'], done: c => c.inside || c.enteredEv },
 ];
 
 type Tip = { id: string; e: string; title: string; text: string };

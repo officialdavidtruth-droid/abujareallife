@@ -7,6 +7,7 @@ import './game.css';
 import './hudfix.css';
 import './gtahud.css';
 import './gtamenus.css';
+import './drivepad.css';
 import type { Metadata, Viewport } from 'next';
 import { Lilita_One } from 'next/font/google';
 import PWARegister from '../components/PWARegister';

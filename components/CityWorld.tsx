@@ -37,11 +37,12 @@ import { pkit } from './CityCars';
 import TailTarget from './TailTarget';
 import { RemotePlayers } from './CityRemote';
 import { StreetNpcScene } from './StreetNpcs';
-import { DriveHud, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
+import { DriveHud, DrivePad, FightHud, HoldBtn, LookPad, Minimap, Stick } from './CityUi';
 import PaxUi from './PaxUi';
 import { PAX, stepPax } from './cityPax';
 import { PlaneTag, planeBroadcast, stepPlaneNet } from './planeNet';
 import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane, togglePlaneView } from './cityPlane';
+import { hint } from '../lib/touch';
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
 export { POLICE_CARS } from './CityPolice';
@@ -433,7 +434,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
     (window as any).__arlPos = { x: p.x, z: p.z };
-    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? 'E exit · Space handbrake · Shift boost · H horn' : (() => { const dh = nearDoor(p.x, p.z); return dh ? (dh.mine ? 'E — Enter your house' : `🔒 ${dh.u}'s house`) : VEH.placed && dCar < 9 ? 'E — Get in your car' : ''; })() };
+    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? hint('Exit car · handbrake · boost · horn: use the buttons', 'E exit · Space handbrake · Shift boost · H horn') : (() => { const dh = nearDoor(p.x, p.z); return dh ? (dh.mine ? hint('Tap Interact — enter your house', 'E — Enter your house') : `🔒 ${dh.u}'s house`) : VEH.placed && dCar < 9 ? hint('Tap Car — get in your car', 'E — Get in your car') : ''; })() };
     if (!VEH.drv) {
       let best: CityBuilding | null = null, bd = 2.6;
       for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }
@@ -602,6 +603,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <LookPad ctl={ctl} />
       <Stick ctl={ctl} />
       <DriveHud hud={hud} />
+      <DrivePad ctl={ctl} hud={hud} />
       <FightHud />
       <PaxUi />
       <MissionsCombat />

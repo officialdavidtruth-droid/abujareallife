@@ -19,6 +19,7 @@ import { PAX, guestsOf } from './cityPax';
 import { BikeBody, BusBody, CarModel, DrvLook, PoliceBody, TaxiBody, pkit } from './CityCars';
 import { CAR_R } from './CityWeather';
 import { CAR_POSTS, pedHit, pushPed } from './CityCollision';
+import { hint } from '../lib/touch';
 
 
 /* ───────────── pedestrians: walk the pavements, wait for red traffic, scatter when hit ───────────── */
@@ -276,7 +277,7 @@ export function PlayerCar({ carRef, tagRef, spotRef, model, look }: { carRef: Re
     {stolen && JACK.sRole === 'bus' ? <BusBody driverRef={setDrv} look={dl} /> : stolen && JACK.sRole === 'bike' ? <BikeBody scale={.95} rider driverRef={setDrv} riderLook={look} /> : stolen && JACK.sRole === 'taxi' ? <TaxiBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : stolen && JACK.sRole === 'police' ? <PoliceBody kit={kit} refs={{ driverRef: setDrv, look: dl }} /> : <CarModel kit={kit} color={stolen ? JACK.color : (vehicleByName(model).color || CAR_COLOR)} kind={0} driverRef={setDrv} look={dl} model={stolen ? JACK.model : model} style={stolen ? undefined : (style||undefined)} pax={guests} />}
     <spotLight ref={spotRef} position={[2.2, .9, 0]} angle={.5} penumbra={.7} intensity={0} distance={42} decay={2} color="#fff4d6" />
     <primitive object={tgt} position={[16, .2, 0]} />
-    <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>Press E</small></div></Html>
+    <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}><div ref={el => { tagRef.current = el; }} className="cityBizTag" style={{ display: 'none' }}>Your car<br /><small>{hint('Tap 🚗 Car', 'Press E')}</small></div></Html>
   </group>;
 }
 

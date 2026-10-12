@@ -6,6 +6,7 @@ import { NET } from '../lib/cityNet';
 import { ownerAlarm } from '../lib/witness';
 import { OWNER_CHASE_SECS, OWNER_REPORT_SECS } from '../lib/profile';
 import { CHOP, PARTS, YARDS, chopCash, chopPartCount, partById, yardById, type YardSite } from '../lib/chopData';
+import { hint } from '../lib/touch';
 
 /* Step 6: chop shop (client side). The server owns everything that matters (see app/api/chop/route.ts); this file is the interface:
    - the "steal" action is started from the crime buttons (CrimeActions) through window.__arlChopSteal
@@ -45,7 +46,7 @@ export default function ChopShop({ say, refresh }: { say: (m: string) => void; r
       setJ({ ticket: r.d.ticket, yard: y.id, car: r.d.car, startedAt: r.d.startedAt || Date.now(), deadlineSecs: r.d.deadlineSecs || CHOP.deadlineSecs });
       GAME.nav = { x: y.x, z: y.z, name: '🔧 ' + y.name }; GAME.hasCar = true; refresh();
       ownerAlarm(NET.me.x, NET.me.z, OWNER_CHASE_SECS + OWNER_REPORT_SECS, () => say('📞 The owner is screaming for the police: a patrol is coming for you.'));   // step 7: the owner phones it in, Step 6 dispatches a patrol to the spot
-      say(`🚗 You took a ${r.d.car.name}. Press E to get in. A fixer says: ${y.name}, ${CHOP.deadlineSecs / 60} minutes. Police checkpoints are up: be quick.`);
+      say(`🚗 You took a ${r.d.car.name}. ${hint('Tap the 🚗 Car button', 'Press E')} to get in. A fixer says: ${y.name}, ${CHOP.deadlineSecs / 60} minutes. Police checkpoints are up: be quick.`);
     };
     return () => { (window as any).__arlChopSteal = undefined; }; // eslint-disable-line @typescript-eslint/no-explicit-any
   }, [say, refresh, setJ]);

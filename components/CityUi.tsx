@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NET } from '../lib/cityNet';
 import { createRoot, type Root } from 'react-dom/client';
 import { GRID, WS, halfW } from '../lib/roadRoute';
@@ -111,4 +111,56 @@ export function FightHud() {
 
 export function HoldBtn({ cls, label, icon, down, up }: { cls: string; label: string; icon: string; down: () => void; up?: () => void }) {
   return <button className={'cwBtn ' + cls} aria-label={label} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); down(); }} onPointerUp={() => up?.()} onPointerCancel={() => up?.()} onContextMenu={e => e.preventDefault()}><span>{icon}</span><small>{label}</small></button>;
+}
+
+
+/* ───────────── driving pad (phones) ─────────────
+   Call of Duty style: while you drive, the walking joystick and action pad are replaced by direction buttons.
+   Left thumb: ◀ ▶ steer.  Right thumb: GAS and BRAKE / reverse pedals, with small buttons for nitro, handbrake, horn, auto-drive and exit.
+   Every button is its own pointer, so you can steer, hold gas and hit nitro at the same time. */
+type Hold = { id: string; cls: string; label: string; icon: string; on: () => void; off?: () => void };
+function PadBtn({ b }: { b: Hold }) {
+  const pid = useRef<number | null>(null);
+  const [down, setDown] = useState(false);
+  const end = (e: React.PointerEvent) => { if (pid.current !== e.pointerId) return; pid.current = null; setDown(false); b.off?.(); };
+  return <button type="button" className={'dpBtn ' + b.cls + (down ? ' on' : '')} aria-label={b.label}
+    onPointerDown={e => { e.preventDefault(); e.stopPropagation(); if (pid.current !== null) return; pid.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); setDown(true); b.on(); }}
+    onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onContextMenu={e => e.preventDefault()}>
+    <span>{b.icon}</span><small>{b.label}</small></button>;
+}
+
+export function DrivePad({ ctl, hud }: { ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud> }) {
+  const [drv, setDrv] = useState(false), [auto, setAuto] = useState(false);
+  const inp = useRef({ l: false, r: false, gas: false, brake: false, auto: false, steer: 0 });
+  useEffect(() => { const id = setInterval(() => { const d = !!hud.current.drv; setDrv(p => (p === d ? p : d)); document.body.classList.toggle('cwDriving', d); }, 100); return () => { clearInterval(id); document.body.classList.remove('cwDriving'); }; }, [hud]);
+  useEffect(() => {
+    if (!drv) { const i = inp.current; i.l = i.r = i.gas = i.brake = false; i.steer = 0; ctl.current.joy = { x: 0, y: 0 }; ctl.current.keys.delete('shift'); ctl.current.keys.delete(' '); return; }
+    let raf = 0, last = performance.now();
+    const loop = (now: number) => {   // eased steering: the wheel turns in over ~0.25 s and straightens out when you let go, like a real car
+      raf = requestAnimationFrame(loop); const dt = Math.min(.05, (now - last) / 1000); last = now; const i = inp.current;
+      const want = (i.r ? 1 : 0) - (i.l ? 1 : 0), rate = want === 0 ? 6 : 4.2; i.steer += Math.max(-rate * dt, Math.min(rate * dt, want - i.steer));
+      const thr = i.brake ? -1 : i.gas || i.auto ? 1 : 0;
+      ctl.current.joy = { x: i.steer, y: -thr };
+    };
+    raf = requestAnimationFrame(loop); return () => { cancelAnimationFrame(raf); ctl.current.joy = { x: 0, y: 0 }; };
+  }, [drv, ctl]);
+  if (!drv) return null;
+  const i = inp.current, k = ctl.current.keys;
+  const B: Record<string, Hold> = {
+    left: { id: 'l', cls: 'steer', label: 'Left', icon: '◀', on: () => { i.l = true; }, off: () => { i.l = false; } },
+    right: { id: 'r', cls: 'steer', label: 'Right', icon: '▶', on: () => { i.r = true; }, off: () => { i.r = false; } },
+    gas: { id: 'g', cls: 'gas', label: 'Gas', icon: '⏫', on: () => { i.gas = true; }, off: () => { i.gas = false; } },
+    brake: { id: 'b', cls: 'brake', label: 'Brake', icon: '⏬', on: () => { i.brake = true; }, off: () => { i.brake = false; } },
+    nitro: { id: 'n', cls: 'nitro', label: 'Nitro', icon: '🔥', on: () => { k.add('shift'); }, off: () => { k.delete('shift'); } },
+    hand: { id: 'h', cls: 'hand', label: 'Drift', icon: '🅿️', on: () => { k.add(' '); }, off: () => { k.delete(' '); } },
+    horn: { id: 'o', cls: 'horn', label: 'Horn', icon: '📣', on: () => { ctl.current.horn = true; } },
+    exit: { id: 'x', cls: 'exit', label: 'Exit', icon: '🚪', on: () => { ctl.current.interact = true; } },
+  };
+  return <div className="dpRoot" onContextMenu={e => e.preventDefault()}>
+    <div className="dpLeft"><PadBtn b={B.left} /><PadBtn b={B.right} /></div>
+    <div className="dpRight">
+      <div className="dpSmall"><PadBtn b={B.exit} /><PadBtn b={B.horn} /><PadBtn b={B.hand} /><PadBtn b={B.nitro} /><button type="button" className={'dpBtn auto' + (auto ? ' on' : '')} aria-label="Auto drive" aria-pressed={auto} onClick={() => { i.auto = !i.auto; setAuto(i.auto); }}><span>🔁</span><small>Auto</small></button></div>
+      <div className="dpPedals"><PadBtn b={B.brake} /><PadBtn b={B.gas} /></div>
+    </div>
+  </div>;
 }

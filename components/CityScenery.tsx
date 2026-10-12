@@ -1,7 +1,7 @@
 'use client';
 import { useFrame } from '@react-three/fiber';
 import { RoundedBox, Text } from '@react-three/drei';
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { CityBuilding } from '../lib/cityTypes';
 import { BuildingDress, ROAD_MAT, awningMat } from './CityLook';
@@ -278,20 +278,29 @@ export const BILLBOARDS = ([
   ['x', 0, 11, -1, 'BIZNEST', 'Build your business.'],
   ['z', 0, 11, 1, 'NOW HIRING', 'Find a job near you'],
   ['z', 0, -11, -1, 'ABUJA NIGHTS', 'Work · Meet · Connect'],
-  ['x', 0, 33, 1, 'YOUR AD HERE', 'Reach Abuja players'],
+  ['x', 0, 33, 1, 'YOUR AD HERE', 'abujareallife.online/adbooking'],
   ['z', 0, 33, -1, 'DRIVE & EXPLORE', 'Taxis · Bikes · Cars'],
 ] as const).map(([axis, road, along, side, title, sub], i) => ({ ...billboardSpot(axis, road, along, side), ax: axis === 'x' ? 1 : 0, az: axis === 'x' ? 0 : 1, title, sub, i }));
 
+/* Paid ads from /adbooking: fetched once and then every 5 minutes. A board with no live ad keeps its default message. */
+type LiveAd = { slot: number; title: string; sub: string; contact: string; color: string };
 export function Billboards() {
-  return <>{BILLBOARDS.map(b => <group key={b.i} position={[b.x, 0, b.z]} rotation-y={b.ry}>
+  const [ads, setAds] = useState<Record<number, LiveAd>>({});
+  useEffect(() => {
+    let dead = false;
+    const load = () => fetch('/api/ads/live').then(r => (r.ok ? r.json() : null)).then(d => { if (!dead && d?.ads) setAds(Object.fromEntries((d.ads as LiveAd[]).map(a => [a.slot, a]))); }).catch(() => {});
+    load(); const id = setInterval(load, 5 * 60_000); return () => { dead = true; clearInterval(id); };
+  }, []);
+  return <>{BILLBOARDS.map(b => { const ad = ads[b.i], title = ad?.title ?? b.title, sub = ad?.sub ?? b.sub, col = ad?.color ?? BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]; return <group key={b.i} position={[b.x, 0, b.z]} rotation-y={b.ry}>
     {[-1.7, 1.7].map(o => <mesh key={o} position={[o, 1.8, 0]} castShadow><boxGeometry args={[.16, 3.6, .16]} /><meshStandardMaterial color="#2f343a" metalness={.3} roughness={.6} /></mesh>)}
     <mesh position={[0, 4.5, 0]} castShadow><boxGeometry args={[5.6, 2.7, .22]} /><meshStandardMaterial color="#14201b" roughness={.6} /></mesh>
-    <mesh position={[0, 4.5, -.12]}><boxGeometry args={[5.2, 2.3, .04]} /><meshStandardMaterial color={BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]} emissive={BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]} emissiveIntensity={.45} roughness={.5} /></mesh>
+    <mesh position={[0, 4.5, -.12]}><boxGeometry args={[5.2, 2.3, .04]} /><meshStandardMaterial color={col} emissive={col} emissiveIntensity={.45} roughness={.5} /></mesh>
     {/* the front of the board faces -z (towards the road); drei Text faces +z, so it is turned round */}
-    <Text position={[0, 4.85, -.16]} rotation-y={Math.PI} fontSize={.46} color="#fff" outlineWidth={.02} outlineColor="#0b0b0b" anchorX="center" anchorY="middle" maxWidth={4.9}>{b.title}</Text>
-    <Text position={[0, 4.12, -.16]} rotation-y={Math.PI} fontSize={.22} color="#fff7e0" anchorX="center" anchorY="middle" maxWidth={4.9}>{b.sub}</Text>
+    <Text position={[0, 4.85, -.16]} rotation-y={Math.PI} fontSize={.46} color="#fff" outlineWidth={.02} outlineColor="#0b0b0b" anchorX="center" anchorY="middle" maxWidth={4.9}>{title}</Text>
+    <Text position={[0, 4.12, -.16]} rotation-y={Math.PI} fontSize={.22} color="#fff7e0" anchorX="center" anchorY="middle" maxWidth={4.9}>{sub}</Text>
+    {ad?.contact ? <Text position={[0, 3.62, -.16]} rotation-y={Math.PI} fontSize={.17} color="#ffffff" anchorX="center" anchorY="middle" maxWidth={4.9}>{ad.contact}</Text> : null}
     {[-1.8, 0, 1.8].map(x => <mesh key={x} position={[x, 6.0, -.35]}><boxGeometry args={[.5, .1, .3]} /><meshStandardMaterial color="#fff2c4" emissive="#ffe29a" emissiveIntensity={.9} /></mesh>)}
-  </group>)}</>;
+  </group>; })}</>;
 }
 
 

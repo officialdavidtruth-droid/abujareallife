@@ -724,3 +724,42 @@ model SeasonScore {
   @@unique([userId, season, board])
   @@index([season, board, score])
 }
+
+/* ───────── Billboard advertising (abujareallife.online/adbooking). Advertisers are real businesses, separate from game accounts. ───────── */
+model AdAccount {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  name         String
+  business     String
+  phone        String
+  passwordHash String
+  sessionVersion Int       @default(0)
+  createdAt    DateTime    @default(now())
+  bookings     AdBooking[]
+}
+
+model AdBooking {
+  id         String    @id @default(cuid())
+  accountId  String
+  account    AdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  slot       Int                          // index into the billboard list (lib/adSlots.ts)
+  startDate  DateTime  @db.Date           // first day shown (Lagos date)
+  days       Int
+  title      String                       // headline on the board
+  sub        String                       // tagline
+  contact    String    @default("")       // phone / WhatsApp shown small on the board
+  website    String    @default("")
+  color      String    @default("#1d7654")
+  priceNaira Int
+  status     String    @default("PENDING_PAYMENT") // PENDING_PAYMENT | IN_REVIEW | APPROVED | REJECTED | CANCELLED
+  reference  String?   @unique            // Paystack reference of the latest payment attempt
+  paidAt     DateTime?
+  refund     String    @default("")       // "" | "REQUESTED" | "FAILED: ..."
+  note       String    @default("")       // reviewer's note (shown to the advertiser on rejection)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([accountId])
+  @@index([slot, startDate])
+  @@index([status])
+}

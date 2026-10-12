@@ -1,0 +1,65 @@
+/* /adbooking — the advertiser dashboard. Everything is scoped under .abk so the game's global styles cannot leak in or out. */
+.abk{--bg:#07100d;--panel:#0e1b16;--card:#122019;--line:#26392f;--text:#f2f6f3;--mut:#93a89d;--acc:#e0a24a;--acc2:#1d7654;--bad:#ff7a6b;--ok:#6fe0a0;
+  position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;background:radial-gradient(1200px 500px at 80% -10%,#15301f 0%,transparent 60%),var(--bg);color:var(--text);
+  font:400 16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;padding:0 max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left));touch-action:pan-y;user-select:text;-webkit-user-select:text}
+.abk *{box-sizing:border-box}.abk h1,.abk h2,.abk h3{font-family:var(--font-game),system-ui,sans-serif;font-weight:400;letter-spacing:.01em;margin:0}
+.abk a{color:inherit}.abk button,.abk input{font:inherit;color:inherit}.abk small{color:var(--mut);font-size:.8em}
+.abkLoad{padding:80px 0;text-align:center;color:var(--mut)}
+.abkTop{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(14px + env(safe-area-inset-top)) 0 14px;border-bottom:1px solid var(--line)}
+.abkBrand{text-decoration:none;font-family:var(--font-game),system-ui;font-size:20px;display:flex;align-items:center;gap:8px}.abkBrand span{color:var(--acc)}.abkBrand em{font-style:normal;background:var(--acc);color:#1a1205;border-radius:6px;padding:1px 8px;font-size:15px}
+.abkTop nav{display:flex;align-items:center;gap:14px}.abkWho{color:var(--mut);font-size:14px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.abkLink{background:none;border:0;padding:6px 2px;color:var(--acc);cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-size:14px}
+.abkBanner{max-width:1100px;margin:14px auto 0;padding:12px 40px 12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);position:relative}.abkBanner.ok{border-color:#2f7a52;background:#0f2a1d}.abkBanner.bad{border-color:#8e3f3f;background:#2a1414}.abkBanner button{position:absolute;right:6px;top:6px;width:32px;height:32px;border:0;background:none;font-size:22px;cursor:pointer}
+.abk>*:not(.abkTop):not(.abkBanner){max-width:1100px;margin-left:auto;margin-right:auto}
+.abkFoot{margin-top:40px!important;padding-top:16px;border-top:1px solid var(--line);color:var(--mut);font-size:13px}
+
+/* billboard drawing */
+.abkBoard{position:relative;padding:0 14px 54px;width:100%;max-width:420px}
+.abkFace{aspect-ratio:2.2;border-radius:6px;border:6px solid #14201b;outline:2px solid #ffffff1c;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding:12px;box-shadow:0 0 26px #0008 inset,0 8px 24px #0007;overflow:hidden}
+.abkFace b{font-family:var(--font-game),system-ui;font-weight:400;font-size:clamp(20px,5.4vw,30px);line-height:1.05;text-shadow:0 2px 0 #0006;word-break:break-word}.abkFace span{font-size:clamp(12px,3.3vw,15px);color:#fff7e0}.abkFace small{color:#fff;opacity:.85;font-size:11px;background:#0003;border-radius:99px;padding:1px 9px}
+.abkPost{position:absolute;bottom:0;width:10px;height:50px;background:#2f343a}.abkPost.l{left:20%}.abkPost.r{right:20%}
+
+/* landing */
+.abkHero{display:grid;grid-template-columns:1.25fr 1fr;gap:32px;padding-top:34px;align-items:start}
+.abkKicker{color:var(--acc);text-transform:uppercase;letter-spacing:.16em;font-size:12px;font-weight:700;margin:0 0 10px}
+.abkPitch h1{font-size:clamp(30px,5.6vw,52px);line-height:1.05;margin-bottom:14px}.abkLead{color:#c7d6cd;font-size:17px;margin:0 0 22px;max-width:56ch}
+.abkSteps{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:10px}.abkSteps li{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px}.abkSteps b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--acc);color:#1a1205;flex:none}
+.abkCard{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;position:sticky;top:12px}
+.abkSeg{display:grid;grid-template-columns:1fr 1fr;background:#0a1410;border-radius:12px;padding:4px}.abkSeg button{border:0;background:none;padding:10px;border-radius:9px;cursor:pointer;color:var(--mut);font-weight:600}.abkSeg button[aria-pressed=true]{background:var(--acc2);color:#fff}
+.abk label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:#d5e2da}.abk label small{font-weight:400}
+.abk input:not([type=checkbox]){width:100%;min-height:46px;background:#0a1410;border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--text);font-weight:400;font-size:16px}.abk input:focus-visible,.abk button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.abkBtn{min-height:48px;border:0;border-radius:12px;background:var(--acc);color:#1a1205;font-weight:800;font-size:16px;padding:0 20px;cursor:pointer;transition:transform .08s,filter .15s}.abkBtn:hover:not(:disabled){filter:brightness(1.08)}.abkBtn:active:not(:disabled){transform:scale(.98)}.abkBtn:disabled{opacity:.45;cursor:not-allowed}
+.abkBtn.ghost{background:none;border:1px solid var(--line);color:var(--text)}.abkBtn.sm{min-height:40px;font-size:14px;padding:0 14px}
+.abkErr{color:var(--bad);font-size:14px;margin:0}.abkSmall{color:var(--mut);font-size:13px;margin:0}
+.abkPrices{grid-column:1/-1;margin-top:10px}.abkPrices h2{font-size:24px;margin-bottom:12px}.abkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-bottom:10px}
+.abkRow{display:flex;justify-content:space-between;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.abkRow div{display:flex;flex-direction:column}.abkRow strong{color:var(--acc);white-space:nowrap}
+
+/* tabs */
+.abkTabs{display:flex;gap:6px;margin-top:18px!important;overflow-x:auto;border-bottom:1px solid var(--line)}.abkTabs button{background:none;border:0;border-bottom:3px solid transparent;padding:12px 14px;cursor:pointer;color:var(--mut);font-weight:700;white-space:nowrap}.abkTabs button[aria-selected=true]{color:var(--text);border-color:var(--acc)}.abkTabs i{font-style:normal;background:var(--line);border-radius:99px;font-size:12px;padding:1px 7px;margin-left:6px}
+
+/* booking */
+.abkBook{display:grid;grid-template-columns:1fr 360px;gap:28px;padding-top:22px;align-items:start}
+.abkCol{display:flex;flex-direction:column;gap:14px}.abkCol h2{font-size:22px;display:flex;align-items:center;gap:10px;margin-top:10px}.abkCol h2 i,.abkSide h3{font-style:normal}.abkCol h2 i{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--acc);color:#1a1205;font:700 14px system-ui}
+.abkSlots{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.abkSlots button{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-height:112px}.abkSlots button[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 0 2px #e0a24a55;background:#17251d}
+.abkSlots span{color:var(--ok);font-size:12px}.abkSlots strong{margin-top:auto;color:var(--acc);font-size:18px}
+.abkRowF{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}.abkChips{display:flex;flex-wrap:wrap;gap:8px}.abkChips button{min-height:46px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:600}.abkChips button[aria-pressed=true]{background:var(--acc2);border-color:#3fb581}
+.abkSw{display:flex;gap:10px;flex-wrap:wrap}.abkSw button{width:44px;height:44px;border-radius:50%;border:3px solid transparent;cursor:pointer;padding:0}.abkSw button[aria-pressed=true]{border-color:#fff;box-shadow:0 0 0 2px #000a}
+.abkSide{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;position:sticky;top:12px}.abkSide h3{font-size:18px}
+.abkSum{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px}.abkSum dt{color:var(--mut)}.abkSum dd{margin:0;text-align:right}.abkSum .tot{font-size:20px;color:var(--text);border-top:1px solid var(--line);padding-top:8px;font-weight:800}.abkSum dd.tot{color:var(--acc)}
+.abk label.abkChk{flex-direction:row;gap:10px;align-items:flex-start;font-weight:400;font-size:13px;color:#c2d1c8}.abkChk input{width:22px;height:22px;flex:none;margin-top:1px;accent-color:var(--acc)}
+
+/* lists */
+.abkList{display:grid;gap:14px;padding-top:20px}.abkItem{display:grid;grid-template-columns:minmax(0,320px) 1fr;gap:18px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;align-items:center}
+.abkItem .abkBoard{padding-bottom:40px}.abkItem .abkPost{height:36px}.abkInfo p{margin:6px 0}.abkHead{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.abkPill{font-size:12px;font-weight:700;border-radius:99px;padding:3px 10px;border:1px solid var(--line)}.abkPill.ok{color:var(--ok);border-color:#2f7a52;background:#0f2a1d}.abkPill.info{color:#8fc5ff;border-color:#2c5aa0;background:#101f33}.abkPill.warn{color:#ffd37a;border-color:#8a6a1f;background:#2a210c}.abkPill.bad{color:var(--bad);border-color:#8e3f3f;background:#2a1414}.abkPill.mute{color:var(--mut)}
+.abkAct{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.abkAct input{flex:1 1 200px;min-height:40px!important}
+.abkEmpty{text-align:center;padding:60px 0;color:var(--mut)}.abkEmpty .abkBtn{margin-top:8px}
+
+@media (max-width:860px){
+  .abkHero{grid-template-columns:1fr;gap:22px;padding-top:22px}.abkCard{position:static;order:-1}
+  .abkBook{grid-template-columns:1fr}.abkSide{position:static}.abkRowF{grid-template-columns:1fr}
+  .abkItem{grid-template-columns:1fr}.abkWho{display:none}
+}
+@media (max-width:480px){.abkSteps{grid-template-columns:1fr}.abkGrid{grid-template-columns:1fr}.abkSlots{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.abkBtn{transition:none}}

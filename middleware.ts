@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 /* Per-IP rate limit for the whole API, stricter for money / crime routes. Needs Upstash Redis (UPSTASH_REDIS_REST_URL and
    UPSTASH_REDIS_REST_TOKEN). If they are not set this does nothing, so the game keeps working. */
-const SENSITIVE = /^\/api\/(casino|market|crime|carjack|rob|holdup|deal|dealer|chop|shop|wallet\/checkout|escort|race)(\/|$)/;
+const SENSITIVE = /^\/api\/(casino|market|crime|carjack|rob|holdup|deal|dealer|chop|shop|wallet\/checkout|ads\/(book|pay|login|signup)|escort|race)(\/|$)/;
 const SKIP = /^\/api\/(wallet\/webhook|livekit|turn)(\/|$)/;
 
 export async function middleware(req: NextRequest) {

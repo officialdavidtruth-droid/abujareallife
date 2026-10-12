@@ -15,6 +15,8 @@ async function call(path: string, init?: RequestInit) {
   } finally { clearTimeout(t); }
 }
 
+export const paystackCall = call;   // used by lib/adPay.ts (billboard payments and refunds)
+
 export async function initializeCharge(p: { email: string; naira: number; reference: string; callbackUrl: string; metadata: Record<string, unknown> }) {
   const r = await call('/transaction/initialize', { method: 'POST', body: JSON.stringify({ email: p.email, amount: toKobo(p.naira), currency: 'NGN', reference: p.reference, callback_url: p.callbackUrl, metadata: p.metadata, channels: ['card', 'bank', 'ussd', 'bank_transfer', 'mobile_money', 'qr'] }) });
   return r.ok && r.data?.authorization_url ? { ok: true as const, url: String(r.data.authorization_url) } : { ok: false as const, message: r.message };

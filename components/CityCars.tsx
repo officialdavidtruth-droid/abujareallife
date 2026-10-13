@@ -1,7 +1,8 @@
 'use client';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import Human from './Human';
@@ -125,12 +126,44 @@ export function CarInterior({ seed, shirt, suv, driverRef, look, pax, steer }: {
   </group>;
 }
 
+
+/* ───────── real car models: public/models/cars/<name>.glb (optimised from the Porsche 911 and Alfa Romeo files). No file = the built-in car.
+   The model's long axis is turned to face +x like every vehicle here, scaled to 4.3 long and put on the ground. Wheels in the model are fixed (no roll/steer). ───────── */
+const CAR_GLB: Record<string, string> = { 'porsche-911-carrera-4s-2024': 'porsche', 'alfa-romeo-stradale-1967': 'alfa' };
+const GLB_CACHE = new Map<string, Promise<THREE.Object3D | null>>();
+const loadCarGlb = (name: string) => {
+  let p = GLB_CACHE.get(name);
+  if (!p) { const url = `/models/cars/${name}.glb`; p = fetch(url, { method: 'HEAD' }).then(r => r.ok ? new GLTFLoader().loadAsync(url).then(g => g.scene) : null).catch(() => null); GLB_CACHE.set(name, p); }
+  return p;
+};
+function useCarGlb(id: string): THREE.Object3D | null {
+  const [m, setM] = useState<THREE.Object3D | null>(null);
+  useEffect(() => { const n = CAR_GLB[id]; if (!n) { setM(null); return; } let dead = false; loadCarGlb(n).then(g => { if (!dead) setM(g); }); return () => { dead = true; }; }, [id]);
+  return m;
+}
+function FittedCar({ src }: { src: THREE.Object3D }) {
+  const obj = useMemo(() => {
+    const c = src.clone(true), b0 = new THREE.Box3().setFromObject(c), s0 = b0.getSize(new THREE.Vector3());
+    const turn = new THREE.Group(); turn.add(c); if (s0.z > s0.x) turn.rotation.y = Math.PI / 2;   // front of the model is +z, the game's front is +x
+    turn.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(turn), sz = b.getSize(new THREE.Vector3()), ct = b.getCenter(new THREE.Vector3()), k = 4.3 / (sz.x || 1);
+    const g = new THREE.Group(); g.add(turn); turn.position.set(-ct.x, -b.min.y, -ct.z); g.scale.setScalar(k);
+    g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = true; const mt = m.material as THREE.MeshStandardMaterial; if (mt && 'envMapIntensity' in mt) mt.envMapIntensity = 1.4; } });
+    return g;
+  }, [src]);
+  return <primitive object={obj} />;
+}
 export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax, steer }: { steer?: () => number; pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
+  const glb = useCarGlb(spec.id);
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
   const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims === 'sport' ? '#d8dde3' : style?.rims === 'black' ? '#15171a' : '#b4bac1';
+  if (glb) return <group>
+    <FittedCar src={glb} />
+    {driver && <group position={[0, -.1, 0]} scale={[1, .82, 1]}><CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={false} driverRef={driverRef} look={look} pax={pax} steer={steer} /></group>}
+  </group>;
   return <group scale={sc}>
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
     {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} look={look} pax={pax} steer={steer} />}

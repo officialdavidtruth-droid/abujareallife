@@ -1,7 +1,22 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { defaultOutfitModel, outfitOk, type Look } from './characterModels';
+
+/* Real pistol model (public/models/weapons/pistol.glb, a 9 mm). Loaded once; each rig that holds a gun swaps its box-built placeholder for a clone. No file = the placeholder stays. */
+let GUN: Promise<THREE.Object3D | null> | null = null;
+const loadGun = () => GUN ||= (typeof fetch === 'undefined' ? Promise.resolve(null) : fetch('/models/weapons/pistol.glb', { method: 'HEAD' }).then(r => r.ok ? new GLTFLoader().loadAsync('/models/weapons/pistol.glb').then(g => g.scene) : null).catch(() => null));
+function attachGun(weapon: THREE.Group, placeholder: THREE.Object3D[]) {
+  loadGun().then(src => {
+    if (!src) return;
+    const c = src.clone(true), b = new THREE.Box3().setFromObject(c), sz = b.getSize(new THREE.Vector3()), ct = b.getCenter(new THREE.Vector3()), k = .23 / (sz.z || 1);
+    const pivot = new THREE.Group(); c.position.set(-ct.x, -ct.y, -ct.z); pivot.add(c);
+    pivot.rotation.y = Math.PI;   // the model's muzzle points -z; the rig aims +z
+    pivot.scale.setScalar(k); pivot.position.set(0, -.29, .07);
+    placeholder.forEach(o => { o.visible = false; }); weapon.add(pivot);
+  });
+}
 
 // A procedural, fully-animated human. Y up, faces +Z, ~1.75 m tall. No model files, so skin/hair/clothes are exact.
 export type HumanState = 'idle' | 'walk' | 'sit' | 'sleep';
@@ -486,6 +501,7 @@ export function buildHuman(look: Look): Rig {
   const gunBody = mesh(new THREE.BoxGeometry(.055, .07, .19), metal('#20252a', .25)); gunBody.position.set(0, -.29, .055); weapon.add(gunBody);
   const barrel = mesh(new THREE.CylinderGeometry(.012, .012, .13, 10), metal('#4b535a', .22)); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, -.275, .19); weapon.add(barrel);
   const grip = mesh(new THREE.BoxGeometry(.035, .085, .045), std('#171a1d', .35)); grip.position.set(0, -.355, .025); grip.rotation.x = -.22; weapon.add(grip);
+  attachGun(weapon, [gunBody, barrel, grip]);
   weapon.visible = false; B.sh.add(weapon);
   // a smartphone held in the right hand; only visible while on a call / ordering on the phone (anim 'phone')
   const phone = new THREE.Group();

@@ -15,6 +15,14 @@ const TARGET_HEIGHT = 1.75;      // the game's human is ~1.75 m; Kara is ~1.66 m
 const MODEL_HEIGHT = 1.66;        // Kara
 const MODEL_HEIGHT_M = 1.78;      // Man In Suit
 const FADE = 0.2;
+type Role = 'skin' | 'hair' | 'outfit' | 'pants' | 'accent';
+/** material name -> which part of the Look recolours it. Kara's textures are tinted by (wanted colour / texture average) so shading survives. */
+const ROLE_F: Record<string, [Role, string]> = {
+  Modelpart1_part1_body_Material0: ['skin', '#95735f'], Modelpart1_part1_head_Material0: ['skin', '#725547'], Modelpart1_part1_hands_Material: ['skin', '#9c7868'],
+  Modelpart1_part1_hair1_Material: ['hair', '#201913'], Modelpart1_part1_ebrows_Materia: ['hair', '#6b6463'], Modelpart1_part1_elashes_Materi: ['hair', '#42362a'],
+  Modelpart1_part1_jeans_Material: ['pants', '#27272a'], Modelpart1_part1_shirt1_Materia: ['outfit', '#424548'], Modelpart1_part1_top_Material01: ['outfit', '#453e3b'],
+};
+const ROLE_M: Record<string, Role> = { mat1mat: 'outfit', mat3mat: 'accent', mat4mat: 'pants', mat6mat: 'skin', mat11mat: 'skin', mat12mat: 'hair', mat14mat: 'hair' };
 const DROP = new Map<string, number>();   // per-model float correction (metres, model units)
 
 /** game action name -> Mixamo clip. A clip name passed directly as `anim` (e.g. 'Punching') also works. */
@@ -45,9 +53,26 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
   const char = useGLTF(female ? CHAR_URL : CHAR_URL_M), anims = useGLTF(ANIM_URL);
   const model = useMemo(() => {
     const m = cloneSkinned(char.scene) as THREE.Object3D;
-    m.traverse(o => { const s = o as THREE.SkinnedMesh; if (s.isMesh) { s.castShadow = true; s.frustumCulled = false; } });
+    // materials are cloned so recolouring one character never tints every other one in the city
+    m.traverse(o => { const s = o as THREE.SkinnedMesh; if (s.isMesh) { s.castShadow = true; s.frustumCulled = false; s.material = (s.material as THREE.Material).clone(); } });
     return m;
   }, [char.scene]);
+
+  // Creator / Wardrobe colours (skin, hair, outfit, bottoms) recolour the GLB. Hair style, outfit model, shoes and accessories are procedural-only.
+  useEffect(() => {
+    const want: Record<Role, THREE.Color> = { skin: new THREE.Color(look.skin), hair: new THREE.Color(look.hairColor), outfit: new THREE.Color(look.outfit), pants: new THREE.Color(look.pants), accent: new THREE.Color(look.pants) };
+    model.traverse(o => {
+      const mesh = o as THREE.Mesh; if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.MeshStandardMaterial, name = mat.name;
+      if (female) {
+        const r = ROLE_F[name]; if (!r) return;
+        const avg = new THREE.Color(r[1]), w = want[r[0]];
+        mat.color.setRGB(Math.min(4, w.r / Math.max(avg.r, .02)), Math.min(4, w.g / Math.max(avg.g, .02)), Math.min(4, w.b / Math.max(avg.b, .02)));
+      } else {
+        const r = ROLE_M[name]; if (r) mat.color.copy(want[r]);
+      }
+    });
+  }, [model, female, look.skin, look.hairColor, look.outfit, look.pants]);
 
   // The clips are in metres, Kara's bones in her own units: rescale the hips translation so the hips keep their height.
   const clips = useMemo(() => {

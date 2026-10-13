@@ -228,9 +228,10 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       }
     }
     if (down) { ix = 0; iy = 0; wantJump = false; wantRun = false; c.interact = false; c.jump = false; c.taxi = false; }
+    if (DOORP.v) { ix = 0; iy = 0; wantJump = false; wantRun = false; c.interact = false; c.jump = false; c.taxi = false; if (Date.now() >= DOORP.v.at) { const f = DOORP.v.fn; DOORP.v = null; f(); } }   // hand on the door: stand still until it opens
     const m = Math.hypot(ix, iy); if (m > 1) { ix /= m; iy /= m; }
     const mag = Math.min(m, 1);
-    let snapCam = false;
+    let snapCam = DOORP.snap; DOORP.snap = false;
 
     /* ── weapon fire: choose the nearest player in the forward aim cone ── */
     if (c.shoot) {
@@ -290,14 +291,16 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const doorH = (!VEH.drv && !GAME.ride) ? nearDoor(p.x, p.z) : null;   // GTA style: walk up to your front door and press E
       const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
       if (taxiI >= 0) ROAM.openSheet(taxiI);
-      else if (doorH) { if (doorH.mine) window.dispatchEvent(new CustomEvent('arl-enter-home')); else { GAME.notice = `🔒 ${doorH.u}'s house is locked.`; window.dispatchEvent(new CustomEvent('arl-break-in', { detail: { slot: doorH.slot } })); } }
+      else if (doorH) { if (doorH.mine) handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter-home'))); else { GAME.notice = `🔒 ${doorH.u}'s house is locked.`; window.dispatchEvent(new CustomEvent('arl-break-in', { detail: { slot: doorH.slot } })); } }
       else if (!VEH.drv && !GAME.ride && planeNear(p.x, p.z)) { boardPlane(p); nearId.current = null; setN(null); setNear(null); }
       else if (VEH.drv) {
         VEH.drv = false; VEH.v = 0; engineStop();
         const lx = -Math.sin(VEH.r), lz = -Math.cos(VEH.r);
         p.x = VEH.x + lx * 2.4; p.z = VEH.z + lz * 2.4; pushOut(p); p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;
+        NET.me.anim = 'door'; NET.me.animUntil = Date.now() + 900;   // opens the car door as they step out
       } else if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) < 9) {
-        VEH.drv = true; VEH.v = 0; engineStart(); snapCam = true;
+        p.r = Math.atan2(VEH.x - p.x, VEH.z - p.z);   // face the car, reach for the handle, then get in
+        handDoor(650, () => { VEH.drv = true; VEH.v = 0; engineStart(); DOORP.snap = true; });
         nearId.current = null; setN(null); setNear(null);
       } else if (GAME.hasCar) { const dd = Math.round(Math.hypot(p.x - VEH.x, p.z - VEH.z)); GAME.notice = VEH.placed ? `🚗 Your car is parked ${dd} m away: walk to it (see the map).` : '🚗 Your car is not in the city right now.'; }
       else GAME.notice = '🚗 You do not own a car yet. Buy one at a Car Dealer.';
@@ -541,6 +544,13 @@ const CSS = `
 
 
 let camK = 1;   // camera collision pull-in factor (1 = full orbit distance)
+/** Reach for a door with your hand first (door animation), then do the thing: get in the car, go into a house or shop. */
+const DOORP: { v: { at: number; fn: () => void } | null; snap: boolean } = { v: null, snap: false };
+function handDoor(ms: number, fn: () => void) {
+  if (DOORP.v) return;
+  NET.me.anim = 'door'; NET.me.animUntil = Date.now() + ms + 450;
+  DOORP.v = { at: Date.now() + ms, fn };
+}
 export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void; onOpenMap?: () => void }) {
   useState(() => { // stepping out of the house: appear on a sidewalk, somewhere different each time and not on top of another player (building exits set GAME.tp instead)
     if (GAME.tp) { START.x = GAME.tp.x; START.z = GAME.tp.z; START.r = GAME.tp.r ?? 0; GAME.player.x = GAME.tp.x; GAME.player.z = GAME.tp.z; } // arriving from a building / jail / ride: start the camera right there, not at the old default
@@ -631,7 +641,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         {(pl === 'fly' || pl === 'pax') && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
-        <HoldBtn cls="" label="Interact" icon="🖐️" down={() => { unlockAudio(); if (nearBiz.current?.id) window.dispatchEvent(new CustomEvent('arl-enter', { detail: nearBiz.current.id })); else ctl.current.interact = true; }} />
+        <HoldBtn cls="" label="Interact" icon="🖐️" down={() => { unlockAudio(); if (nearBiz.current?.id) { const id = nearBiz.current.id; handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter', { detail: id }))); } else ctl.current.interact = true; }} />
         <HoldBtn cls="" label="Phone" icon="📱" down={() => { window.dispatchEvent(new Event('arl-open-phone')); }} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
         <HoldBtn cls="" label="Crouch" icon="🧎" down={() => { ctl.current.crouch = !ctl.current.crouch; }} />

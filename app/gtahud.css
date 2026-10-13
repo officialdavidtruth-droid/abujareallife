@@ -16,9 +16,9 @@
 body .sim.outside{
   --gr:clamp(60px,18.5vh,88px);                /* radar size (about 30% smaller than before) */
   --fs:clamp(6.8px,1.95vh,9.5px);               /* profile card text size (everything inside is in em; about 30% smaller than before) */
-  --tb:clamp(36px,10.5vh,48px);               /* height of the top-right bar (time, cash, menu) */
-  --ql:clamp(8px,2.3vh,11px);                 /* shortcut label size */
-  --qb:clamp(34px,10vh,54px);                 /* shortcut circle */
+  --tb:clamp(27px,7.8vh,35px);               /* height of the top-right bar (time, cash, menu) (about 27% smaller than before) */
+  --ql:clamp(6.8px,1.75vh,8.6px);                 /* shortcut label size */
+  --qb:clamp(27px,7.4vh,40px);                 /* shortcut circle */
   --qw:max(var(--qb),calc(var(--ql)*5.6));    /* shortcut slot width */
   --ab:clamp(46px,14.5vh,68px);               /* action button */
   --ap:calc(var(--ab) + 8px);                 /* action grid pitch */
@@ -107,11 +107,11 @@ body .sim.outside .top>.pill{
   position:absolute!important;top:calc(10px + var(--sat,0px))!important;left:auto!important;height:var(--tb)!important;box-sizing:border-box;
   display:flex!important;align-items:center;gap:.5em;margin:0!important;max-width:none!important;pointer-events:none;
   background:var(--ink)!important;border:1px solid #ffffff2e!important;border-radius:.8em!important;box-shadow:0 4px 14px #0008!important;backdrop-filter:blur(6px)!important;
-  color:#fff!important;font-size:clamp(10px,2.9vh,14px)!important;padding:0 1em 0 .8em!important;white-space:nowrap;overflow:hidden;
+  color:#fff!important;font-size:clamp(8px,2.15vh,10.5px)!important;padding:0 1em 0 .8em!important;white-space:nowrap;overflow:hidden;
 }
 body .sim.outside .top>.pill.clockPill{right:calc(var(--edgeR) + var(--tb) + 8px + var(--cashW) + 8px)!important;width:var(--clockW)!important;display:grid!important;grid-template-columns:1fr auto;grid-template-areas:"t w" "l w";column-gap:.5em;row-gap:0;align-content:center}
-body .sim.outside .top>.pill.gold{right:calc(var(--edgeR) + var(--tb) + 8px)!important;width:var(--cashW)!important;justify-content:center;font-weight:800;font-size:clamp(11px,3.2vh,16px)!important}
-body .sim.outside{--clockW:clamp(152px,21vw,210px);--cashW:clamp(112px,15vw,160px)}
+body .sim.outside .top>.pill.gold{right:calc(var(--edgeR) + var(--tb) + 8px)!important;width:var(--cashW)!important;justify-content:center;font-weight:800;font-size:clamp(9px,2.45vh,12px)!important}
+body .sim.outside{--clockW:clamp(112px,15vw,152px);--cashW:clamp(82px,11vw,116px)}
 .clockPill .cpTime{grid-area:t;font-weight:800;line-height:1.15}
 .clockPill .cpLoc{grid-area:l;font-size:.8em;color:#cfdcd5;line-height:1.1}
 .clockPill .cpWx{grid-area:w;font-size:1.45em;line-height:1;padding-right:.1em}
@@ -251,3 +251,14 @@ body .installBtn{top:auto!important;right:auto!important;left:50%!important;bott
 
 /* soft screen-edge darkening, gives the 3D view a cinematic frame (cheap: one static gradient, no filter) */
 .cityWorld::after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;background:radial-gradient(ellipse at 50% 46%,transparent 58%,rgba(0,0,0,.30) 100%)}
+
+/* ---- top-right: rank / fame card ("Developer · R1", fame bar). It used to be pinned to the very top-right corner, right on top of the cash pill and the menu button.
+   Now it sits under the shortcut row, small, and the row's height is in the formula so it moves with the sizes above. ---- */
+body .sim.outside .glBar{
+  top:calc(10px + var(--tb) + 8px + var(--qb) + var(--ql)*2 + 14px + var(--sat,0px))!important;right:var(--edgeR)!important;left:auto!important;
+  width:clamp(104px,13vw,140px)!important;min-width:0!important;max-width:140px!important;padding:.45em .6em!important;border-radius:.8em!important;gap:.3em!important;
+  font-size:clamp(7.5px,1.9vh,9.5px)!important;z-index:14!important;
+}
+body .sim.outside .glBar .glRow,body .sim.outside .glBar .glFame{font-size:1em!important}
+body .sim.outside .glBar .glFame small{font-size:.9em!important}
+body .sim.outside .glBar .fbar{height:.5em!important}

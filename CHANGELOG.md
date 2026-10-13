@@ -17,6 +17,7 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 - New admin portal at `/adminad`: review queue with flyer preview, approve / reject (+refund), take down live ads, and a Prices tab. (`app/adminad/*`)
 - Admin sets each billboard's price per day, from 0 (free) upward; free bookings skip Paystack. (`lib/adPrices.ts`, `lib/adSlots.ts`, `app/api/ads/[action]/route.ts`)
 - You can tilt the camera up about 17 degrees to read billboards (`LOOK_UP` in `components/CityWorld.tsx`). Billboards with an ad are clickable, and a "View ad" button appears when you walk within 16 m of one; it opens the flyer full size with Call / WhatsApp / website buttons. (`components/CityScenery.tsx`)
+- HUD top-right: the rank / fame card ("Developer · R1") no longer sits on top of the cash pill and menu button (it is now under the shortcut row), and the clock, cash, menu and the Home / Map / Phone / Jobs / Inventory / Settings row are about 25-30% smaller. (`app/gtahud.css`)
 - HUD: the radar and the profile card (Health / Energy / Hunger / Mood) are about 30% smaller; change `--gr`, `--fs` and the card width at the top of `app/gtahud.css` to tune. (`app/gtahud.css`)
 - 🛠 Run `prisma/migrations/0031_ad_images_prices/migration.sql` (also appended to `prisma/fix-database.sql`), then `npm run db:generate`. Details in `ADBOOKING.md`.
 

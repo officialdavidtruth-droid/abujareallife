@@ -20,10 +20,11 @@ const ACTION: Record<string, string> = {
   door: 'Opening_Door_Inwards', work: 'Pilot_Flips_Switches', game: 'Pilot_Flips_Switches',
   pray: 'Praying', dismiss: 'Dismissing_Gesture', punch: 'Punching', fight: 'Punching',
   elbow: 'Illegal_Elbow_Punch', block: 'Body_Block', die: 'Dying', dead: 'Dying', crouch: 'Crouch_Running',
-  getup: 'Situp_To_Idle', stop: 'Running_To_Stop', turn: 'Running_Right_Turn',
+  getup: 'Situp_To_Idle', wake: 'Waking', drive: 'Driving', honk: 'Honking_Horn', entercar: 'Entering_Car', exitcar: 'Exiting_Car',
+  sleep: 'Sleeping_Idle', lay: 'Laying_Sleeping', laym: 'Male_Laying_Pose', layf: 'Female_Laying_Pose', stop: 'Running_To_Stop', turn: 'Running_Right_Turn',
 };
-const ONCE = new Set(['Dying', 'Salute', 'Opening_Door_Inwards', 'Punching', 'Illegal_Elbow_Punch', 'Body_Block', 'Dismissing_Gesture', 'Situp_To_Idle', 'Running_To_Stop', 'Running_Right_Turn']);
-const CLAMP = new Set(['Dying']);   // stay on the last frame
+const ONCE = new Set(['Dying', 'Salute', 'Opening_Door_Inwards', 'Punching', 'Illegal_Elbow_Punch', 'Body_Block', 'Dismissing_Gesture', 'Situp_To_Idle', 'Running_To_Stop', 'Running_Right_Turn', 'Entering_Car', 'Exiting_Car', 'Honking_Horn', 'Waking', 'Laying_Sleeping', 'Male_Laying_Pose', 'Female_Laying_Pose', 'Female_Laying_Pose__1_']);
+const CLAMP = new Set(['Dying', 'Male_Laying_Pose', 'Female_Laying_Pose', 'Female_Laying_Pose__1_']);   // stay on the last frame
 
 function pick(state: HumanState, anim: string | undefined, speed: number, names: Set<string>): { clip: string; ts: number } {
   if (anim) {
@@ -32,7 +33,8 @@ function pick(state: HumanState, anim: string | undefined, speed: number, names:
     if (c && names.has(c)) return { clip: c, ts: 1 };
   }
   if (state === 'walk') return speed >= 1.8 ? { clip: 'Running', ts: Math.min(1.3, Math.max(.8, speed / 2.4)) } : { clip: 'Strut_Walking', ts: Math.min(1.4, Math.max(.8, speed / 1.1)) };
-  return { clip: 'Idle', ts: 1 };       // idle, and for now sit / sleep (no sit or sleep clip yet)
+  if (state === 'sleep') return { clip: 'Sleeping_Idle', ts: 1 };
+  return { clip: 'Idle', ts: 1 };       // idle, and sit (no sit clip yet)
 }
 
 export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: Look; getState: () => HumanState; getAnim?: () => string | undefined; getSpeed?: () => number }) {

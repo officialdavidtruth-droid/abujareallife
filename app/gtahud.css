@@ -14,8 +14,8 @@
    To go back to the old layout, remove the gtahud.css import in app/layout.tsx. */
 
 body .sim.outside{
-  --gr:clamp(84px,27vh,124px);                /* radar size */
-  --fs:clamp(9px,2.7vh,13.5px);               /* profile card text size (everything inside is in em) */
+  --gr:clamp(60px,18.5vh,88px);                /* radar size (about 30% smaller than before) */
+  --fs:clamp(6.8px,1.95vh,9.5px);               /* profile card text size (everything inside is in em; about 30% smaller than before) */
   --tb:clamp(36px,10.5vh,48px);               /* height of the top-right bar (time, cash, menu) */
   --ql:clamp(8px,2.3vh,11px);                 /* shortcut label size */
   --qb:clamp(34px,10vh,54px);                 /* shortcut circle */
@@ -32,7 +32,7 @@ body .sim.outside{
 
 /* ---------- shared look for the profile card (works indoors too) ---------- */
 .needs.rhud{
-  font-size:var(--fs,12px);width:clamp(180px,27vw,290px);padding:.55em .75em .6em;display:flex;flex-direction:column;gap:.28em;
+  font-size:var(--fs,9px);width:clamp(128px,19vw,202px);padding:.55em .75em .6em;display:flex;flex-direction:column;gap:.28em;
   background:rgba(8,13,12,.72)!important;border:1px solid #ffffff26!important;border-radius:.8em!important;
   box-shadow:0 6px 18px #0008!important;backdrop-filter:blur(6px);height:auto!important;max-width:none!important;color:#fff;
   flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important;justify-content:flex-start!important;

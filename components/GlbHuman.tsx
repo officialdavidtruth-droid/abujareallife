@@ -1,9 +1,9 @@
 'use client';
 // Skinned GLB humans (Kara = female, Man In Suit = male) driven by shared Mixamo animation clips. Drop-in for <Human>: same props.
-import { useFrame, useLoader } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { HumanState } from '../lib/humanRig';
@@ -25,6 +25,14 @@ const ROLE_F: Record<string, [Role, string]> = {
   Modelpart1_part1_jeans_Material: ['pants', '#27272a'], Modelpart1_part1_shirt1_Materia: ['outfit', '#424548'], Modelpart1_part1_top_Material01: ['outfit', '#453e3b'],
 };
 const ROLE_M: Record<string, Role> = { mat1mat: 'outfit', mat3mat: 'accent', mat4mat: 'pants', mat6mat: 'skin', mat11mat: 'skin', mat12mat: 'hair', mat14mat: 'hair' };
+/** The walk FBX is optional: if /models/characters/walking.fbx is missing or fails, the characters fall back to the 'Strut_Walking' clip instead of crashing the whole app. Loaded once, shared by every character. */
+let walkPromise: Promise<THREE.AnimationClip[]> | null = null;
+const loadWalk = () => walkPromise ??= new Promise<THREE.AnimationClip[]>(res => new FBXLoader().load(WALK_URL, g => res(g.animations), undefined, () => res([])));
+function useWalkClips(): THREE.AnimationClip[] {
+  const [clips, setClips] = useState<THREE.AnimationClip[]>([]);
+  useEffect(() => { let on = true; loadWalk().then(c => { if (on) setClips(c); }).catch(() => {}); return () => { on = false; }; }, []);
+  return clips;
+}
 const DROP = new Map<string, number>();   // per-model float correction (metres, model units)
 
 /** game action name -> Mixamo clip. A clip name passed directly as `anim` (e.g. 'Punching') also works. */
@@ -52,7 +60,7 @@ function pick(state: HumanState, anim: string | undefined, speed: number, names:
 
 export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: Look; getState: () => HumanState; getAnim?: () => string | undefined; getSpeed?: () => number }) {
   const female = look.gender === 'f';
-  const char = useGLTF(female ? CHAR_URL : CHAR_URL_M), anims = useGLTF(ANIM_URL), walkFbx = useLoader(FBXLoader, WALK_URL);
+  const char = useGLTF(female ? CHAR_URL : CHAR_URL_M), anims = useGLTF(ANIM_URL), walkClips = useWalkClips();
   const model = useMemo(() => {
     const m = cloneSkinned(char.scene) as THREE.Object3D;
     // materials are cloned so recolouring one character never tints every other one in the city
@@ -96,7 +104,7 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
     }
     const map = new Map<string, THREE.AnimationClip>();
     // The FBX is a Mixamo export: bone names are 'mixamorig:Hips' and positions are in centimetres, so fix both to match the GLB clips.
-    const fbxClip = walkFbx.animations[0];
+    const fbxClip = walkClips[0];
     const all = fbxClip ? [...anims.animations, (() => {
       const f = fbxClip.clone(); f.name = 'Walking';
       f.tracks = f.tracks.map(t => {
@@ -113,7 +121,7 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
       map.set(c.name, c);
     }
     return map;
-  }, [model, anims.animations, walkFbx.animations, female]);
+  }, [model, anims.animations, walkClips, female]);
 
   const names = useMemo(() => new Set(clips.keys()), [clips]);
   const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);
@@ -144,4 +152,4 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
 useGLTF.preload(CHAR_URL);
 useGLTF.preload(CHAR_URL_M);
 useGLTF.preload(ANIM_URL);
-useLoader.preload(FBXLoader, WALK_URL);
+loadWalk();

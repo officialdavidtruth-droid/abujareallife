@@ -15,6 +15,9 @@ import { hint } from '../lib/touch';
  *
  * Heading convention matches the player: forward = (sin h, cos h). The model's nose points along local +z.
  *   V (or the 📷 View button) switches between the OUTSIDE chase camera and the INSIDE cockpit camera.
+ * AIRPORT STEP 3 (take-off and landing): gear and flaps run themselves (gear up after lift-off, down on the way in; flaps out when slow and low) and show on the plane + HUD;
+ *   flaps lower the stall and rotate speeds, gear and flaps add drag; ground effect softens the flare; touchdown is graded (smooth / firm / hard) and a gear-up landing, wing strike, nose-first
+ *   touchdown or a hard hit off the runway crashes; grass slows you hard.
  * Later step: STEP 3 passengers + network sync.
  *
  * AIRPORT STEP 1 (onboard process): pressing E next to the plane no longer snaps you into the seat.
@@ -37,6 +40,7 @@ export const PLANE = {
   bd: null as null | { mode: 'in' | 'out'; t: number; sx: number; sz: number; dA: number },   // boarding / leaving sequence in progress
   walk: { on: false, x: 0, y: 0, z: 0, r: 0 },   // where CityWorld draws my character while a sequence runs
   door: 0, doorT: 0,    // door opening 0 (shut) .. 1 (open), and where it is heading
+  gear: 1, flap: 0, vs: 0, gearUp: false, rotCalled: false,   // 1 = gear down / flaps out; vertical speed (m/s); set by the Plane component every frame (pilot and mirrored alike)
   eng: 0, engOn: false, // engine spool 0..1 (fans), and whether the pilot has the engines running
 };
 
@@ -48,6 +52,7 @@ const CEILING = 220;
 export const FLY_LIM = 850;   // the flyable area (the ground plane in CityWorld is sized to match)
 const BOARD_R = 10;     // how close you must stand to board
 
+const onRunway = (x: number, z: number) => x > AIR.x - 11 * AIR.s - 2 && x < AIR.x + 89 * AIR.s + 2 && Math.abs(z - AIR.z) < 3.5 * AIR.s + 3;   // runway + apron
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 const ping = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('arl-plane')); };
@@ -81,7 +86,7 @@ function sync() {
 
 export function resetPlane() {
   PLANE.x = HOME.x; PLANE.z = HOME.z; PLANE.h = HOME.h; PLANE.y = 0; PLANE.pitch = 0; PLANE.roll = 0;
-  PLANE.speed = 0; PLANE.throttle = 0; PLANE.air = false; PLANE.on = false; PLANE.cam = 'out'; PLANE.bd = null; PLANE.walk.on = false; PLANE.engOn = false; PLANE.doorT = 0; applyView(); sync(); ping();
+  PLANE.speed = 0; PLANE.throttle = 0; PLANE.air = false; PLANE.on = false; PLANE.cam = 'out'; PLANE.bd = null; PLANE.walk.on = false; PLANE.engOn = false; PLANE.doorT = 0; PLANE.gear = 1; PLANE.flap = 0; PLANE.gearUp = false; PLANE.rotCalled = false; applyView(); sync(); ping();
 }
 
 type P = { x: number; z: number; y: number; vy: number; r: number };
@@ -188,17 +193,18 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
   const air = PLANE.air;
 
   /* speed: thrust − drag − climbing − rolling friction / brakes */
-  const thrust = T * 14, drag = .0036 * s * s, climb = Math.sin(pitch) * 9.8 * .55;
-  const fric = air ? 0 : 1.2 + (brake ? 9 : 0);
+  const fl = PLANE.flap, gr = PLANE.gear, rot = ROTATE - 2 * fl, stallV = STALL - 4 * fl, onRwy = onRunway(PLANE.x, PLANE.z);
+  const thrust = T * 14, drag = (.0036 + fl * .0012 + gr * .0007) * s * s, climb = Math.sin(pitch) * 9.8 * .55;
+  const fric = air ? 0 : (onRwy ? 1.2 : 3.4) + (brake ? 9 : 0);   // grass drags
   s = clamp(s + (thrust - drag - climb - (s > .05 ? fric : 0)) * dt, 0, VMAX);
 
   /* pitch: the stick tilts the nose and the attitude is HELD when you let go (it only drifts back to level slowly), so a gentle descent is easy to keep.
      Too slow in the air = stall: the nose is forced down until you speed up again. */
-  const stall = air ? clamp((STALL - s) / 8, 0, 1) : 0;
+  const stall = air ? clamp((stallV - s) / 8, 0, 1) : 0;
   const maxUp = .5 * clamp((s - 18) / 14, 0, 1);
   let np = pitch;
   if (iy) np += iy * .95 * dt; else np -= np * (1 - Math.exp(-dt / 6));
-  const lo = air ? -.5 : 0, hi = air ? maxUp - stall * .6 : (s >= ROTATE ? .5 : 0);
+  const lo = air ? -.5 : 0, hi = air ? maxUp - stall * .6 : (s >= rot ? .5 : 0);
   np = Math.max(lo, Math.min(np, hi));
   pitch += clamp(np - pitch, -1.4 * dt, 1.4 * dt);
 
@@ -215,14 +221,19 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
   const hv = Math.cos(pitch) * s;
   PLANE.x += Math.sin(h) * hv * dt; PLANE.z += Math.cos(h) * hv * dt;
   let y = PLANE.y, nowAir = air;
-  if (!air && pitch > .06 && s >= ROTATE * .95) nowAir = true;      // rotated: wheels leave the runway
+  if (!air && pitch > .06 && s >= rot * .95) { nowAir = true; GAME.notice = '✈️ Airborne: gear comes up by itself.'; }      // rotated: wheels leave the runway
+  if (!air && !nowAir) { if (s < 10) PLANE.rotCalled = false; else if (s >= rot && !PLANE.rotCalled) { PLANE.rotCalled = true; GAME.notice = '✈️ Rotate! Pull back (S).'; } }
   if (nowAir) {
-    y += Math.sin(pitch) * s * dt - stall * stall * 14 * dt;
+    let dy = Math.sin(pitch) * s * dt; if (dy < 0 && y < 4) dy *= .45 + .1375 * y;   // ground effect: the last few metres cushion the descent (the flare)
+    y += dy - stall * stall * 14 * dt;
     if (y > CEILING) { y = CEILING; pitch = Math.min(pitch, 0); }
     if (y <= 0) {
-      const sink = Math.sin(pitch) * s;
-      if (sink < -11 || Math.abs(roll) > .5 || pitch < -.35) { crash(p, 'Hard landing!'); return; }
-      y = 0; nowAir = false; roll = 0;
+      const sink = -dy / dt + stall * stall * 14;   // m/s downwards at touchdown
+      const why = PLANE.gear < .7 ? 'Gear up landing!' : sink > 8 ? 'Too fast down: hard landing!' : Math.abs(roll) > .4 ? 'Wing strike: level the wings before touchdown!' : pitch < -.25 ? 'Nose-first landing!' : !onRwy && sink > 4.5 ? 'Hard landing off the runway!' : '';
+      if (why) { crash(p, why); return; }
+      y = 0; nowAir = false; roll = 0; PLANE.rotCalled = true;
+      if (sink < 1.5) GAME.notice = '🛬 Smooth landing. Brake with Space.'; else if (sink < 4) GAME.notice = '🛬 Firm landing. Brake with Space.'; else { s *= .85; GAME.notice = '🛬 Hard landing! Brake with Space.'; }
+      if (!onRwy) GAME.notice += ' (off the runway)';
     }
   } else y = 0;
 
@@ -241,7 +252,7 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
 }
 
 export const planePrompt = () => PLANE.bd ? (PLANE.bd.mode === 'in' ? '✈ Boarding…' : '✈ Leaving the plane…') + hint(' tap Exit plane to skip', ' E skips') : PLANE.pax ? `✈ Passenger · ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · V view${PLANE.air ? '' : ' · E out'}` : PLANE.on
-  ? `✈ ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · throttle ${Math.round(PLANE.throttle * 100)}% · Shift +  Space − · W/S pitch · A/D bank · V view${PLANE.air ? '' : ' · E out'}`
+  ? `✈ ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · throttle ${Math.round(PLANE.throttle * 100)}% · gear ${PLANE.gear > .5 ? '▼' : '▲'} flaps ${Math.round(PLANE.flap * 100)}% · Shift +  Space − · W/S pitch · A/D bank · V view${PLANE.air ? '' : ' · E out'}`
   : '';
 
 /* ───────────── cameras: outside (chase) and inside (cockpit) ───────────── */
@@ -294,7 +305,7 @@ export function Plane() {
   const g = useRef<THREE.Group>(null!);
   const hull = useRef<THREE.Group>(null!), cockpit = useRef<THREE.Group>(null!);
   const doorG = useRef<THREE.Group>(null!), stairs = useRef<THREE.Group>(null!), fans = useRef<(THREE.Group | null)[]>([]);
-  const fanA = useRef(0);
+  const fanA = useRef(0), lastY = useRef(0), gears = useRef<(THREE.Group | null)[]>([]), flaps = useRef<(THREE.Group | null)[]>([]);
   const nav = useRef<THREE.Group>(null!), strobe = useRef<THREE.Group>(null!), beacon = useRef<THREE.Mesh>(null!), land = useRef<THREE.Mesh>(null!), spot = useRef<THREE.SpotLight>(null!);
   useEffect(() => { const sp = spot.current; if (!sp) return; sp.target.position.set(0, -6, 38); g.current.add(sp.target); return () => { g.current?.remove(sp.target); }; }, []);
   /* door, airstair and engine fans follow the plane's state every frame */
@@ -307,6 +318,14 @@ export function Plane() {
     if (stairs.current) stairs.current.visible = !PLANE.air && PLANE.y < .3 && PLANE.speed < 1 && !PLANE.remote && !PLANE.pax && (!PLANE.on || !!PLANE.bd);
     fanA.current += dt * (PLANE.eng * 34 + PLANE.throttle * 30);
     for (const f of fans.current) if (f) f.rotation.z = fanA.current;
+    /* gear + flaps (airport step 3): same rules for the pilot and for a mirrored remote flight */
+    PLANE.vs += ((PLANE.y - lastY.current) / Math.max(dt, .001) - PLANE.vs) * Math.min(1, dt * 6); lastY.current = PLANE.y;
+    if (!PLANE.air) PLANE.gearUp = false; else if (PLANE.y > 15 && PLANE.vs > .5) PLANE.gearUp = true; else if (PLANE.y < 40 && PLANE.vs < -1) PLANE.gearUp = false;
+    PLANE.gear += clamp((PLANE.gearUp ? 0 : 1) - PLANE.gear, -dt / 1.4, dt / 1.4);
+    const fT = PLANE.air ? (PLANE.y < 70 && PLANE.speed < 48 ? 1 : 0) : (PLANE.on || PLANE.remote ? .5 : 0);
+    PLANE.flap += clamp(fT - PLANE.flap, -dt / 2.5, dt / 2.5);
+    for (const q of gears.current) if (q) { q.position.y = (1 - PLANE.gear) * 2.4; q.visible = PLANE.gear > .02; }
+    for (const q of flaps.current) if (q) q.rotation.x = -PLANE.flap * .55;
     /* lights (airport step 2): nav + tail + beacon with the engines running, strobes flash, landing light while rolling or flying */
     const on = PLANE.eng > .25, ph = (performance.now() / 1000) % 1.2, rolling = PLANE.eng > .5 && (PLANE.air || PLANE.speed > 1 || (PLANE.on && !PLANE.bd));
     if (nav.current) nav.current.visible = on;
@@ -364,6 +383,7 @@ export function Plane() {
       </group>
       {/* wings, tailplane, fin */}
       <mesh position={[0, -.35, .6]} castShadow><boxGeometry args={[14, .2, 2.8]} />{M(W)}</mesh>
+      {[-1, 1].map((sx, i) => <group key={sx} ref={el => { flaps.current[i] = el; }} position={[sx * 3.4, -.35, -.8]}><mesh position={[0, 0, -.33]}><boxGeometry args={[4.6, .09, .66]} />{M('#dfe3e6', .2, .5)}</mesh></group>)}
       {[-1, 1].map(sx => <mesh key={sx} position={[sx * 7, -.2, .6]}><boxGeometry args={[.25, .9, 1.6]} />{M(G)}</mesh>)}
       <mesh position={[0, .45, -6.4]} castShadow><boxGeometry args={[5.4, .14, 1.5]} />{M(W)}</mesh>
       <mesh position={[0, 1.85, -6.3]} castShadow><boxGeometry args={[.16, 2.5, 1.9]} />{M(G)}</mesh>
@@ -378,7 +398,7 @@ export function Plane() {
       </group>)}
     </group>
     {/* landing gear (wheel bottoms sit on y = 0) */}
-    {[[0, 4.2], [-1.7, -.4], [1.7, -.4]].map(([x, z], i) => <group key={i} position={[x, 0, z]}>
+    {[[0, 4.2], [-1.7, -.4], [1.7, -.4]].map(([x, z], i) => <group key={i} ref={el => { gears.current[i] = el; }} position={[x, 0, z]}>
       <mesh position={[0, .38, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.38, .38, .32, 12]} />{M('#15181b', 0, .9)}</mesh>
       <mesh position={[0, 1, 0]}><boxGeometry args={[.12, 1.2, .12]} />{M(GR, .6, .4)}</mesh>
     </group>)}

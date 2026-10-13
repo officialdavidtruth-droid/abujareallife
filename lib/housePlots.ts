@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { PLOT_COUNT } from './houses';
+import { PLOT_COUNT, RUNWAY_SLOTS } from './houses';
 /* House plots are stored: User.houseSlot (unique, null until assigned) is the player's plot number in lib/houses.ts PLOTS.
    A new account gets the lowest free plot and keeps it for good; deleting an account frees its plot for the next player but moves nobody else.
    The unique index makes two parallel requests safe: the loser gets P2002, re-reads the taken plots and tries the next one. */
@@ -12,7 +12,7 @@ async function assign(ids: string[]): Promise<void> {
   let taken = await takenSlots();
   for (const id of ids) {
     for (let tries = 0; tries < 8; tries++) {
-      let slot = 0; while (taken.has(slot)) slot++;
+      let slot = 0; while (taken.has(slot) || RUNWAY_SLOTS.has(slot)) slot++;   // runway plots are never handed out
       if (slot >= PLOT_COUNT) return;
       try { await prisma.user.updateMany({ where: { id, houseSlot: null }, data: { houseSlot: slot } }); taken.add(slot); break; }
       catch (e) { if (!conflict(e)) throw e; taken = await takenSlots(); }

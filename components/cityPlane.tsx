@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { AIR } from './CityScenery';
-import { BUILDS, GAME } from './cityShared';
+import { BUILDS, GAME, NIGHT } from './cityShared';
 import { hint } from '../lib/touch';
 
 /* ───────────── The airport plane (STEP 1: flying, single pilot) ─────────────
@@ -295,6 +295,8 @@ export function Plane() {
   const hull = useRef<THREE.Group>(null!), cockpit = useRef<THREE.Group>(null!);
   const doorG = useRef<THREE.Group>(null!), stairs = useRef<THREE.Group>(null!), fans = useRef<(THREE.Group | null)[]>([]);
   const fanA = useRef(0);
+  const nav = useRef<THREE.Group>(null!), strobe = useRef<THREE.Group>(null!), beacon = useRef<THREE.Mesh>(null!), land = useRef<THREE.Mesh>(null!), spot = useRef<THREE.SpotLight>(null!);
+  useEffect(() => { const sp = spot.current; if (!sp) return; sp.target.position.set(0, -6, 38); g.current.add(sp.target); return () => { g.current?.remove(sp.target); }; }, []);
   /* door, airstair and engine fans follow the plane's state every frame */
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, .05);
@@ -305,6 +307,13 @@ export function Plane() {
     if (stairs.current) stairs.current.visible = !PLANE.air && PLANE.y < .3 && PLANE.speed < 1 && !PLANE.remote && !PLANE.pax && (!PLANE.on || !!PLANE.bd);
     fanA.current += dt * (PLANE.eng * 34 + PLANE.throttle * 30);
     for (const f of fans.current) if (f) f.rotation.z = fanA.current;
+    /* lights (airport step 2): nav + tail + beacon with the engines running, strobes flash, landing light while rolling or flying */
+    const on = PLANE.eng > .25, ph = (performance.now() / 1000) % 1.2, rolling = PLANE.eng > .5 && (PLANE.air || PLANE.speed > 1 || (PLANE.on && !PLANE.bd));
+    if (nav.current) nav.current.visible = on;
+    if (strobe.current) strobe.current.visible = on && PLANE.eng > .5 && (ph < .07 || (ph > .17 && ph < .24));
+    if (beacon.current) beacon.current.visible = on && ph < .6;
+    if (land.current) land.current.visible = rolling;
+    if (spot.current) { spot.current.visible = rolling && NIGHT.n > .08; spot.current.intensity = 900 * NIGHT.n; }
   });
   useEffect(() => { PLANE.obj = g.current; VIEW.hull = hull.current; VIEW.cockpit = cockpit.current; applyView(); sync(); return () => { PLANE.obj = null; VIEW.hull = null; VIEW.cockpit = null; }; }, []);
   /* V switches the view while flying */
@@ -373,6 +382,18 @@ export function Plane() {
       <mesh position={[0, .38, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.38, .38, .32, 12]} />{M('#15181b', 0, .9)}</mesh>
       <mesh position={[0, 1, 0]}><boxGeometry args={[.12, 1.2, .12]} />{M(GR, .6, .4)}</mesh>
     </group>)}
+    {/* lights: red left / green right wingtip, white tail, white strobes, red beacon, landing light + a spot that lights the runway at night */}
+    <group ref={nav}>
+      <mesh position={[7.05, 1.9, .6]}><sphereGeometry args={[.14, 8, 8]} /><meshBasicMaterial color="#ff2a2a" toneMapped={false} /></mesh>
+      <mesh position={[-7.05, 1.9, .6]}><sphereGeometry args={[.14, 8, 8]} /><meshBasicMaterial color="#25e060" toneMapped={false} /></mesh>
+      <mesh position={[0, 4.6, -7.3]}><sphereGeometry args={[.12, 8, 8]} /><meshBasicMaterial color="#ffffff" toneMapped={false} /></mesh>
+    </group>
+    <group ref={strobe}>
+      {[-1, 1].map(sx => <mesh key={sx} position={[sx * 7.05, 2.35, .6]}><sphereGeometry args={[.2, 8, 8]} /><meshBasicMaterial color="#ffffff" toneMapped={false} /></mesh>)}
+    </group>
+    <mesh ref={beacon} position={[0, 3.3, 1.6]}><sphereGeometry args={[.16, 8, 8]} /><meshBasicMaterial color="#ff3030" toneMapped={false} /></mesh>
+    <mesh ref={land} position={[0, 1.15, 4.6]}><sphereGeometry args={[.2, 8, 8]} /><meshBasicMaterial color="#fff6d8" toneMapped={false} /></mesh>
+    <spotLight ref={spot} position={[0, 1.2, 4.6]} angle={.38} penumbra={.7} distance={110} decay={1.4} color="#fff2d0" visible={false} />
     {/* airstair at the left-hand door: 7 steps from the ground (x = 4.0) up to the sill (x = 1.2, 1.4 m), a platform and two handrails */}
     <group ref={stairs} visible={false} position={[0, 0, 2.4]}>
       {Array.from({ length: 7 }, (_, i) => { const h = (i + 1) * .2; return <mesh key={i} position={[4 - (i + .5) * .4, h / 2, 0]} castShadow><boxGeometry args={[.4, h, 1]} />{M('#c9a227', .3, .6)}</mesh>; })}

@@ -418,6 +418,41 @@ export function TrainLine() {
 
 export const AIR = { x: 122 * WS, z: -12 * WS, s: 1.8 };
 
+/* Runway lights (airport step 2): edge, threshold green / end red, approach lights and a PAPI, switched on with the street lamps at night.
+   Drawn as unlit glowing blocks plus a flat additive halo each, so they cost no real lights. Local airport units (group scaled by AIR.s). */
+type LP = [number, number, string];
+const RWY_LIGHTS: LP[] = (() => {
+  const a: LP[] = [];
+  for (let x = -10; x <= 88; x += 4.9) { a.push([x, -3.75, '#fff3d6'], [x, 3.75, '#fff3d6']); }                   // edge
+  for (let x = -6; x <= 86; x += 3.1) a.push([x, 0, '#ffffff']);                                                      // centreline
+  for (let k = 0; k < 11; k++) { a.push([-10.9, -3.5 + k * .7, '#35e06a']); a.push([88.9, -3.5 + k * .7, '#ff3b30']); } // threshold green / end red
+  for (let k = 1; k <= 14; k++) { a.push([-11 - k * 3, 0, '#ffffff']); if (k % 4 === 0) for (const z of [-1.6, -.8, .8, 1.6]) a.push([-11 - k * 3, z, '#ffffff']); }   // approach
+  [['#ff3b30', 5.2], ['#ff3b30', 6], ['#ffffff', 6.8], ['#ffffff', 7.6]].forEach(([c, z]) => a.push([8, z as number, c as string]));   // PAPI (2 red 2 white = on the glide slope)
+  return a;
+})();
+export function AirportLights() {
+  const g = useRef<THREE.Group>(null!), blocks = useRef<THREE.InstancedMesh>(null!), halos = useRef<THREE.InstancedMesh>(null!), hm = useRef<THREE.MeshBasicMaterial>(null!);
+  const tex = useMemo(() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d')!, gr = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.35, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = gr; c.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  }, []);
+  useLayoutEffect(() => {
+    const o = new THREE.Object3D(), col = new THREE.Color();
+    RWY_LIGHTS.forEach(([x, z, c], i) => {
+      col.set(c);
+      o.position.set(x, .12, z); o.rotation.set(0, 0, 0); o.scale.set(.32, .16, .32); o.updateMatrix(); blocks.current.setMatrixAt(i, o.matrix); blocks.current.setColorAt(i, col);
+      o.position.set(x, .16, z); o.rotation.set(-Math.PI / 2, 0, 0); o.scale.set(2.6, 2.6, 1); o.updateMatrix(); halos.current.setMatrixAt(i, o.matrix); halos.current.setColorAt(i, col);
+    });
+    for (const m of [blocks.current, halos.current]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+  }, []);
+  useFrame(() => { const n = NIGHT.n; g.current.visible = n > .03; hm.current.opacity = Math.min(1, n * 1.2) * .75; });
+  return <group ref={g} visible={false}>
+    <instancedMesh ref={blocks} args={[undefined as any, undefined as any, RWY_LIGHTS.length]} frustumCulled={false}><boxGeometry args={[1, 1, 1]} /><meshBasicMaterial toneMapped={false} /></instancedMesh>
+    <instancedMesh ref={halos} args={[undefined as any, undefined as any, RWY_LIGHTS.length]} frustumCulled={false}><planeGeometry args={[1, 1]} /><meshBasicMaterial ref={hm} map={tex} transparent depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} /></instancedMesh>
+  </group>;
+}
+
 export function Airport() {
   /* Local units, group scaled by AIR.s. Runway: x -11..89, z +-3.5 (east-west, so the numbers are 09 / 27). Terminal footprint (x +-4.5, z -9.5..-4.5) is what CityCollision.SOLIDS and lib/houses.ts KEEP_OUT mirror: keep it. */
   const flat = [-Math.PI / 2, 0, 0] as const;
@@ -445,6 +480,7 @@ export function Airport() {
     <mesh position={[-2.8, 4.9, -8]}><boxGeometry args={[1.9, .85, 1.9]} /><meshStandardMaterial color="#223a52" metalness={.6} roughness={.15} /></mesh>
     <mesh position={[-2.8, 5.42, -8]}><boxGeometry args={[2.15, .1, 2.15]} /><meshStandardMaterial color="#c0c6cb" /></mesh>
     <mesh position={[-2.8, 6.0, -8]}><cylinderGeometry args={[.03, .03, 1.1, 6]} /><meshStandardMaterial color="#9aa3ab" /></mesh>
+    <AirportLights />
     {/* windsock */}
     <mesh position={[8, 1.1, 4]}><cylinderGeometry args={[.05, .05, 2.2, 6]} /><meshStandardMaterial color="#d9dde0" /></mesh>
     <mesh position={[8.55, 2.15, 4]} rotation={[0, 0, Math.PI / 2]}><coneGeometry args={[.28, 1.1, 10, 1, true]} /><meshStandardMaterial color="#ee7a1d" side={THREE.DoubleSide} /></mesh>

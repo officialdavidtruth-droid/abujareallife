@@ -95,6 +95,10 @@ function build(): Plot[] {
 }
 
 export const PLOTS: Plot[] = build();
+/* Plots under the airport runway (x -11..89 local, z +-3.5 local, scaled AIR.s). They stay in the list so every stored slot number keeps its place,
+   but nobody is given one (lib/housePlots.ts skips them). */
+const RUNWAY: Box = { x0: AIR.x - 11 * AIR.s - 2, x1: AIR.x + 89 * AIR.s + 2, z0: AIR.z - 3.5 * AIR.s - 3, z1: AIR.z + 3.5 * AIR.s + 3 };
+export const RUNWAY_SLOTS: ReadonlySet<number> = new Set(PLOTS.filter(p => hit(p.solid, RUNWAY)).map(p => p.slot));
 export const PLOT_COUNT = PLOTS.length;   // houses the street has room for; each account is given one free plot and keeps it (User.houseSlot, lib/housePlots.ts)
 
 /** Classic keeps its old random height; Modern and Mansion are two storeys, Villa one. */

@@ -1,7 +1,8 @@
 'use client';
 // Skinned GLB humans (Kara = female, Man In Suit = male) driven by shared Mixamo animation clips. Drop-in for <Human>: same props.
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useLoader } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -11,6 +12,7 @@ import type { Look } from '../lib/characterModels';
 export const CHAR_URL = '/models/characters/kara.glb';          // female
 export const CHAR_URL_M = '/models/characters/man.glb';         // male
 export const ANIM_URL = '/models/characters/animations.glb';
+export const WALK_URL = '/models/characters/walking.fbx';   // Mixamo "Walking" (without skin), used for the normal walk
 const TARGET_HEIGHT = 1.75;      // the game's human is ~1.75 m; Kara is ~1.66 m
 const MODEL_HEIGHT = 1.66;        // Kara
 const MODEL_HEIGHT_M = 1.78;      // Man In Suit
@@ -43,14 +45,14 @@ function pick(state: HumanState, anim: string | undefined, speed: number, names:
     const c = direct || ACTION[anim];
     if (c && names.has(c)) return { clip: c, ts: 1 };
   }
-  if (state === 'walk') return speed >= 1.8 ? { clip: 'Running', ts: Math.min(1.3, Math.max(.8, speed / 2.4)) } : { clip: 'Strut_Walking', ts: Math.min(1.4, Math.max(.8, speed / 1.1)) };
+  if (state === 'walk') return speed >= 1.8 ? { clip: 'Running', ts: Math.min(1.3, Math.max(.8, speed / 2.4)) } : { clip: names.has('Walking') ? 'Walking' : 'Strut_Walking', ts: Math.min(1.4, Math.max(.8, speed / 1.1)) };
   if (state === 'sleep') return { clip: 'Sleeping_Idle', ts: 1 };
   return { clip: 'Idle', ts: 1 };       // idle, and sit (no sit clip yet)
 }
 
 export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: Look; getState: () => HumanState; getAnim?: () => string | undefined; getSpeed?: () => number }) {
   const female = look.gender === 'f';
-  const char = useGLTF(female ? CHAR_URL : CHAR_URL_M), anims = useGLTF(ANIM_URL);
+  const char = useGLTF(female ? CHAR_URL : CHAR_URL_M), anims = useGLTF(ANIM_URL), walkFbx = useLoader(FBXLoader, WALK_URL);
   const model = useMemo(() => {
     const m = cloneSkinned(char.scene) as THREE.Object3D;
     // materials are cloned so recolouring one character never tints every other one in the city
@@ -93,13 +95,25 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
       DROP.set(CHAR_URL_M, drop);
     }
     const map = new Map<string, THREE.AnimationClip>();
-    for (const a of anims.animations) {
+    // The FBX is a Mixamo export: bone names are 'mixamorig:Hips' and positions are in centimetres, so fix both to match the GLB clips.
+    const fbxClip = walkFbx.animations[0];
+    const all = fbxClip ? [...anims.animations, (() => {
+      const f = fbxClip.clone(); f.name = 'Walking';
+      f.tracks = f.tracks.map(t => {
+        const nt = t.clone(); nt.name = nt.name.replace(/mixamorig:?/g, 'mixamorig');
+        if (nt.name.endsWith('.position')) for (let i = 0; i < nt.values.length; i++) nt.values[i] *= 0.01;
+        if (nt.name === 'mixamorigHips.position') for (let i = 0; i < nt.values.length; i += 3) { nt.values[i] = 0; nt.values[i + 2] = 0; }   // walk in place: the game moves the character
+        return nt;
+      });
+      return f;
+    })()] : anims.animations;
+    for (const a of all) {
       const c = a.clone();
       for (const t of c.tracks) if (t.name === 'mixamorigHips.position') { const v = t.values; for (let i = 0; i < v.length; i++) v[i] *= k; if (!female && drop) for (let i = 1; i < v.length; i += 3) v[i] -= drop; }
       map.set(c.name, c);
     }
     return map;
-  }, [model, anims.animations, female]);
+  }, [model, anims.animations, walkFbx.animations, female]);
 
   const names = useMemo(() => new Set(clips.keys()), [clips]);
   const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);
@@ -130,3 +144,4 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
 useGLTF.preload(CHAR_URL);
 useGLTF.preload(CHAR_URL_M);
 useGLTF.preload(ANIM_URL);
+useLoader.preload(FBXLoader, WALK_URL);

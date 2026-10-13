@@ -315,15 +315,27 @@ function FlyerFace({ url, onFail }: { url: string; onFail: (u: string) => void }
 const digits = (s: string) => s.replace(/\D/g, '');
 const intl = (s: string) => { const d = digits(s); return d.startsWith('0') && d.length === 11 ? '234' + d.slice(1) : d; };   // 0704... -> 234704...
 function AdViewer({ ad, onClose }: { ad: LiveAd; onClose: () => void }) {
+  const [imgOk, setImgOk] = useState(false), [imgBad, setImgBad] = useState(false), [src, setSrc] = useState('');
+  // Load the flyer as a blob (same fallback the 3D board uses), so a stale cached copy or a hiccup cannot leave an empty gap.
+  useEffect(() => {
+    if (!ad.img) return; let dead = false, obj = '';
+    fetch(ad.img, { cache: 'reload' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+      .then(bl => { if (dead) return; obj = URL.createObjectURL(bl); setSrc(obj); })
+      .catch(() => { if (!dead) setImgBad(true); });
+    return () => { dead = true; if (obj) URL.revokeObjectURL(obj); };
+  }, [ad.img]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
   const num = intl(ad.contact || ''), okNum = num.length >= 10 && num.length <= 15, host = ad.website ? ad.website.replace(/^https?:\/\//, '').replace(/\/$/, '') : '';
   const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '0 18px', borderRadius: 12, background: '#e0a24a', color: '#1a1205', fontWeight: 800, fontSize: 15, textDecoration: 'none', border: 0, cursor: 'pointer' };
   return <div role="dialog" aria-modal="true" aria-label={'Ad: ' + ad.title} onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(3,8,6,.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))', overflowY: 'auto', font: '400 16px/1.4 system-ui,sans-serif', color: '#f2f6f3' }}>
     <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px,100%)', background: '#0e1b16', border: '1px solid #26392f', borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
       <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', right: 8, top: 8, width: 40, height: 40, borderRadius: 99, border: '1px solid #26392f', background: '#0a1410', color: '#fff', fontSize: 22, cursor: 'pointer', zIndex: 1 }}>×</button>
-      {ad.img
+      {ad.img && !imgBad
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={ad.img} alt={'Flyer: ' + ad.title} style={{ width: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 10, background: ad.color, display: 'block' }} />
+        ? <div style={{ minHeight: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', background: ad.color, borderRadius: 10, overflow: 'hidden' }}>
+            {!imgOk && <div style={{ position: 'absolute', color: '#fff', fontSize: 14, opacity: .8 }}>Loading ad…</div>}
+            <img src={src || undefined} alt={'Flyer: ' + ad.title} onLoad={() => setImgOk(true)} onError={() => setImgBad(true)} style={{ width: '100%', maxHeight: 'min(62vh,520px)', objectFit: 'contain', display: imgOk ? 'block' : 'none' }} />
+          </div>
         : <div style={{ background: ad.color, borderRadius: 10, padding: '36px 16px', textAlign: 'center' }}><div style={{ fontSize: 'clamp(26px,6vw,44px)', fontWeight: 800 }}>{ad.title}</div>{ad.sub ? <div style={{ fontSize: 'clamp(15px,3.4vw,22px)', marginTop: 8 }}>{ad.sub}</div> : null}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', paddingRight: 4 }}>
         <b style={{ fontSize: 18, flex: '1 1 160px' }}>{ad.title}</b>
@@ -337,15 +349,26 @@ function AdViewer({ ad, onClose }: { ad: LiveAd; onClose: () => void }) {
 }
 
 export function Billboards() {
-  const [ads, setAds] = useState<Record<number, LiveAd>>({}), [bad, setBad] = useState<string[]>([]), [open, setOpen] = useState<LiveAd | null>(null), [near, setNear] = useState<LiveAd | null>(null);
+  const [ads, setAds] = useState<Record<number, LiveAd>>({}), [bad, setBad] = useState<string[]>([]), [open, setOpen] = useState<LiveAd | null>(null);
   const adsRef = useRef(ads); adsRef.current = ads;
+  const openRef = useRef(open); openRef.current = open;
   const lastNear = useRef(0), close = useCallback(() => setOpen(null), []);
-  // A "View ad" button appears when you walk up to a board that has an ad (taps on the 3D scene do not reach it on phones, so this works everywhere).
+  // No floating button: an ad opens only when the player actually touches the billboard (walks into its posts / under the board). It will not
+  // pop up again until the player has walked away from that board, so closing it never re-triggers it while they stand there.
+  const armed = useRef(true);
   useFrame(st => {
-    const t = st.clock.elapsedTime; if (t - lastNear.current < .3) return; lastNear.current = t;
-    const p = GAME.player; let best: LiveAd | null = null, bd = 16;
-    for (const b of BILLBOARDS) { const a = adsRef.current[b.i]; if (!a) continue; const d = Math.hypot(p.x - b.x, p.z - b.z); if (d < bd) { bd = d; best = a; } }
-    setNear(prev => (prev === best || (prev && best && prev.slot === best.slot && prev.img === best.img && prev.title === best.title) ? prev : best));
+    const t = st.clock.elapsedTime; if (t - lastNear.current < .15) return; lastNear.current = t;
+    if (GAME.ride) return;
+    const p = GAME.player; let touched: LiveAd | null = null, anyClose = false;
+    for (const b of BILLBOARDS) {
+      const dx = p.x - b.x, dz = p.z - b.z; if (Math.abs(dx) > 8 || Math.abs(dz) > 8) continue;
+      const lat = dx * b.ax + dz * b.az, dep = -dx * b.az + dz * b.ax;   // along the board / across it
+      if (Math.abs(lat) < 4.4 && Math.abs(dep) < 3) anyClose = true;
+      const a = adsRef.current[b.i];
+      if (a && Math.abs(lat) < 3.3 && Math.abs(dep) < 1.3) touched = a;
+    }
+    if (!anyClose) armed.current = true;
+    if (touched && armed.current && !openRef.current) { armed.current = false; setOpen(touched); }
   });
   const onFail = useCallback((u: string) => setBad(b => (b.includes(u) ? b : [...b, u])), []);   // a flyer that cannot load falls back to the ad's text, so the board is never left blank
   useEffect(() => {
@@ -359,7 +382,7 @@ export function Billboards() {
     return () => { dead = true; clearInterval(id); document.removeEventListener('visibilitychange', load); };
   }, []);
   return <>
-    <BodyDom>{open ? <AdViewer ad={open} onClose={close} /> : near ? <button onClick={() => setOpen(near)} style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(max(12px,env(safe-area-inset-bottom)) + 150px)', zIndex: 900, minHeight: 46, padding: '0 20px', borderRadius: 99, border: '2px solid #e0a24a', background: 'rgba(14,27,22,.92)', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', font: 'inherit' }}>📢 View ad: {near.title.slice(0, 24)}</button> : null}</BodyDom>
+    <BodyDom>{open ? <AdViewer ad={open} onClose={close} /> : null}</BodyDom>
     {BILLBOARDS.map(b => { const ad = ads[b.i], title = ad?.title ?? b.title, sub = ad?.sub ?? b.sub, col = ad?.color ?? BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]; return <group key={b.i} position={[b.x, 0, b.z]} rotation-y={b.ry} onClick={ad ? (e: { stopPropagation: () => void }) => { e.stopPropagation(); setOpen(ad); } : undefined} onPointerOver={ad ? () => { document.body.style.cursor = 'pointer'; } : undefined} onPointerOut={ad ? () => { document.body.style.cursor = ''; } : undefined}>
     {[-1.7, 1.7].map(o => <mesh key={o} position={[o, 1.8, 0]} castShadow><boxGeometry args={[.16, 3.6, .16]} /><meshStandardMaterial color="#2f343a" metalness={.3} roughness={.6} /></mesh>)}
     <mesh position={[0, 4.5, 0]} castShadow><boxGeometry args={[5.6, 2.7, .22]} /><meshStandardMaterial color="#14201b" roughness={.6} /></mesh>

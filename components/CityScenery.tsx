@@ -290,9 +290,19 @@ type LiveAd = { slot: number; title: string; sub: string; contact: string; color
 function FlyerFace({ url, onFail }: { url: string; onFail: (u: string) => void }) {
   const [tex, setTex] = useState<THREE.Texture | null>(null);
   useEffect(() => {
-    let dead = false, t: THREE.Texture | null = null;
-    new THREE.TextureLoader().load(url, x => { if (dead) { x.dispose(); return; } x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; x.needsUpdate = true; t = x; setTex(x); }, undefined, () => { if (!dead) { console.warn('[billboard] flyer failed to load:', url); onFail(url); } });
-    return () => { dead = true; t?.dispose(); };
+    let dead = false, t: THREE.Texture | null = null, obj = '';
+    const apply = (x: THREE.Texture) => { if (dead) { x.dispose(); return; } x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; x.needsUpdate = true; t = x; setTex(x); };
+    const fail = (why: string) => { if (!dead) { console.warn('[billboard] flyer failed to load:', url, why); onFail(url); } };
+    // First the normal way. If that fails, fetch the picture again fresh (skipping any stale cached copy) and load it from memory.
+    new THREE.TextureLoader().load(url, apply, undefined, async () => {
+      if (dead) return;
+      try {
+        const r = await fetch(url, { cache: 'reload' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+        obj = URL.createObjectURL(await r.blob());
+        new THREE.TextureLoader().load(obj, apply, undefined, () => fail('cannot decode'));
+      } catch (e) { fail(String((e as Error).message || e)); }
+    });
+    return () => { dead = true; t?.dispose(); if (obj) URL.revokeObjectURL(obj); };
   }, [url, onFail]);
   if (!tex) return null;
   const im = tex.image as { width: number; height: number }, asp = (im.width || 1) / (im.height || 1), FW = 5.2, FH = 2.3;

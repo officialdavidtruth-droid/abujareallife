@@ -15,7 +15,7 @@ const ip = (req: Request) => (req.headers.get('x-forwarded-for') || 'unknown').s
 const origin = (req: Request) => { const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '', proto = req.headers.get('x-forwarded-proto') || 'https'; return (process.env.APP_URL || (host ? `${proto}://${host}` : '')).replace(/\/$/, ''); };
 const view = (b: { id: string; slot: number; startDate: Date; days: number; title: string; sub: string; contact: string; website: string; color: string; priceNaira: number; status: string; paidAt: Date | null; refund: string; note: string; hasImage: boolean; createdAt: Date }) => ({
   id: b.id, slot: b.slot, slotName: slotOf(b.slot)?.name || 'Billboard', start: ymdOf(b.startDate), end: addDays(ymdOf(b.startDate), b.days - 1), days: b.days, title: b.title, sub: b.sub, contact: b.contact, website: b.website, color: b.color,
-  price: b.priceNaira, img: b.hasImage ? '/api/ads/image/' + b.id : '', status: b.status, paidAt: b.paidAt, refund: b.refund, note: b.note, createdAt: b.createdAt,
+  price: b.priceNaira, img: b.hasImage ? '/api/ads/image/' + b.id + '?v=2' : '', status: b.status, paidAt: b.paidAt, refund: b.refund, note: b.note, createdAt: b.createdAt,
   holdUntil: b.status === 'PENDING_PAYMENT' ? new Date(b.createdAt.getTime() + HOLD_MINUTES * 60_000) : null,
 });
 
@@ -32,7 +32,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ action: string 
       const today = lagosToday();
       const rows = await prisma.adBooking.findMany({ where: { status: 'APPROVED', startDate: { lte: toDateOnly(today), gte: toDateOnly(addDays(today, -31)) } }, orderBy: { startDate: 'desc' } });
       const seen = new Set<number>(), ads = [];
-      for (const r of rows) { if (addDays(ymdOf(r.startDate), r.days) <= today || seen.has(r.slot)) continue; seen.add(r.slot); ads.push({ slot: r.slot, title: r.title, sub: r.sub, contact: r.contact, color: r.color, img: r.hasImage ? '/api/ads/image/' + r.id : '' }); }
+      for (const r of rows) { if (addDays(ymdOf(r.startDate), r.days) <= today || seen.has(r.slot)) continue; seen.add(r.slot); ads.push({ slot: r.slot, title: r.title, sub: r.sub, contact: r.contact, color: r.color, img: r.hasImage ? '/api/ads/image/' + r.id + '?v=2' : '' }); }
       return NextResponse.json({ ads }, { headers: { 'cache-control': 'public, max-age=0, s-maxage=5' } });
     }
     const me = await currentAdvertiser();
@@ -94,7 +94,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ action: string
       if (typeof b.image === 'string' && b.image) {
         const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(b.image); if (!m) return err('The flyer must be a JPG, PNG or WebP picture.');
         flyer = Buffer.from(m[1], 'base64');
-        if (flyer.length < 1000 || flyer[0] !== 0xff || flyer[1] !== 0xd8 || flyer[2] !== 0xff) return err('That flyer file looks damaged. Try another picture.');
+        if (flyer.length < 1000 || flyer[0] !== 0xff || flyer[1] !== 0xd8 || flyer[2] !== 0xff || flyer[flyer.length - 2] !== 0xff || flyer[flyer.length - 1] !== 0xd9) return err('That flyer file looks damaged. Try another picture.');
         if (flyer.length > AD_IMG_MAX_BYTES) return err('The flyer is too big. Use a smaller picture.');
       }
       const t = checkAdText(b, !!flyer); if (!t.ok) return err(t.message);

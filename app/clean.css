@@ -471,3 +471,8 @@
 /* Menu (☰) grid: it has more buttons than a phone screen is tall, so it scrolls instead of running off the bottom */
 .dockGrid{max-height:calc(100vh - 140px)!important;max-height:calc(100dvh - 140px)!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-y!important;pointer-events:auto!important;scrollbar-width:thin}
 @media (max-height:500px){.dockGrid{max-height:calc(100dvh - 90px)!important}}
+/* Inside a building the INSIDE bar owns the top edge: park the profile card flush-left, underneath it, so they never overlap */
+body .sim.outside.inBiz .needs.rhud{
+  left:var(--sal,0px)!important;top:calc(120px + var(--sat,0px))!important;z-index:17!important;
+  border-left:0!important;border-radius:0 .8em .8em 0!important;max-width:calc(100vw - 110px - var(--sal,0px))!important;
+}

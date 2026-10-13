@@ -45,16 +45,17 @@ const ACTION: Record<string, string> = {
   sleep: 'Sleeping_Idle', lay: 'Laying_Sleeping', laym: 'Male_Laying_Pose', layf: 'Female_Laying_Pose', stop: 'Running_To_Stop', turn: 'Running_Right_Turn',
 };
 const ONCE = new Set(['Dying', 'Salute', 'Opening_Door_Inwards', 'Punching', 'Illegal_Elbow_Punch', 'Body_Block', 'Dismissing_Gesture', 'Situp_To_Idle', 'Running_To_Stop', 'Running_Right_Turn', 'Entering_Car', 'Exiting_Car', 'Honking_Horn', 'Waking', 'Laying_Sleeping', 'Male_Laying_Pose', 'Female_Laying_Pose', 'Female_Laying_Pose__1_']);
-const CLAMP = new Set(['Dying', 'Male_Laying_Pose', 'Female_Laying_Pose', 'Female_Laying_Pose__1_']);   // stay on the last frame
+const CLAMP = new Set(['Dying', 'Laying_Sleeping', 'Male_Laying_Pose', 'Female_Laying_Pose', 'Female_Laying_Pose__1_']);   // stay on the last frame
 
 function pick(state: HumanState, anim: string | undefined, speed: number, names: Set<string>): { clip: string; ts: number } {
+  // Sleeping always uses the on-your-back clip (head towards -z, hips at bed height), whatever action name is passed.
+  if (state === 'sleep') return { clip: names.has('Laying_Sleeping') ? 'Laying_Sleeping' : 'Sleeping_Idle', ts: 1 };
   if (anim) {
     const direct = [...names].find(n => n.toLowerCase() === anim.toLowerCase());
     const c = direct || ACTION[anim];
     if (c && names.has(c)) return { clip: c, ts: 1 };
   }
   if (state === 'walk') return speed >= 1.8 ? { clip: 'Running', ts: Math.min(1.3, Math.max(.8, speed / 2.4)) } : { clip: names.has('Walking') ? 'Walking' : 'Strut_Walking', ts: Math.min(1.4, Math.max(.8, speed / 1.1)) };
-  if (state === 'sleep') return { clip: 'Sleeping_Idle', ts: 1 };
   return { clip: 'Idle', ts: 1 };       // idle, and sit (no sit clip yet)
 }
 
@@ -146,7 +147,11 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
   });
 
   const s = (TARGET_HEIGHT / (female ? MODEL_HEIGHT : MODEL_HEIGHT_M)) * (look.height || 1);
-  return <group scale={s}><primitive object={model} /></group>;
+  // Callers (Sim.tsx Avatar/Member, HomePresence Guest) lay a sleeper flat by rotating the parent -90deg about X, which suits the procedural rig.
+  // The GLB 'Laying_Sleeping' clip already lies on its back, so cancel that rotation here and move the body so the back rests on the mattress under the head end.
+  const lay = useRef<THREE.Group>(null!), h = look.height || 1;
+  useFrame(() => { const sl = getState() === 'sleep', g = lay.current; if (!g) return; g.rotation.x = sl ? Math.PI / 2 : 0; g.position.set(0, sl ? -.83 * h : 0, sl ? -.76 * h : 0); });
+  return <group ref={lay}><group scale={s}><primitive object={model} /></group></group>;
 }
 
 useGLTF.preload(CHAR_URL);

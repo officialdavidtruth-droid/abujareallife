@@ -129,30 +129,60 @@ export function CarInterior({ seed, shirt, suv, driverRef, look, pax, steer }: {
 
 /* ───────── real car models: public/models/cars/<name>.glb (optimised from the Porsche 911 and Alfa Romeo files). No file = the built-in car.
    The model's long axis is turned to face +x like every vehicle here, scaled to 4.3 long and put on the ground. Wheels in the model are fixed (no roll/steer). ───────── */
-const CAR_GLB: Record<string, string> = { 'porsche-911-carrera-4s-2024': 'porsche', 'alfa-romeo-stradale-1967': 'alfa' };
+type GlbSpec = { file: string; real?: boolean };   // real: the file is already car-sized, facing +x, with separate 'wheel' nodes that roll and steer
+const CAR_GLB: Record<string, GlbSpec> = {
+  'porsche-911-carrera-4s-2024': { file: 'porsche' }, 'alfa-romeo-stradale-1967': { file: 'alfa' },
+  'toyota-camry-2024': { file: 'sedan', real: true }, 'toyota-corolla-2024': { file: 'compact', real: true }, 'lexus-es-2024': { file: 'wagon', real: true },
+  'mercedes-c200-2024': { file: 'coupe', real: true }, 'bmw-530i-2024': { file: 'hatchback', real: true }, 'honda-accord-2024': { file: 'sedan', real: true },
+  'land-rover-discovery-2024': { file: 'offroad', real: true }, 'lexus-lx-2024': { file: 'suv', real: true },
+};
 const GLB_CACHE = new Map<string, Promise<THREE.Object3D | null>>();
 const loadCarGlb = (name: string) => {
   let p = GLB_CACHE.get(name);
   if (!p) { const url = `/models/cars/${name}.glb`; p = fetch(url, { method: 'HEAD' }).then(r => r.ok ? new GLTFLoader().loadAsync(url).then(g => g.scene) : null).catch(() => null); GLB_CACHE.set(name, p); }
   return p;
 };
-function useCarGlb(id: string): THREE.Object3D | null {
-  const [m, setM] = useState<THREE.Object3D | null>(null);
-  useEffect(() => { const n = CAR_GLB[id]; if (!n) { setM(null); return; } let dead = false; loadCarGlb(n).then(g => { if (!dead) setM(g); }); return () => { dead = true; }; }, [id]);
+function useCarGlb(id: string): { src: THREE.Object3D; real: boolean } | null {
+  const [m, setM] = useState<{ src: THREE.Object3D; real: boolean } | null>(null);
+  useEffect(() => { const n = CAR_GLB[id]; if (!n) { setM(null); return; } let dead = false; loadCarGlb(n.file).then(g => { if (!dead) setM(g ? { src: g, real: !!n.real } : null); }); return () => { dead = true; }; }, [id]);
   return m;
 }
-function FittedCar({ src }: { src: THREE.Object3D }) {
-  const obj = useMemo(() => {
+function FittedCar({ src, real, steer }: { src: THREE.Object3D; real: boolean; steer?: () => number }) {
+  const root = useRef<THREE.Group>(null);
+  const { obj, wheels } = useMemo(() => {
     const c = src.clone(true), b0 = new THREE.Box3().setFromObject(c), s0 = b0.getSize(new THREE.Vector3());
     const turn = new THREE.Group(); turn.add(c); if (s0.z > s0.x) turn.rotation.y = Math.PI / 2;   // front of the model is +z, the game's front is +x
     turn.updateMatrixWorld(true);
-    const b = new THREE.Box3().setFromObject(turn), sz = b.getSize(new THREE.Vector3()), ct = b.getCenter(new THREE.Vector3()), k = 4.3 / (sz.x || 1);
-    const g = new THREE.Group(); g.add(turn); turn.position.set(-ct.x, -b.min.y, -ct.z); g.scale.setScalar(k);
+    const b = new THREE.Box3().setFromObject(turn), sz = b.getSize(new THREE.Vector3()), ct = b.getCenter(new THREE.Vector3()), k = real ? 1 : 4.3 / (sz.x || 1);
+    const g = new THREE.Group(); g.add(turn); turn.position.set(-ct.x, real ? 0 : -b.min.y, -ct.z); g.scale.setScalar(k);
+    const wheels: { steer: THREE.Group; spin: THREE.Object3D; front: boolean; r: number }[] = [];
+    if (real) {
+      const found: THREE.Object3D[] = []; c.traverse(o => { if (/^wheel/.test(o.name) && o.parent) found.push(o); });
+      for (const w of found) {
+        const wb = new THREE.Box3().setFromObject(w), r = (wb.max.y - wb.min.y) / 2, par = w.parent!, st = new THREE.Group();
+        st.position.copy(w.position); w.position.set(0, 0, 0); par.add(st); st.add(w);
+        wheels.push({ steer: st, spin: w, front: st.position.x > 0, r: r || .33 });
+      }
+    }
     g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = true; const mt = m.material as THREE.MeshStandardMaterial; if (mt && 'envMapIntensity' in mt) mt.envMapIntensity = 1.4; } });
-    return g;
-  }, [src]);
-  return <primitive object={obj} />;
+    return { obj: g, wheels };
+  }, [src, real]);
+  const S = useRef({ ok: false, x: 0, z: 0, h: 0, a: 0, v: 0, w: 0, s: 0 });
+  useFrame((_, dt) => {   // same idea as WheelSet: speed and turn rate come from how the car actually moves
+    const g = root.current; if (!g || !wheels.length || dt <= 0) return;
+    g.getWorldPosition(_wp); g.getWorldQuaternion(_wq); _wf.set(1, 0, 0).applyQuaternion(_wq);
+    const s = S.current, h = Math.atan2(_wf.z, _wf.x); let v = 0, w = 0;
+    if (s.ok && dt < .25) { const dx = _wp.x - s.x, dz = _wp.z - s.z; if (Math.abs(dx) + Math.abs(dz) < 8) { v = (dx * _wf.x + dz * _wf.z) / dt; const dh = Math.atan2(Math.sin(h - s.h), Math.cos(h - s.h)); w = -dh / dt; } }
+    s.ok = true; s.x = _wp.x; s.z = _wp.z; s.h = h;
+    const k = Math.min(1, dt * 15); s.v += (v - s.v) * k; s.w += (w - s.w) * k;
+    const tgt = steer ? steer() : Math.abs(s.v) > .8 ? THREE.MathUtils.clamp(Math.atan(WHEELBASE * s.w / s.v), -.55, .55) : 0;
+    s.s += (tgt - s.s) * Math.min(1, dt * 12);
+    s.a += s.v * dt;   // metres rolled
+    for (const wh of wheels) { wh.spin.rotation.z = -s.a / wh.r; if (wh.front) wh.steer.rotation.y = s.s; }
+  });
+  return <group ref={root}><primitive object={obj} /></group>;
 }
+
 export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax, steer }: { steer?: () => number; pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const glb = useCarGlb(spec.id);
@@ -161,8 +191,8 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
   const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims === 'sport' ? '#d8dde3' : style?.rims === 'black' ? '#15171a' : '#b4bac1';
   if (glb) return <group>
-    <FittedCar src={glb} />
-    {driver && <group position={[0, -.1, 0]} scale={[1, .82, 1]}><CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={false} driverRef={driverRef} look={look} pax={pax} steer={steer} /></group>}
+    <FittedCar src={glb.src} real={glb.real} steer={steer} />
+    {driver && <group position={[0, suv ? 0 : -.1, 0]} scale={[1, suv ? 1 : .85, 1]}><CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={false} driverRef={driverRef} look={look} pax={pax} steer={steer} /></group>}
   </group>;
   return <group scale={sc}>
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />

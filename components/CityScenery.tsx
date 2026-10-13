@@ -282,7 +282,7 @@ export const BILLBOARDS = ([
   ['z', 0, 33, -1, 'DRIVE & EXPLORE', 'Taxis · Bikes · Cars'],
 ] as const).map(([axis, road, along, side, title, sub], i) => ({ ...billboardSpot(axis, road, along, side), ax: axis === 'x' ? 1 : 0, az: axis === 'x' ? 0 : 1, title, sub, i }));
 
-/* Paid ads from /adbooking: fetched once and then every 5 minutes. A board with no live ad keeps its default message. */
+/* Paid ads from /adbooking: checked every 10 seconds. A board with no live ad keeps its default message. */
 type LiveAd = { slot: number; title: string; sub: string; contact: string; color: string; img?: string };
 
 /* An advertiser's uploaded flyer drawn on the board face. The picture is already cut to the face's shape (5.2 x 2.3) by the booking page,
@@ -303,9 +303,14 @@ function FlyerFace({ url }: { url: string }) {
 export function Billboards() {
   const [ads, setAds] = useState<Record<number, LiveAd>>({});
   useEffect(() => {
-    let dead = false;
-    const load = () => fetch('/api/ads/live').then(r => (r.ok ? r.json() : null)).then(d => { if (!dead && d?.ads) setAds(Object.fromEntries((d.ads as LiveAd[]).map(a => [a.slot, a]))); }).catch(() => {});
-    load(); const id = setInterval(load, 5 * 60_000); return () => { dead = true; clearInterval(id); };
+    let dead = false, last = '';
+    // Asks for the live ads every 10 s (and the moment the tab is shown again), so an ad you approve appears in the open game within seconds, with no reload.
+    const load = () => { if (document.hidden) return; fetch('/api/ads/live', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(d => {
+      if (dead || !d?.ads) return; const j = JSON.stringify(d.ads); if (j === last) return; last = j;
+      setAds(Object.fromEntries((d.ads as LiveAd[]).map(a => [a.slot, a])));
+    }).catch(() => {}); };
+    load(); const id = setInterval(load, 10_000); document.addEventListener('visibilitychange', load);
+    return () => { dead = true; clearInterval(id); document.removeEventListener('visibilitychange', load); };
   }, []);
   return <>{BILLBOARDS.map(b => { const ad = ads[b.i], title = ad?.title ?? b.title, sub = ad?.sub ?? b.sub, col = ad?.color ?? BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]; return <group key={b.i} position={[b.x, 0, b.z]} rotation-y={b.ry}>
     {[-1.7, 1.7].map(o => <mesh key={o} position={[o, 1.8, 0]} castShadow><boxGeometry args={[.16, 3.6, .16]} /><meshStandardMaterial color="#2f343a" metalness={.3} roughness={.6} /></mesh>)}

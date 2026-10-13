@@ -91,7 +91,11 @@ body .sim.outside .cwMapBtn .cwMap{position:absolute!important;inset:0!important
 body .sim.outside .needs.rhud{
   position:absolute!important;left:calc(var(--edge) + var(--gr) + 12px)!important;top:calc(10px + var(--sat,0px))!important;z-index:17;
 }
-body .sim:not(.outside) .needs.rhud{left:12px!important;top:62px!important;position:absolute!important;z-index:17}
+/* indoors: flush against the left screen edge and below the INSIDE bar (which is 48 px+ tall and can wrap), so the two never overlap */
+body .sim:not(.outside) .needs.rhud{
+  position:absolute!important;left:var(--sal,0px)!important;top:calc(78px + var(--sat,0px))!important;z-index:17;
+  border-left:0!important;border-radius:0 .8em .8em 0!important;max-width:calc(100vw - 110px - var(--sal,0px))!important;
+}
 
 /* mission objective sits under the radar / card */
 body .sim.outside .mcTracker,body .mcTracker{

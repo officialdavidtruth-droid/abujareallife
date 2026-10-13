@@ -4,6 +4,7 @@ import { BodyDom } from './CityUi';
 import { RoundedBox, Text } from '@react-three/drei';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { CityBuilding } from '../lib/cityTypes';
 import { BuildingDress, ROAD_MAT, awningMat } from './CityLook';
 import { GRID, WS, halfW, billboardSpot } from '../lib/roadRoute';
@@ -128,6 +129,38 @@ const M_SHOPGLASS = new THREE.MeshStandardMaterial({ color: '#1a2a35', metalness
 const M_BEACON = new THREE.MeshStandardMaterial({ color: '#ff2a2a', emissive: '#ff2a2a', emissiveIntensity: 2 });
 const M_NEON_C = new THREE.MeshStandardMaterial({ color: '#c026d3', emissive: '#c026d3', emissiveIntensity: 2.2 }), M_NEON_Y = new THREE.MeshStandardMaterial({ color: '#ffb300', emissive: '#ffb300', emissiveIntensity: 2.2 });
 
+/* ───────────── optional real 3D models ─────────────
+   Drop a .glb into public/models/city/ named after the business type (bank.glb, hotel.glb, hospital.glb, tech-company.glb ...)
+   or default.glb for every building without its own file. It is scaled to the building footprint and height. No file = the built-in look. */
+const MODEL_CACHE = new Map<string, Promise<THREE.Object3D | null>>();
+function loadCityModel(slug: string) {
+  let p = MODEL_CACHE.get(slug);
+  if (!p) {
+    const url = `/models/city/${slug}.glb`;
+    p = fetch(url, { method: 'HEAD' }).then(r => r.ok && /model|octet|gltf/i.test(r.headers.get('content-type') || 'model') ? new GLTFLoader().loadAsync(url).then(g => g.scene) : null).catch(() => null);
+    MODEL_CACHE.set(slug, p);
+  }
+  return p;
+}
+function useCityModel(type: string): THREE.Object3D | null {
+  const [m, setM] = useState<THREE.Object3D | null>(null);
+  useEffect(() => {
+    let dead = false; const slug = type.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    loadCityModel(slug).then(a => a ?? loadCityModel('default')).then(g => { if (!dead) setM(g); });
+    return () => { dead = true; };
+  }, [type]);
+  return m;
+}
+function FittedModel({ src, w, d, h }: { src: THREE.Object3D; w: number; d: number; h: number }) {
+  const obj = useMemo(() => {
+    const c = src.clone(true), box = new THREE.Box3().setFromObject(c), sz = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+    c.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+    const g = new THREE.Group(); c.position.set(-ctr.x, -box.min.y, -ctr.z); g.add(c);
+    g.scale.set(w / (sz.x || 1), h / (sz.y || 1), d / (sz.z || 1)); return g;
+  }, [src, w, d, h]);
+  return <primitive object={obj} />;
+}
+
 /* ───────────── buildings (towers get a setback upper tier) ───────────── */
 export function Building({ b }: { b: CityBuilding }) {
   const type = b.business?.type ?? 'Office';
@@ -146,6 +179,8 @@ export function Building({ b }: { b: CityBuilding }) {
   const detail = useRef<THREE.Group>(null!);
   useEffect(() => registerDetail(detail.current, b.x, b.z), [b.x, b.z]);
   const rtank = rw * (r - .5) * .6;
+  const model = useCityModel(type);
+  if (model) return <group position={[b.x, 0, b.z]}><FittedModel src={model} w={b.w} d={b.d} h={bodyTop} /><mesh geometry={GBX} material={smat(P.sign, .6)} position={[0, 2.95, fz + .07]} scale={[b.w * .8, .55, .1]} /></group>;
   return (
     <group position={[b.x, 0, b.z]}>
       {/* always drawn: the silhouette (body, plinth, cornice, name board) */}

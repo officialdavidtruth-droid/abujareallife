@@ -222,8 +222,36 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
   </group>;
 }
 
+/* real city bus: public/models/buses/city-bus.glb (no file = the box-built bus). Turned to face +x, ~7 m long, on the ground. Its wheels are fixed. */
+let BUS_GLB: Promise<THREE.Object3D | null> | null = null;
+const loadBus = () => BUS_GLB ||= fetch('/models/buses/city-bus.glb', { method: 'HEAD' }).then(r => r.ok ? new GLTFLoader().loadAsync('/models/buses/city-bus.glb').then(g => g.scene) : null).catch(() => null);
+function useBusGlb(): THREE.Object3D | null {
+  const [m, setM] = useState<THREE.Object3D | null>(null);
+  useEffect(() => { let dead = false; loadBus().then(g => { if (!dead) setM(g); }); return () => { dead = true; }; }, []);
+  return m;
+}
+function FittedBus({ src }: { src: THREE.Object3D }) {
+  const obj = useMemo(() => {
+    const c = src.clone(true), turn = new THREE.Group(); turn.add(c); turn.rotation.y = Math.PI;   // the model's front is -x
+    turn.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(turn), ct = b.getCenter(new THREE.Vector3()), g = new THREE.Group();
+    g.add(turn); turn.position.set(-ct.x, -b.min.y, -ct.z); g.scale.setScalar(.68);
+    g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true; });
+    return g;
+  }, [src]);
+  return <primitive object={obj} />;
+}
 export function BusBody({ doorRef, driverRef, glassRef, look }: BodyRefs) { // faces +x like every vehicle: a yellow city bus with a window band, pillars, doors, lights and a destination sign
   const Y = '#e8a923', D = '#14202a';
+  const glb = useBusGlb();
+  if (glb) return <group>
+    <FittedBus src={glb} />
+    <group position={[2.4, 0, -.7]}><group ref={driverRef}>
+      <mesh position={[-.2, 1.5, 0]}><boxGeometry args={[.26, .42, .42]} /><meshStandardMaterial color={look?.outfit || '#5b6b7a'} roughness={.8} /></mesh>
+      <mesh position={[-.17, 1.85, 0]}><sphereGeometry args={[.13, 14, 12]} /><meshStandardMaterial color={look?.skin || '#8d5524'} roughness={.6} /></mesh>
+    </group></group>
+    <group ref={doorRef} position={[2.95, 0, -1.16]} />
+  </group>;
   return <group>
     <mesh position={[0, .95, 0]} castShadow><boxGeometry args={[6, 1.1, 2.2]} /><meshStandardMaterial color={Y} roughness={.5} /></mesh>
     <mesh position={[0, .52, 0]}><boxGeometry args={[5.9, .26, 2.12]} /><meshStandardMaterial color="#1c1c1f" /></mesh>

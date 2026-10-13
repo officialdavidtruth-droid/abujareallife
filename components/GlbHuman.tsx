@@ -15,6 +15,7 @@ const TARGET_HEIGHT = 1.75;      // the game's human is ~1.75 m; Kara is ~1.66 m
 const MODEL_HEIGHT = 1.66;        // Kara
 const MODEL_HEIGHT_M = 1.78;      // Man In Suit
 const FADE = 0.2;
+const DROP = new Map<string, number>();   // per-model float correction (metres, model units)
 
 /** game action name -> Mixamo clip. A clip name passed directly as `anim` (e.g. 'Punching') also works. */
 const ACTION: Record<string, string> = {
@@ -54,14 +55,26 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
     const idle = anims.animations.find(a => a.name === 'Idle');
     const rest = idle?.tracks.find(t => t.name === 'mixamorigHips.position')?.values[1] || 1;
     const k = hips ? hips.position.y / rest : 1;
+    // Man In Suit's legs are shorter than the Mixamo skeleton the clips were made on, so the clips lift him off the floor.
+    // Measure how far his lowest vertex floats in the Idle pose once (cached) and sink every clip's hips by that much.
+    let drop = DROP.get(CHAR_URL_M) ?? 0;
+    if (!female && hips && idle && !DROP.has(CHAR_URL_M)) {
+      const ic = idle.clone();
+      for (const t of ic.tracks) if (t.name === 'mixamorigHips.position') for (let i = 0; i < t.values.length; i++) t.values[i] *= k;
+      const tmp = new THREE.AnimationMixer(model); tmp.clipAction(ic).play(); tmp.update(0);
+      model.updateMatrixWorld(true);
+      drop = Math.max(0, new THREE.Box3().setFromObject(model, true).min.y);
+      tmp.stopAllAction(); tmp.uncacheRoot(model);
+      DROP.set(CHAR_URL_M, drop);
+    }
     const map = new Map<string, THREE.AnimationClip>();
     for (const a of anims.animations) {
       const c = a.clone();
-      for (const t of c.tracks) if (t.name === 'mixamorigHips.position') { const v = t.values; for (let i = 0; i < v.length; i++) v[i] *= k; }
+      for (const t of c.tracks) if (t.name === 'mixamorigHips.position') { const v = t.values; for (let i = 0; i < v.length; i++) v[i] *= k; if (!female && drop) for (let i = 1; i < v.length; i += 3) v[i] -= drop; }
       map.set(c.name, c);
     }
     return map;
-  }, [model, anims.animations]);
+  }, [model, anims.animations, female]);
 
   const names = useMemo(() => new Set(clips.keys()), [clips]);
   const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);

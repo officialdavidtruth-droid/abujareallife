@@ -1,5 +1,5 @@
 'use client';
-// Skinned GLB human (Kara) driven by Mixamo animation clips. Drop-in for <Human>: same props.
+// Skinned GLB humans (Kara = female, Man In Suit = male) driven by shared Mixamo animation clips. Drop-in for <Human>: same props.
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useMemo, useRef } from 'react';
@@ -8,10 +8,12 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import type { HumanState } from '../lib/humanRig';
 import type { Look } from '../lib/characterModels';
 
-export const CHAR_URL = '/models/characters/kara.glb';
+export const CHAR_URL = '/models/characters/kara.glb';          // female
+export const CHAR_URL_M = '/models/characters/man.glb';         // male
 export const ANIM_URL = '/models/characters/animations.glb';
 const TARGET_HEIGHT = 1.75;      // the game's human is ~1.75 m; Kara is ~1.66 m
-const MODEL_HEIGHT = 1.66;
+const MODEL_HEIGHT = 1.66;        // Kara
+const MODEL_HEIGHT_M = 1.78;      // Man In Suit
 const FADE = 0.2;
 
 /** game action name -> Mixamo clip. A clip name passed directly as `anim` (e.g. 'Punching') also works. */
@@ -38,7 +40,8 @@ function pick(state: HumanState, anim: string | undefined, speed: number, names:
 }
 
 export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: Look; getState: () => HumanState; getAnim?: () => string | undefined; getSpeed?: () => number }) {
-  const char = useGLTF(CHAR_URL), anims = useGLTF(ANIM_URL);
+  const female = look.gender === 'f';
+  const char = useGLTF(female ? CHAR_URL : CHAR_URL_M), anims = useGLTF(ANIM_URL);
   const model = useMemo(() => {
     const m = cloneSkinned(char.scene) as THREE.Object3D;
     m.traverse(o => { const s = o as THREE.SkinnedMesh; if (s.isMesh) { s.castShadow = true; s.frustumCulled = false; } });
@@ -82,9 +85,10 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
     const a = cur.current?.action; if (a && !a.isRunning() && !CLAMP.has(cur.current!.name) && ONCE.has(cur.current!.name)) cur.current = null;
   });
 
-  const s = (TARGET_HEIGHT / MODEL_HEIGHT) * (look.height || 1);
+  const s = (TARGET_HEIGHT / (female ? MODEL_HEIGHT : MODEL_HEIGHT_M)) * (look.height || 1);
   return <group scale={s}><primitive object={model} /></group>;
 }
 
 useGLTF.preload(CHAR_URL);
+useGLTF.preload(CHAR_URL_M);
 useGLTF.preload(ANIM_URL);

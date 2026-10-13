@@ -1,12 +1,13 @@
 'use client';
 import { useFrame } from '@react-three/fiber';
+import { BodyDom } from './CityUi';
 import { RoundedBox, Text } from '@react-three/drei';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { CityBuilding } from '../lib/cityTypes';
 import { BuildingDress, ROAD_MAT, awningMat } from './CityLook';
 import { GRID, WS, halfW, billboardSpot } from '../lib/roadRoute';
-import { BUILDS, Box2, FH, INTER, Kind, NIGHT, Prof, hs, registerDetail } from './cityShared';
+import { BUILDS, Box2, FH, GAME, INTER, Kind, NIGHT, Prof, hs, registerDetail } from './cityShared';
 
 
 /* ───────────── building looks per business type ───────────── */
@@ -283,7 +284,7 @@ export const BILLBOARDS = ([
 ] as const).map(([axis, road, along, side, title, sub], i) => ({ ...billboardSpot(axis, road, along, side), ax: axis === 'x' ? 1 : 0, az: axis === 'x' ? 0 : 1, title, sub, i }));
 
 /* Paid ads from /adbooking: checked every 10 seconds. A board with no live ad keeps its default message. */
-type LiveAd = { slot: number; title: string; sub: string; contact: string; color: string; img?: string };
+type LiveAd = { slot: number; title: string; sub: string; contact: string; website?: string; color: string; img?: string };
 
 /* An advertiser's uploaded flyer drawn on the board face. The picture is already cut to the face's shape (5.2 x 2.3) by the booking page,
    and it is still fitted by its real width / height here, so it can never come out stretched. It uses an unlit material so the colours stay true. */
@@ -310,8 +311,42 @@ function FlyerFace({ url, onFail }: { url: string; onFail: (u: string) => void }
   return <mesh position={[0, 4.5, -.17]} rotation-y={Math.PI} renderOrder={2}><planeGeometry args={[w, h]} /><meshBasicMaterial map={tex} toneMapped={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} /></mesh>;
 }
 
+/* Full-screen look at an ad: the flyer at full size, plus call / WhatsApp / website buttons. Plain DOM with inline styles (the game's CSS does not reach it). */
+const digits = (s: string) => s.replace(/\D/g, '');
+const intl = (s: string) => { const d = digits(s); return d.startsWith('0') && d.length === 11 ? '234' + d.slice(1) : d; };   // 0704... -> 234704...
+function AdViewer({ ad, onClose }: { ad: LiveAd; onClose: () => void }) {
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  const num = intl(ad.contact || ''), okNum = num.length >= 10 && num.length <= 15, host = ad.website ? ad.website.replace(/^https?:\/\//, '').replace(/\/$/, '') : '';
+  const btn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, padding: '0 18px', borderRadius: 12, background: '#e0a24a', color: '#1a1205', fontWeight: 800, fontSize: 15, textDecoration: 'none', border: 0, cursor: 'pointer' };
+  return <div role="dialog" aria-modal="true" aria-label={'Ad: ' + ad.title} onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(3,8,6,.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))', overflowY: 'auto', font: '400 16px/1.4 system-ui,sans-serif', color: '#f2f6f3' }}>
+    <div onClick={e => e.stopPropagation()} style={{ width: 'min(920px,100%)', background: '#0e1b16', border: '1px solid #26392f', borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
+      <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', right: 8, top: 8, width: 40, height: 40, borderRadius: 99, border: '1px solid #26392f', background: '#0a1410', color: '#fff', fontSize: 22, cursor: 'pointer', zIndex: 1 }}>×</button>
+      {ad.img
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={ad.img} alt={'Flyer: ' + ad.title} style={{ width: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 10, background: ad.color, display: 'block' }} />
+        : <div style={{ background: ad.color, borderRadius: 10, padding: '36px 16px', textAlign: 'center' }}><div style={{ fontSize: 'clamp(26px,6vw,44px)', fontWeight: 800 }}>{ad.title}</div>{ad.sub ? <div style={{ fontSize: 'clamp(15px,3.4vw,22px)', marginTop: 8 }}>{ad.sub}</div> : null}</div>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', paddingRight: 4 }}>
+        <b style={{ fontSize: 18, flex: '1 1 160px' }}>{ad.title}</b>
+        {okNum && <a style={btn} href={'tel:+' + num}>📞 Call</a>}
+        {okNum && <a style={{ ...btn, background: '#25d366', color: '#052e16' }} href={'https://wa.me/' + num} target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>}
+        {host && <a style={{ ...btn, background: 'transparent', color: '#f2f6f3', border: '1px solid #3b5a49' }} href={ad.website} target="_blank" rel="noopener noreferrer nofollow">🌐 {host.slice(0, 28)}</a>}
+      </div>
+      {ad.contact ? <div style={{ color: '#93a89d', fontSize: 13 }}>{ad.contact} · Advertisement</div> : <div style={{ color: '#93a89d', fontSize: 13 }}>Advertisement</div>}
+    </div>
+  </div>;
+}
+
 export function Billboards() {
-  const [ads, setAds] = useState<Record<number, LiveAd>>({}), [bad, setBad] = useState<string[]>([]);
+  const [ads, setAds] = useState<Record<number, LiveAd>>({}), [bad, setBad] = useState<string[]>([]), [open, setOpen] = useState<LiveAd | null>(null), [near, setNear] = useState<LiveAd | null>(null);
+  const adsRef = useRef(ads); adsRef.current = ads;
+  const lastNear = useRef(0), close = useCallback(() => setOpen(null), []);
+  // A "View ad" button appears when you walk up to a board that has an ad (taps on the 3D scene do not reach it on phones, so this works everywhere).
+  useFrame(st => {
+    const t = st.clock.elapsedTime; if (t - lastNear.current < .3) return; lastNear.current = t;
+    const p = GAME.player; let best: LiveAd | null = null, bd = 16;
+    for (const b of BILLBOARDS) { const a = adsRef.current[b.i]; if (!a) continue; const d = Math.hypot(p.x - b.x, p.z - b.z); if (d < bd) { bd = d; best = a; } }
+    setNear(prev => (prev === best || (prev && best && prev.slot === best.slot && prev.img === best.img && prev.title === best.title) ? prev : best));
+  });
   const onFail = useCallback((u: string) => setBad(b => (b.includes(u) ? b : [...b, u])), []);   // a flyer that cannot load falls back to the ad's text, so the board is never left blank
   useEffect(() => {
     let dead = false, last = '';
@@ -323,7 +358,9 @@ export function Billboards() {
     load(); const id = setInterval(load, 10_000); document.addEventListener('visibilitychange', load);
     return () => { dead = true; clearInterval(id); document.removeEventListener('visibilitychange', load); };
   }, []);
-  return <>{BILLBOARDS.map(b => { const ad = ads[b.i], title = ad?.title ?? b.title, sub = ad?.sub ?? b.sub, col = ad?.color ?? BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]; return <group key={b.i} position={[b.x, 0, b.z]} rotation-y={b.ry}>
+  return <>
+    <BodyDom>{open ? <AdViewer ad={open} onClose={close} /> : near ? <button onClick={() => setOpen(near)} style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(max(12px,env(safe-area-inset-bottom)) + 150px)', zIndex: 900, minHeight: 46, padding: '0 20px', borderRadius: 99, border: '2px solid #e0a24a', background: 'rgba(14,27,22,.92)', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', font: 'inherit' }}>📢 View ad: {near.title.slice(0, 24)}</button> : null}</BodyDom>
+    {BILLBOARDS.map(b => { const ad = ads[b.i], title = ad?.title ?? b.title, sub = ad?.sub ?? b.sub, col = ad?.color ?? BILLBOARD_COLORS[b.i % BILLBOARD_COLORS.length]; return <group key={b.i} position={[b.x, 0, b.z]} rotation-y={b.ry} onClick={ad ? (e: { stopPropagation: () => void }) => { e.stopPropagation(); setOpen(ad); } : undefined} onPointerOver={ad ? () => { document.body.style.cursor = 'pointer'; } : undefined} onPointerOut={ad ? () => { document.body.style.cursor = ''; } : undefined}>
     {[-1.7, 1.7].map(o => <mesh key={o} position={[o, 1.8, 0]} castShadow><boxGeometry args={[.16, 3.6, .16]} /><meshStandardMaterial color="#2f343a" metalness={.3} roughness={.6} /></mesh>)}
     <mesh position={[0, 4.5, 0]} castShadow><boxGeometry args={[5.6, 2.7, .22]} /><meshStandardMaterial color="#14201b" roughness={.6} /></mesh>
     <mesh position={[0, 4.5, -.12]}><boxGeometry args={[5.2, 2.3, .04]} /><meshStandardMaterial color={col} emissive={col} emissiveIntensity={.45} roughness={.5} /></mesh>

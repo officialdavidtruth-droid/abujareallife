@@ -16,6 +16,7 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 - Advertisers can upload their own landscape flyer; it is cut to the board's shape in the browser (fit or fill) and drawn on the 3D billboard unlit and unstretched. (`app/adbooking/page.tsx`, `app/adbooking/AdBoard.tsx`, `components/CityScenery.tsx`, `app/api/ads/image/[id]/route.ts`)
 - New admin portal at `/adminad`: review queue with flyer preview, approve / reject (+refund), take down live ads, and a Prices tab. (`app/adminad/*`)
 - Admin sets each billboard's price per day, from 0 (free) upward; free bookings skip Paystack. (`lib/adPrices.ts`, `lib/adSlots.ts`, `app/api/ads/[action]/route.ts`)
+- You can tilt the camera up about 17 degrees to read billboards (`LOOK_UP` in `components/CityWorld.tsx`). Billboards with an ad are clickable, and a "View ad" button appears when you walk within 16 m of one; it opens the flyer full size with Call / WhatsApp / website buttons. (`components/CityScenery.tsx`)
 - 🛠 Run `prisma/migrations/0031_ad_images_prices/migration.sql` (also appended to `prisma/fix-database.sql`), then `npm run db:generate`. Details in `ADBOOKING.md`.
 
 ---

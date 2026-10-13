@@ -44,6 +44,9 @@ import { PlaneTag, planeBroadcast, stepPlaneNet } from './planeNet';
 import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane, togglePlaneView } from './cityPlane';
 import { hint } from '../lib/touch';
 import { vehicleById, vehicleByName } from '../lib/vehicles';
+/* How far the camera may swing round to look UP (polar angle; PI/2 = level with the head). 1.9 lets you tilt up about 17 degrees to read billboards. */
+const LOOK_UP = 1.9;
+
 export { buildingExitPoint, TPOS, PEDPOS, GAME } from './cityShared';
 export { JT, JACK, canDispatchRide, dispatchRide } from './CityTraffic';
 export { POLICE_CARS } from './CityPolice';
@@ -115,7 +118,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     if (c.look.x || c.look.y) {
       const lx = THREE.MathUtils.clamp(c.look.x, -80, 80), ly = THREE.MathUtils.clamp(c.look.y, -80, 80);
       oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - lx * 0.006);
-      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + ly * 0.004, .35, 1.45));
+      oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + ly * 0.004, .35, LOOK_UP));
       c.look = { x: c.look.x - lx, y: c.look.y - ly };
     }
     let fx = t.x - cam.position.x, fz = t.z - cam.position.z; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
@@ -203,7 +206,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     if (gp) {
       const dz = (v: number) => (Math.abs(v) > .15 ? v : 0), cx = dz(gp.axes[2] || 0), cy = dz(gp.axes[3] || 0);
       ix += dz(gp.axes[0] || 0); iy -= dz(gp.axes[1] || 0);
-      if (cx || cy) { oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - cx * dt * 1.8); oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + cy * dt * 1.15, .34, Math.PI / 2.05)); }
+      if (cx || cy) { oc.setAzimuthalAngle?.(oc.getAzimuthalAngle() - cx * dt * 1.8); oc.setPolarAngle?.(THREE.MathUtils.clamp(oc.getPolarAngle() + cy * dt * 1.15, .34, LOOK_UP)); }
       if (gp.buttons[0]?.pressed) wantJump = true;
       if (gp.buttons[7]?.pressed || gp.buttons[10]?.pressed || gp.buttons[1]?.pressed) wantRun = true;
     }
@@ -436,6 +439,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       camK = want < camK ? want : camK + (want - camK) * (1 - Math.exp(-dt * 3));
       if (camK < .999) cam.position.set(px + vx * camK, py + vy * camK, pz + vz * camK);
     }
+    if (cam.position.y < .25) cam.position.y = .25;   // looking up swings the camera below head height: never let it dip into the ground
     sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
 
     { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; M.rd = 0; M.pa = ''; M.ps = 0; }
@@ -504,7 +508,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <StreetNpcScene />
       <CityCompanion />
       <RemotePlayers roster={roster} ver={ver} bub={bub} onPick={onPick} />
-      <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} touches={{ ONE: -1 as any, TWO: -1 as any }} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={1.45} target={[START.x, 1.62, START.z + 6]} />
+      <OrbitControls ref={controls} makeDefault enableRotate={true} enableZoom={false} enablePan={false} enableDamping={false} touches={{ ONE: -1 as any, TWO: -1 as any }} rotateSpeed={.38} minDistance={4.8} maxDistance={4.8} minPolarAngle={.35} maxPolarAngle={LOOK_UP} target={[START.x, 1.62, START.z + 6]} />
     </>
   );
 }

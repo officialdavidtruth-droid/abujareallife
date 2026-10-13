@@ -32,7 +32,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ action: string 
       const today = lagosToday();
       const rows = await prisma.adBooking.findMany({ where: { status: 'APPROVED', startDate: { lte: toDateOnly(today), gte: toDateOnly(addDays(today, -31)) } }, orderBy: { startDate: 'desc' } });
       const seen = new Set<number>(), ads = [];
-      for (const r of rows) { if (addDays(ymdOf(r.startDate), r.days) <= today || seen.has(r.slot)) continue; seen.add(r.slot); ads.push({ slot: r.slot, title: r.title, sub: r.sub, contact: r.contact, color: r.color, img: r.hasImage ? '/api/ads/image/' + r.id + '?v=2' : '' }); }
+      for (const r of rows) { if (addDays(ymdOf(r.startDate), r.days) <= today || seen.has(r.slot)) continue; seen.add(r.slot); ads.push({ slot: r.slot, title: r.title, sub: r.sub, contact: r.contact, website: r.website, color: r.color, img: r.hasImage ? '/api/ads/image/' + r.id + '?v=2' : '' }); }
       return NextResponse.json({ ads }, { headers: { 'cache-control': 'public, max-age=0, s-maxage=5' } });
     }
     const me = await currentAdvertiser();

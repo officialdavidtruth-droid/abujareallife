@@ -493,12 +493,22 @@ export type Dep = { x: number; z: number; r: number; ux: number; uz: number; lx:
 
 export function makeDep(car: CarPose, e: { axis: 'x' | 'z'; road: number }, kind: 'taxi' | 'bike' | 'bus'): Dep {
   const ctr = e.road * GRID, dev = e.axis === 'x' ? car.z - ctr : car.x - ctr, lat = Math.max(0, Math.abs(dev) - halfW(e.road) * .5), sg = Math.sign(dev) ? -Math.sign(dev) : 1;
-  return { x: car.x, z: car.z, r: car.r, ux: Math.cos(car.r), uz: -Math.sin(car.r), lx: e.axis === 'x' ? 0 : sg, lz: e.axis === 'x' ? sg : 0, lat, done: 0, v: 0, vmax: kind === 'taxi' ? 9 : 7, t: 0, idx: -1 };
+  // Pull away ALONG THE ROAD, never along the car's own (possibly angled) parked heading, so it cannot slide into a building.
+  const hx = Math.cos(car.r), hz = -Math.sin(car.r);
+  const ux = e.axis === 'x' ? (Math.sign(hx) || 1) : 0, uz = e.axis === 'z' ? (Math.sign(hz) || 1) : 0;
+  return { x: car.x, z: car.z, r: car.r, ux, uz, lx: e.axis === 'x' ? 0 : sg, lz: e.axis === 'x' ? sg : 0, lat, done: 0, v: 0, vmax: kind === 'taxi' ? 9 : 7, t: 0, idx: -1 };
 }
 
 export function stepDep(d: Dep, dt: number) {
-  d.t += dt; d.v = Math.min(d.vmax, d.v + 4.5 * dt); const adv = d.v * dt; d.x += d.ux * adv; d.z += d.uz * adv;
-  const l = Math.min(d.lat - d.done, adv * .4); if (l > 0) { d.x += d.lx * l; d.z += d.lz * l; d.done += l; }
+  d.t += dt; d.v = Math.min(d.vmax, d.v + 4.5 * dt); const adv = d.v * dt;
+  // only ease toward the lane centre once actually rolling, and always towards it (never further into the kerb)
+  const l = d.v > 1.2 ? Math.max(0, Math.min(d.lat - d.done, adv * .4)) : 0;
+  const dx = d.ux * adv + d.lx * l, dz = d.uz * adv + d.lz * l;
+  d.x += dx; d.z += dz; d.done += l;
+  // steer: face the way it is actually travelling, then straighten up onto the road axis (no crabbing, no staying tilted)
+  const tr = l > 0 && adv > 1e-4 ? Math.atan2(-dz, dx) : Math.atan2(-d.uz, d.ux);
+  const diff = Math.atan2(Math.sin(tr - d.r), Math.cos(tr - d.r));
+  d.r += diff * Math.min(1, 6 * dt);
 }
 
 /** you, sitting in the vehicle (faces +x like every vehicle). Origin = the middle of the seat. */
@@ -568,7 +578,7 @@ export function TransportVehicles({ look }: { look: Look }) {
         if (u >= 1) { cn.ph = 'off'; cn.t = 0; }
       } else { // off: walk away to the kerb while the door swings shut, then the vehicle pulls away
         if (cn.t > .55) cn.leaving = true;
-        if (cn.leaving && cn.dep) { stepDep(cn.dep, dt); cn.car.x = cn.dep.x; cn.car.z = cn.dep.z; }
+        if (cn.leaving && cn.dep) { stepDep(cn.dep, dt); cn.car.x = cn.dep.x; cn.car.z = cn.dep.z; cn.car.r = cn.dep.r; }
         const dr = cn.drop || P.out; const left = goTo(dr[0], dr[1], 3.2); cn.walk = left > .05; door(cn.t > .35 ? 0 : OPEN);
         if (left < .05 && cn.t > .8) { cn.ang = 0; cn.fin(); return; }
       }

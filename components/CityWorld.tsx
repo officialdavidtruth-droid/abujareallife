@@ -158,6 +158,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     if (PLANE.on) {   /* ── flying the airport plane (components/cityPlane.tsx) ── */
       group.current.visible = false; moving.current = false; running.current = false; oc.enabled = false;
       stepPlane(dt, c, p, pushOut);
+      if (PLANE.walk.on) { const w = PLANE.walk, g = group.current; g.rotation.order = 'YXZ'; g.position.set(w.x, w.y, w.z); g.rotation.set(0, w.r, 0); g.scale.y = 1; g.visible = true; moving.current = true; }   // boarding / leaving: the character walks up (or down) the airstair
       if (PLANE.on) planeCamera(cam, t, dt);
       GAME.player.x = p.x; GAME.player.z = p.z; OBS[0].on = false; OBS[1].on = VEH.placed;
       { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = 0; M.drv = false; M.rd = 0; M.pa = ''; M.ps = 0; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; planeBroadcast(); }

@@ -419,12 +419,35 @@ export function TrainLine() {
 export const AIR = { x: 122 * WS, z: -12 * WS, s: 1.8 };
 
 export function Airport() {
+  /* Local units, group scaled by AIR.s. Runway: x -11..89, z +-3.5 (east-west, so the numbers are 09 / 27). Terminal footprint (x +-4.5, z -9.5..-4.5) is what CityCollision.SOLIDS and lib/houses.ts KEEP_OUT mirror: keep it. */
+  const flat = [-Math.PI / 2, 0, 0] as const;
   return <group position={[AIR.x, 0, AIR.z]} scale={AIR.s}>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[39, .04, 0]}><planeGeometry args={[100, 7]} /><meshStandardMaterial color="#33383e" /></mesh>
-    {Array.from({ length: 16 }, (_, i) => <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[-6 + i * 6.2, .07, 0]}><planeGeometry args={[3, .22]} /><meshStandardMaterial color="#e8e8e8" /></mesh>)}
-    <Text position={[0, .1, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={.6} color="#fff" anchorX="center">RUNWAY</Text>
+    {/* runway, edge lines, centre dashes, thresholds (piano keys) and numbers */}
+    <mesh rotation={flat} position={[39, .04, 0]}><planeGeometry args={[100, 7]} /><meshStandardMaterial color="#33383e" roughness={.95} /></mesh>
+    {[-3.2, 3.2].map(z => <mesh key={z} rotation={flat} position={[39, .06, z]}><planeGeometry args={[100, .14]} /><meshStandardMaterial color="#e8e8e8" /></mesh>)}
+    {Array.from({ length: 16 }, (_, i) => <mesh key={i} rotation={flat} position={[-6 + i * 6.2, .07, 0]}><planeGeometry args={[3, .22]} /><meshStandardMaterial color="#e8e8e8" /></mesh>)}
+    {[-10.2, 87.4].map(x => Array.from({ length: 10 }, (_, k) => <mesh key={x + '-' + k} rotation={flat} position={[x, .07, -2.7 + k * .6]}><planeGeometry args={[1.4, .3]} /><meshStandardMaterial color="#f2f2f2" /></mesh>))}
+    <group position={[-8.2, .09, 0]} rotation={[0, -Math.PI / 2, 0]}><Text rotation={flat} fontSize={1.3} color="#f4f4f4" anchorX="center" anchorY="middle">09</Text></group>
+    <group position={[85.4, .09, 0]} rotation={[0, Math.PI / 2, 0]}><Text rotation={flat} fontSize={1.3} color="#f4f4f4" anchorX="center" anchorY="middle">27</Text></group>
+    <Text position={[39, .1, 0]} rotation={flat} fontSize={.6} color="#fff" anchorX="center">RUNWAY</Text>
+    {/* apron between the terminal and the runway edge, with the yellow stand line the plane waits on */}
+    <mesh rotation={flat} position={[0, .045, -4.05]}><planeGeometry args={[22, 1.1]} /><meshStandardMaterial color="#7d848b" roughness={.95} /></mesh>
+    <mesh rotation={flat} position={[0, .075, -3.6]}><planeGeometry args={[22, .08]} /><meshStandardMaterial color="#e2b92b" /></mesh>
+    {/* terminal: body, glass front, roof, entrance canopy, sign */}
     <RoundedBox args={[9, 1.5, 5]} position={[0, .75, -7]} radius={.15}><meshStandardMaterial color="#7b8791" /></RoundedBox>
+    <mesh position={[0, .8, -4.47]}><boxGeometry args={[8.2, .85, .05]} /><meshStandardMaterial color="#1b2f44" metalness={.6} roughness={.15} /></mesh>
+    <mesh position={[0, 1.56, -7]}><boxGeometry args={[9.6, .12, 5.4]} /><meshStandardMaterial color="#56626c" /></mesh>
+    <mesh position={[0, 1.35, -4.1]}><boxGeometry args={[5.4, .07, 1.0]} /><meshStandardMaterial color="#d9dde0" /></mesh>
+    {[-2.5, 2.5].map(x => <mesh key={x} position={[x, .68, -3.7]}><boxGeometry args={[.08, 1.34, .08]} /><meshStandardMaterial color="#9aa3ab" metalness={.5} roughness={.4} /></mesh>)}
     <Text position={[0, 1.65, -4.4]} fontSize={.45} color="#fff" anchorX="center">Nnamdi Azikiwe Airport</Text>
+    {/* control tower on the terminal roof */}
+    <mesh position={[-2.8, 3.1, -8]}><boxGeometry args={[1.1, 3, 1.1]} /><meshStandardMaterial color="#cfd5da" /></mesh>
+    <mesh position={[-2.8, 4.9, -8]}><boxGeometry args={[1.9, .85, 1.9]} /><meshStandardMaterial color="#223a52" metalness={.6} roughness={.15} /></mesh>
+    <mesh position={[-2.8, 5.42, -8]}><boxGeometry args={[2.15, .1, 2.15]} /><meshStandardMaterial color="#c0c6cb" /></mesh>
+    <mesh position={[-2.8, 6.0, -8]}><cylinderGeometry args={[.03, .03, 1.1, 6]} /><meshStandardMaterial color="#9aa3ab" /></mesh>
+    {/* windsock */}
+    <mesh position={[8, 1.1, 4]}><cylinderGeometry args={[.05, .05, 2.2, 6]} /><meshStandardMaterial color="#d9dde0" /></mesh>
+    <mesh position={[8.55, 2.15, 4]} rotation={[0, 0, Math.PI / 2]}><coneGeometry args={[.28, 1.1, 10, 1, true]} /><meshStandardMaterial color="#ee7a1d" side={THREE.DoubleSide} /></mesh>
   </group>;
 }
 

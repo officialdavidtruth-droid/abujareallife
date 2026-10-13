@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { AIR } from './CityScenery';
 import { BUILDS, GAME } from './cityShared';
@@ -14,7 +15,13 @@ import { hint } from '../lib/touch';
  *
  * Heading convention matches the player: forward = (sin h, cos h). The model's nose points along local +z.
  *   V (or the 📷 View button) switches between the OUTSIDE chase camera and the INSIDE cockpit camera.
- * Later step: STEP 3 passengers + network sync. */
+ * Later step: STEP 3 passengers + network sync.
+ *
+ * AIRPORT STEP 1 (onboard process): pressing E next to the plane no longer snaps you into the seat.
+ *   BOARDING: the airstair is parked at the left-hand door, the door opens, your character walks to the stairs, climbs up and goes in,
+ *             the door closes, the engines spool up (fans turn), and only then do the controls come alive. E / Exit-plane skips the show.
+ *   LEAVING:  park (under 2 m/s on the ground), press E: the engines wind down, the door opens, your character walks down the stairs and away.
+ *   While a sequence runs, PLANE.bd is set (controls are locked, physics frozen) and PLANE.walk says where CityWorld draws the character. */
 
 export const PLANE = {
   x: AIR.x - 7, y: 0, z: AIR.z, h: Math.PI / 2, pitch: 0, roll: 0,
@@ -27,6 +34,10 @@ export const PLANE = {
   idleAt: 0,            // when the last pilot got out (for the auto-tow)
   cam: 'out' as 'out' | 'in',   // 'out' = chase camera behind the plane, 'in' = from the cockpit
   obj: null as THREE.Group | null,
+  bd: null as null | { mode: 'in' | 'out'; t: number; sx: number; sz: number; dA: number },   // boarding / leaving sequence in progress
+  walk: { on: false, x: 0, y: 0, z: 0, r: 0 },   // where CityWorld draws my character while a sequence runs
+  door: 0, doorT: 0,    // door opening 0 (shut) .. 1 (open), and where it is heading
+  eng: 0, engOn: false, // engine spool 0..1 (fans), and whether the pilot has the engines running
 };
 
 export const HOME = { x: AIR.x - 7, z: AIR.z, h: Math.PI / 2 };
@@ -41,7 +52,7 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 const ping = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('arl-plane')); };
 export function togglePlaneView() {
-  if (!PLANE.on && !PLANE.pax) return;
+  if ((!PLANE.on && !PLANE.pax) || PLANE.bd) return;
   PLANE.cam = PLANE.cam === 'out' ? 'in' : 'out'; camInit = false; applyView();
   GAME.notice = PLANE.cam === 'in' ? '👁️ Cockpit view (V to switch back)' : '🎥 Outside view (V for cockpit)';
   ping();
@@ -55,7 +66,7 @@ export function planeCamReset() { camInit = false; PLANE.cam = 'out'; applyView(
 
 /** Throw me out of the pilot seat without the usual checks (somebody else got in first): I stand beside the plane. */
 export function ejectPilot(p: P) {
-  PLANE.on = false; PLANE.throttle = 0; PLANE.cam = 'out'; applyView(); ping();
+  PLANE.on = false; PLANE.throttle = 0; PLANE.cam = 'out'; PLANE.bd = null; PLANE.walk.on = false; PLANE.engOn = false; PLANE.doorT = 0; applyView(); ping();
   const lx = Math.cos(PLANE.h), lz = -Math.sin(PLANE.h);
   p.x = PLANE.x + lx * 6; p.z = PLANE.z + lz * 6; p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;
   sync();
@@ -70,15 +81,74 @@ function sync() {
 
 export function resetPlane() {
   PLANE.x = HOME.x; PLANE.z = HOME.z; PLANE.h = HOME.h; PLANE.y = 0; PLANE.pitch = 0; PLANE.roll = 0;
-  PLANE.speed = 0; PLANE.throttle = 0; PLANE.air = false; PLANE.on = false; PLANE.cam = 'out'; applyView(); sync(); ping();
+  PLANE.speed = 0; PLANE.throttle = 0; PLANE.air = false; PLANE.on = false; PLANE.cam = 'out'; PLANE.bd = null; PLANE.walk.on = false; PLANE.engOn = false; PLANE.doorT = 0; applyView(); sync(); ping();
 }
 
 type P = { x: number; z: number; y: number; vy: number; r: number };
 
 export function boardPlane(p: P) {
-  PLANE.on = true; PLANE.throttle = 0; PLANE.cam = 'out'; camInit = false; applyView(); ping();
-  p.x = PLANE.x; p.z = PLANE.z; p.y = 0; p.vy = 0;
-  GAME.notice = '✈️ In the cockpit: ' + hint('hold Sprint for throttle, pull the stick down after ~100 km/h to take off. Tap View to switch camera. Tap Exit plane to get out on the ground.', 'hold Shift for throttle, pull back (S) after ~100 km/h to take off. V switches camera. E to get out on the ground.');
+  PLANE.on = true; PLANE.throttle = 0; PLANE.speed = 0; PLANE.cam = 'out'; camInit = false; applyView(); ping();
+  const f = toWorld(SEQ.foot[0], SEQ.foot[2]);
+  PLANE.bd = { mode: 'in', t: 0, sx: p.x, sz: p.z, dA: clamp(Math.hypot(f.x - p.x, f.z - p.z) / 4.5, .6, 2.4) };
+  PLANE.doorT = 1; PLANE.engOn = false;
+  PLANE.walk.on = true; PLANE.walk.x = p.x; PLANE.walk.y = 0; PLANE.walk.z = p.z; PLANE.walk.r = Math.atan2(f.x - p.x, f.z - p.z);
+  GAME.notice = '✈️ Boarding… ' + hint('tap Exit plane to skip', 'press E to skip');
+}
+
+/* ───────────── boarding / leaving sequence (the door is on the left, the airstair stands at it) ───────────── */
+const SEQ = { foot: [4.2, 0, 2.4], top: [1.3, 1.4, 2.4], cab: [.3, 1.4, 2.4], away: [6.2, 0, 2.4] };   // plane-local points (+x = left side, +z = nose)
+const B1 = 1.3, B2 = .5, CLOSE = .9, ENG_T = 2.0;      // boarding: stairs up, into the door, door closes, engines start
+const O0 = .9, O1 = .5, O2 = 1.3, O3 = .7;             // leaving: door opens, out of the door, stairs down, walk away
+const toWorld = (lx: number, lz: number) => { const c = Math.cos(PLANE.h), s = Math.sin(PLANE.h); return { x: PLANE.x + lx * c + lz * s, z: PLANE.z - lx * s + lz * c }; };
+const ramp = (lx: number) => clamp((4 - lx) * .5, 0, 1.4);   // height of the stairs above the ground at plane-local x
+const mix = (a: number, b: number, k: number) => a + (b - a) * k;
+
+/** The character at plane-local (lx, lz) on the stairs (or the ground), walking in the direction (dx, dz) given in plane-local terms. */
+function walkAt(lx: number, lz: number, dlx: number) {
+  const w = toWorld(lx, lz), W = PLANE.walk, c = Math.cos(PLANE.h), s = Math.sin(PLANE.h);
+  W.on = true; W.x = w.x; W.z = w.z; W.y = ramp(lx);
+  W.r = Math.atan2(dlx * c, -dlx * s);   // local +x is world (cos h, -sin h)
+}
+
+function stepSeq(dt: number, c: { interact: boolean }, p: P, pushOut: (p: any) => void) {
+  const bd = PLANE.bd!; bd.t += dt;
+  const skip = c.interact; c.interact = false;
+  PLANE.speed = 0; PLANE.throttle = 0; PLANE.pitch = 0; PLANE.roll = 0; PLANE.y = 0;
+  const F = SEQ.foot, T = SEQ.top, C = SEQ.cab, A = SEQ.away;
+
+  if (bd.mode === 'in') {
+    const tA = bd.dA, tB = tA + B1, tC = tB + B2, tD = tC + CLOSE, tE = tD + ENG_T;
+    const t = skip ? tE : bd.t;
+    if (t < tA) {   /* walk across the apron to the foot of the stairs */
+      const f = toWorld(F[0], F[2]), k = t / tA, W = PLANE.walk;
+      W.on = true; W.x = mix(bd.sx, f.x, k); W.z = mix(bd.sz, f.z, k); W.y = 0; W.r = Math.atan2(f.x - bd.sx, f.z - bd.sz);
+      p.x = W.x; p.z = W.z; p.r = W.r;
+    } else if (t < tB) { const k = (t - tA) / B1; walkAt(mix(F[0], T[0], k), F[2], -1); p.x = PLANE.walk.x; p.z = PLANE.walk.z; p.r = PLANE.walk.r; }
+    else if (t < tC) { const k = (t - tB) / B2; walkAt(mix(T[0], C[0], k), T[2], -1); p.x = PLANE.walk.x; p.z = PLANE.walk.z; p.r = PLANE.walk.r; }
+    else { PLANE.walk.on = false; p.x = PLANE.x; p.z = PLANE.z; p.r = PLANE.h; PLANE.doorT = 0; }
+    if (t >= tD && !PLANE.engOn) { PLANE.engOn = true; camInit = false; GAME.notice = '✈️ Engines starting…'; }
+    if (t >= tE) {
+      PLANE.bd = null; PLANE.walk.on = false; PLANE.engOn = true; PLANE.doorT = 0; PLANE.door = Math.min(PLANE.door, 0); ping();
+      p.x = PLANE.x; p.z = PLANE.z; p.y = 0; p.vy = 0; p.r = PLANE.h; camInit = false;
+      GAME.notice = '✈️ Ready: ' + hint('hold Sprint for throttle, pull the stick down after ~100 km/h to take off. Tap View to switch camera. Tap Exit plane to get out on the ground.', 'hold Shift for throttle, pull back (S) after ~100 km/h to take off. V switches camera. E to get out on the ground.');
+    }
+    return;
+  }
+
+  /* leaving */
+  const tA = O0, tB = tA + O1, tC = tB + O2, tD = tC + O3;
+  const t = skip ? tD : bd.t;
+  PLANE.engOn = false; PLANE.doorT = 1;
+  if (t < tA) { PLANE.walk.on = false; p.x = PLANE.x; p.z = PLANE.z; p.r = PLANE.h; }
+  else if (t < tB) { const k = (t - tA) / O1; walkAt(mix(C[0], T[0], k), T[2], 1); p.x = PLANE.walk.x; p.z = PLANE.walk.z; p.r = PLANE.walk.r; }
+  else if (t < tC) { const k = (t - tB) / O2; walkAt(mix(T[0], F[0], k), F[2], 1); p.x = PLANE.walk.x; p.z = PLANE.walk.z; p.r = PLANE.walk.r; }
+  else if (t < tD) { const k = (t - tC) / O3; walkAt(mix(F[0], A[0], k), A[2], 1); p.x = PLANE.walk.x; p.z = PLANE.walk.z; p.r = PLANE.walk.r; }
+  if (t >= tD) {
+    walkAt(A[0], A[2], 1);
+    PLANE.on = false; PLANE.bd = null; PLANE.walk.on = false; PLANE.speed = 0; PLANE.throttle = 0; PLANE.idleAt = Date.now(); PLANE.cam = 'out'; PLANE.doorT = 0; applyView(); ping();
+    p.x = PLANE.walk.x; p.z = PLANE.walk.z; pushOut(p); p.r = PLANE.walk.r; p.y = 0; p.vy = 0;
+    sync();
+  }
 }
 
 function crash(p: P, why: string) {
@@ -89,6 +159,7 @@ function crash(p: P, why: string) {
 
 /** Called every frame while PLANE.on. `pushOut` keeps the player out of walls when they step out. */
 export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; y: number }; run: boolean; jump: boolean; interact: boolean }, p: P, pushOut: (p: any) => void) {
+  if (PLANE.bd) { stepSeq(dt, c, p, pushOut); return; }   // boarding / leaving: controls are locked, the physics wait
   const k = c.keys;
   const ix = clamp((k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0) + c.joy.x, -1, 1);
   const iy = clamp((k.has('s') || k.has('arrowdown') ? 1 : 0) - (k.has('w') || k.has('arrowup') ? 1 : 0) + c.joy.y, -1, 1);   // + = pull up
@@ -101,16 +172,14 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
   if (c.jump) { T -= .25; c.jump = false; }
   T = clamp(T, 0, 1); PLANE.throttle = T;
 
-  /* get out */
+  /* get out: park first, then the door opens and you walk down the stairs (stepSeq) */
   if (c.interact) {
     c.interact = false;
     if (PLANE.air) GAME.notice = '✈️ You are still in the air: land first.';
-    else if (PLANE.speed > 8) GAME.notice = '✈️ Slow down first (hold Space to brake), then press E.';
+    else if (PLANE.speed > 2) GAME.notice = '✈️ Stop the plane first (hold Space to brake), then press E.';
     else {
-      PLANE.on = false; PLANE.speed = 0; PLANE.throttle = 0; PLANE.idleAt = Date.now(); PLANE.cam = 'out'; applyView(); ping();
-      const lx = Math.cos(PLANE.h), lz = -Math.sin(PLANE.h);   // the plane's left-hand side
-      p.x = PLANE.x + lx * 6; p.z = PLANE.z + lz * 6; pushOut(p); p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;
-      sync();
+      PLANE.speed = 0; PLANE.throttle = 0; PLANE.bd = { mode: 'out', t: 0, sx: p.x, sz: p.z, dA: 0 }; PLANE.doorT = 1; PLANE.engOn = false; PLANE.cam = 'out'; camInit = false; applyView(); ping();
+      GAME.notice = '✈️ Leaving the plane… ' + hint('tap Exit plane to skip', 'press E to skip');
       return;
     }
   }
@@ -171,7 +240,7 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
   sync();
 }
 
-export const planePrompt = () => PLANE.pax ? `✈ Passenger · ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · V view${PLANE.air ? '' : ' · E out'}` : PLANE.on
+export const planePrompt = () => PLANE.bd ? (PLANE.bd.mode === 'in' ? '✈ Boarding…' : '✈ Leaving the plane…') + hint(' tap Exit plane to skip', ' E skips') : PLANE.pax ? `✈ Passenger · ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · V view${PLANE.air ? '' : ' · E out'}` : PLANE.on
   ? `✈ ${Math.round(PLANE.speed * 3.6)} km/h · ${Math.round(PLANE.y)} m · throttle ${Math.round(PLANE.throttle * 100)}% · Shift +  Space − · W/S pitch · A/D bank · V view${PLANE.air ? '' : ' · E out'}`
   : '';
 
@@ -180,7 +249,17 @@ const camP = new THREE.Vector3(), look = new THREE.Vector3(), eye = new THREE.Ve
 let camInit = false;
 const EYE = new THREE.Vector3(0, 2.72, 4.7);   // the pilot's head, in the plane's own coordinates
 
+const dvE = new THREE.Vector3(), dvL = new THREE.Vector3();
 export function planeCamera(cam: THREE.Camera, target: THREE.Vector3, dt: number) {
+  const bd = PLANE.bd;
+  if (bd && PLANE.obj && (bd.mode === 'out' || bd.t < bd.dA + B1 + B2 + CLOSE)) {
+    /* boarding / leaving: a 3/4 view of the door and the airstair from the front left */
+    PLANE.obj.updateMatrixWorld(true);
+    dvE.set(7.4, 2.9, 8.6); PLANE.obj.localToWorld(dvE); dvL.set(2.4, 1.3, 2.2); PLANE.obj.localToWorld(dvL);
+    if (!camInit) { camP.copy(dvE); camInit = true; } else { const kk = 1 - Math.exp(-dt * 3); camP.lerp(dvE, kk); }
+    cam.position.copy(camP); cam.lookAt(dvL); target.copy(dvL);
+    return;
+  }
   if (PLANE.cam === 'in' && PLANE.obj) {
     /* cockpit: the camera is glued to the pilot's head and banks / pitches with the plane, so the horizon tilts like the real thing */
     PLANE.obj.updateMatrixWorld(true);
@@ -214,6 +293,19 @@ const M = (c: string, m = .2, r = .55) => <meshStandardMaterial color={c} metaln
 export function Plane() {
   const g = useRef<THREE.Group>(null!);
   const hull = useRef<THREE.Group>(null!), cockpit = useRef<THREE.Group>(null!);
+  const doorG = useRef<THREE.Group>(null!), stairs = useRef<THREE.Group>(null!), fans = useRef<(THREE.Group | null)[]>([]);
+  const fanA = useRef(0);
+  /* door, airstair and engine fans follow the plane's state every frame */
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(dtRaw, .05);
+    const want = PLANE.engOn || !!PLANE.remote || (PLANE.pax && PLANE.air) ? 1 : 0;
+    PLANE.eng += (want - PLANE.eng) * (1 - Math.exp(-dt * (want ? 1.1 : .7)));
+    PLANE.door += clamp(PLANE.doorT - PLANE.door, -dt / .9, dt / .9);
+    if (doorG.current) { const k = PLANE.door; doorG.current.rotation.y = -(k * k * (3 - 2 * k)) * 1.45; }
+    if (stairs.current) stairs.current.visible = !PLANE.air && PLANE.y < .3 && PLANE.speed < 1 && !PLANE.remote && !PLANE.pax && (!PLANE.on || !!PLANE.bd);
+    fanA.current += dt * (PLANE.eng * 34 + PLANE.throttle * 30);
+    for (const f of fans.current) if (f) f.rotation.z = fanA.current;
+  });
   useEffect(() => { PLANE.obj = g.current; VIEW.hull = hull.current; VIEW.cockpit = cockpit.current; applyView(); sync(); return () => { PLANE.obj = null; VIEW.hull = null; VIEW.cockpit = null; }; }, []);
   /* V switches the view while flying */
   useEffect(() => {
@@ -243,6 +335,13 @@ export function Plane() {
       <mesh position={[0, -.52, 0]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[1.17, 1.17, 11, 20, 1, false, Math.PI * .72, Math.PI * .56]} />{M(G)}</mesh>
       {[-1, 1].map(sx => <mesh key={sx} position={[sx * 1.1, .35, 0]}><boxGeometry args={[.06, .34, 7.5]} />{M(D, .6, .2)}</mesh>)}
       <mesh position={[0, .7, 6.35]} rotation={[-.45, 0, 0]}><boxGeometry args={[1.7, .5, 1.2]} />{M(D, .7, .15)}</mesh>
+      {/* passenger door on the left (+x): the dark opening, a lit cabin floor patch, and the door panel hinged at its front edge */}
+      <mesh position={[.98, -.05, 2.4]}><boxGeometry args={[.05, 1.3, .96]} />{M('#1a1f24', .1, .9)}</mesh>
+      <mesh position={[.9, -.66, 2.4]}><boxGeometry args={[.3, .06, .96]} />{M('#6b747c', .2, .7)}</mesh>
+      <group ref={doorG} position={[1.07, -.05, 2.9]}>
+        <mesh position={[0, 0, -.475]}><boxGeometry args={[.07, 1.3, .95]} />{M(W, .2, .5)}</mesh>
+        <mesh position={[.045, .2, -.475]}><boxGeometry args={[.02, .34, .5]} />{M(D, .6, .2)}</mesh>
+      </group>
       </group>
       {/* cockpit interior: only drawn in the inside view */}
       <group ref={cockpit} visible={false}>
@@ -263,6 +362,10 @@ export function Plane() {
       {[-1, 1].map(sx => <group key={sx} position={[sx * 3.7, -1, 1.1]}>
         <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[.5, .5, 2.2, 14]} />{M(GR, .6, .35)}</mesh>
         <mesh position={[0, 0, 1.12]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.36, .36, .06, 14]} />{M(D, .3, .8)}</mesh>
+        <group ref={el => { fans.current[sx < 0 ? 0 : 1] = el; }} position={[0, 0, 1.17]}>
+          {[0, 1, 2, 3, 4].map(k => <mesh key={k} rotation={[0, 0, k * Math.PI / 5]}><boxGeometry args={[.7, .07, .02]} />{M('#9aa3ab', .6, .35)}</mesh>)}
+          <mesh position={[0, 0, .03]} rotation={[Math.PI / 2, 0, 0]}><coneGeometry args={[.09, .2, 10]} />{M('#d9dde0', .5, .4)}</mesh>
+        </group>
       </group>)}
     </group>
     {/* landing gear (wheel bottoms sit on y = 0) */}
@@ -270,5 +373,13 @@ export function Plane() {
       <mesh position={[0, .38, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.38, .38, .32, 12]} />{M('#15181b', 0, .9)}</mesh>
       <mesh position={[0, 1, 0]}><boxGeometry args={[.12, 1.2, .12]} />{M(GR, .6, .4)}</mesh>
     </group>)}
+    {/* airstair at the left-hand door: 7 steps from the ground (x = 4.0) up to the sill (x = 1.2, 1.4 m), a platform and two handrails */}
+    <group ref={stairs} visible={false} position={[0, 0, 2.4]}>
+      {Array.from({ length: 7 }, (_, i) => { const h = (i + 1) * .2; return <mesh key={i} position={[4 - (i + .5) * .4, h / 2, 0]} castShadow><boxGeometry args={[.4, h, 1]} />{M('#c9a227', .3, .6)}</mesh>; })}
+      <mesh position={[1.25, 1.36, 0]}><boxGeometry args={[.7, .08, 1.1]} />{M('#c9a227', .3, .6)}</mesh>
+      {[-.52, .52].map(z => <mesh key={z} position={[2.6, 1.6, z]} rotation={[0, 0, -.4636]}><boxGeometry args={[3.13, .07, .06]} />{M('#8b949c', .6, .35)}</mesh>)}
+      {[-.52, .52].map(z => [[3.9, .55], [2.6, 1.2], [1.4, 1.8]].map(([x, y]) => <mesh key={z + '-' + x} position={[x, y, z]}><boxGeometry args={[.05, 1.0, .05]} />{M('#8b949c', .6, .35)}</mesh>))}
+      {[2.0, 3.3].map(x => <mesh key={x} position={[x, .05, -.9]}><boxGeometry args={[.1, .1, .1]} />{M('#111', 0, 1)}</mesh>)}
+    </group>
   </group>;
 }

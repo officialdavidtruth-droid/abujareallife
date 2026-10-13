@@ -1,7 +1,7 @@
 'use client';
 import { useFrame } from '@react-three/fiber';
 import { RoundedBox, Text } from '@react-three/drei';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { CityBuilding } from '../lib/cityTypes';
 import { BuildingDress, ROAD_MAT, awningMat } from './CityLook';
@@ -287,21 +287,22 @@ type LiveAd = { slot: number; title: string; sub: string; contact: string; color
 
 /* An advertiser's uploaded flyer drawn on the board face. The picture is already cut to the face's shape (5.2 x 2.3) by the booking page,
    and it is still fitted by its real width / height here, so it can never come out stretched. It uses an unlit material so the colours stay true. */
-function FlyerFace({ url }: { url: string }) {
+function FlyerFace({ url, onFail }: { url: string; onFail: (u: string) => void }) {
   const [tex, setTex] = useState<THREE.Texture | null>(null);
   useEffect(() => {
     let dead = false, t: THREE.Texture | null = null;
-    new THREE.TextureLoader().load(url, x => { if (dead) { x.dispose(); return; } x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; x.needsUpdate = true; t = x; setTex(x); }, undefined, () => {});
+    new THREE.TextureLoader().load(url, x => { if (dead) { x.dispose(); return; } x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; x.needsUpdate = true; t = x; setTex(x); }, undefined, () => { if (!dead) { console.warn('[billboard] flyer failed to load:', url); onFail(url); } });
     return () => { dead = true; t?.dispose(); };
-  }, [url]);
+  }, [url, onFail]);
   if (!tex) return null;
   const im = tex.image as { width: number; height: number }, asp = (im.width || 1) / (im.height || 1), FW = 5.2, FH = 2.3;
   const w = Math.min(FW, FH * asp), h = w / asp;
-  return <mesh position={[0, 4.5, -.145]} rotation-y={Math.PI}><planeGeometry args={[w, h]} /><meshBasicMaterial map={tex} toneMapped={false} /></mesh>;
+  return <mesh position={[0, 4.5, -.17]} rotation-y={Math.PI} renderOrder={2}><planeGeometry args={[w, h]} /><meshBasicMaterial map={tex} toneMapped={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} /></mesh>;
 }
 
 export function Billboards() {
-  const [ads, setAds] = useState<Record<number, LiveAd>>({});
+  const [ads, setAds] = useState<Record<number, LiveAd>>({}), [bad, setBad] = useState<string[]>([]);
+  const onFail = useCallback((u: string) => setBad(b => (b.includes(u) ? b : [...b, u])), []);   // a flyer that cannot load falls back to the ad's text, so the board is never left blank
   useEffect(() => {
     let dead = false, last = '';
     // Asks for the live ads every 10 s (and the moment the tab is shown again), so an ad you approve appears in the open game within seconds, with no reload.
@@ -316,7 +317,7 @@ export function Billboards() {
     {[-1.7, 1.7].map(o => <mesh key={o} position={[o, 1.8, 0]} castShadow><boxGeometry args={[.16, 3.6, .16]} /><meshStandardMaterial color="#2f343a" metalness={.3} roughness={.6} /></mesh>)}
     <mesh position={[0, 4.5, 0]} castShadow><boxGeometry args={[5.6, 2.7, .22]} /><meshStandardMaterial color="#14201b" roughness={.6} /></mesh>
     <mesh position={[0, 4.5, -.12]}><boxGeometry args={[5.2, 2.3, .04]} /><meshStandardMaterial color={col} emissive={col} emissiveIntensity={.45} roughness={.5} /></mesh>
-    {ad?.img ? <FlyerFace key={ad.img} url={ad.img} /> : <>
+    {ad?.img && !bad.includes(ad.img) ? <FlyerFace key={ad.img} url={ad.img} onFail={onFail} /> : <>
     {/* the front of the board faces -z (towards the road); drei Text faces +z, so it is turned round */}
     <Text position={[0, 4.85, -.16]} rotation-y={Math.PI} fontSize={.46} color="#fff" outlineWidth={.02} outlineColor="#0b0b0b" anchorX="center" anchorY="middle" maxWidth={4.9}>{title}</Text>
     <Text position={[0, 4.12, -.16]} rotation-y={Math.PI} fontSize={.22} color="#fff7e0" anchorX="center" anchorY="middle" maxWidth={4.9}>{sub}</Text>

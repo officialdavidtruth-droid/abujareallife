@@ -27,6 +27,7 @@ import { Graffiti, LookDriver, PowerLines, Puddles, ShopGlow, StreetClutter } fr
 import { pushCrime } from '../lib/witness';
 import { sidewalkSpawn } from '../lib/roadRoute';
 import { CAMV, BUILDS, CELL, Ctl, GAME, Hud, LIM, NIGHT, OBS, OWN, PEDPOS, SKY, START, TPOS, VEH, WX, distTo, pick, sm, updateDetails, wrap } from './cityShared';
+import AirportExtras from './AirportExtras';
 import { Airport, Billboards, Building, Inst, LampGlow, MARKS, MATS, Roads, SLABS, StreetLamps, TrainLine, Trees } from './CityScenery';
 import { BL, BODY, CAR_POSTS, findPath, pushOut } from './CityCollision';
 import { CINE, JACK, JackGhost, JackNpc, ROAM, Signals, TRANSPORT_SOLIDS, Traffic, TransportVehicles, isHail, stepJack } from './CityTraffic';
@@ -498,6 +499,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <WorldEventVisuals />
       <Rain />
       <Airport />
+      <AirportExtras />
       <Plane />
       <PlaneTag />
       <ChopYards />

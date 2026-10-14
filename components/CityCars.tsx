@@ -190,6 +190,7 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
   if (spec.type === 'MOTORCYCLE') return <BikeBody scale={0.9} rider={driver} />;
   if (spec.type === 'BICYCLE') return <BicycleBody scale={0.92} rider={driver} />;
   if (spec.type === 'HELICOPTER') return <HelicopterBody scale={1.05} />;
+  if (spec.type === 'BOAT') return <BoatBody color={style?.paint && style.paint !== 'factory' ? style.paint : color} scale={1.05} />;
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
@@ -398,6 +399,25 @@ export function HelicopterBody({ scale = 1 }: { scale?: number }) {
       <mesh position={[.02, .22, z]}><sphereGeometry args={[.12, 10, 8]} /><meshStandardMaterial color="#22272c" /></mesh>
     </group>)}
     <mesh position={[.95, .72, 0]}><boxGeometry args={[.08, .12, .12]} /><meshStandardMaterial color="#fff2c2" emissive="#fff0a0" emissiveIntensity={.7} /></mesh>
+  </group>;
+}
+
+/** Step 4 boat silhouette. Faces +x to match ARL vehicle orientation; it is visual-only until water physics/docking are implemented. */
+export function BoatBody({ color = '#f4f4f0', scale = 1 }: { color?: string; scale?: number }) {
+  const hullMat = useMemo(() => new THREE.MeshStandardMaterial({ color, metalness: .28, roughness: .32 }), [color]);
+  const glassMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#7db7d4', metalness: .18, roughness: .16, transparent: true, opacity: .72 }), []);
+  const trimMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#202a34', metalness: .45, roughness: .38 }), []);
+  return <group scale={[scale, scale, scale]}>
+    {/* pointed bow at +x; hull and stern sit below the cabin */}
+    <mesh position={[-.12, .34, 0]} scale={[1.52, .3, .62]}><sphereGeometry args={[1, 18, 10]} /><primitive object={hullMat} attach="material" /></mesh>
+    <mesh position={[.82, .34, 0]} rotation-z={-Math.PI / 2} scale={[.62, 1, 1]}><coneGeometry args={[.56, .9, 8]} /><primitive object={hullMat} attach="material" /></mesh>
+    <mesh position={[.05, .59, 0]}><boxGeometry args={[1.72, .22, .94]} /><meshStandardMaterial color="#f5f5f0" roughness={.4} /></mesh>
+    <mesh position={[-.12, .91, 0]}><boxGeometry args={[.92, .5, .82]} /><primitive object={glassMat} attach="material" /></mesh>
+    <mesh position={[-.12, 1.17, 0]}><boxGeometry args={[1.03, .07, .91]} /><primitive object={hullMat} attach="material" /></mesh>
+    <mesh position={[.68, .69, 0]}><boxGeometry args={[.16, .08, .62]} /><primitive object={trimMat} attach="material" /></mesh>
+    {[-.35, .35].map(z => <mesh key={z} position={[-.47, .48, z]}><boxGeometry args={[.52, .1, .06]} /><primitive object={trimMat} attach="material" /></mesh>)}
+    <mesh position={[-.79, .43, 0]}><boxGeometry args={[.28, .22, .5]} /><meshStandardMaterial color="#252a30" metalness={.5} roughness={.4} /></mesh>
+    <mesh position={[1.04, .42, 0]}><sphereGeometry args={[.07, 10, 8]} /><meshStandardMaterial color="#fff0b3" emissive="#ffe7a0" emissiveIntensity={.6} /></mesh>
   </group>;
 }
 

@@ -220,3 +220,4 @@ CREATE INDEX IF NOT EXISTS "HomeFurniture_homeId_createdAt_idx" ON "HomeFurnitur
 -- Step 2: support bicycles for existing databases.
 ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'BICYCLE';
 ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'HELICOPTER';
+ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'BOAT';

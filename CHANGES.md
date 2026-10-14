@@ -76,3 +76,10 @@
 - Added a procedural helicopter model with animated main and tail rotors.
 - Added helicopter icons to the dealership, garage and inventory.
 - Flight controls, pilot seating, take-off/landing, helipads and network synchronization remain separate work and are not claimed complete.
+
+
+## Step 4 — Boats
+- Added BOAT vehicle type and PostgreSQL migration 0034.
+- Added Yamaha 242X Sport Boat and Bayliner VR5 Bowrider catalogue entries.
+- Added procedural boat model and dealership/inventory icons.
+- Boat water physics, boarding, driving and docking remain future work.

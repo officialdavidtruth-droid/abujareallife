@@ -1,0 +1,108 @@
+--- /home/claude/Sim.orig.tsx	2026-10-14 05:05:43.977488898 +0000
++++ components/Sim.tsx	2026-10-14 05:07:30.896338667 +0000
+@@ -37,7 +37,9 @@
+ import { DEFAULT_PROFILE, type Profile } from '../lib/profile';
+ import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
+ import Wardrobe from './Wardrobe';
+-import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit, setPlan, PLAN } from '../lib/collision';
++import { findPath, blocked, inside, HARD, BOUNDS, type Blk, type Box, type P, setEastLimit, setSouthLimit, setPlan, setExtra, PLAN } from '../lib/collision';
++import Upstairs from './Upstairs';
++import { DOOR, UP_BLOCKS, upRects, yAt, isUp } from '../lib/upstairs';
+ import PlanHouse from './HomePlan';
+ import BuildPanel, { BUILDST, BuildGhost, buildTap } from './BuildMode';
+ import { exteriorWalls, isStarter, planBounds, planMode, starterRooms, type Room as PlanRoom } from '../lib/homeRooms';
+@@ -254,10 +256,16 @@
+ const wingOn = () => HOME.own.has('kids_room'); // the kids' wing (beds, desk, toy box, dividing wall) only exists once you build it
+ const WING_IDS = new Set(['toybox', 'kdesk', 'kbedA', 'kbedB', 'nstand', 'kwar']);
+ const BL_BASE: Blk[] = [...HOME_OWNED.flatMap(o => [{ id:o.id, b:ownedBox(o) }]), ...OBJ.flatMap(o => (o.boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => d.boxes.map(b => ({ id: d.id, b }))), ...WALLS];
++/* Two-storey houses (the old fixed flat only) have a stair in the north wall up to an upstairs room: lib/upstairs.ts, components/Upstairs.tsx. */
++const homeFloors = (): number => { const sl = HOME_VIEW.slot ?? HOUSES.mine?.slot; const h = sl == null ? null : HOUSES.list.find(x => x.slot === sl); return h ? h.floors : 1; };
++const upOn = () => !PLAN.rooms && homeFloors() === 2;
++const UP_RECTS = upRects();
++let UPON = false;   // refreshed every time BL() runs (several times a frame)
+ let blKey = '\0', blList: Blk[] = [];
+ const BL = (): Blk[] => {
+-  const key = PLANR.ver + (wingOn() ? 'w' : '') + (southOn() ? 's' : '') + [...LUX_IDS].filter(hasObj).join(',') + JSON.stringify(HOME_LAYOUT);
+-  if (key !== blKey) { blKey = key; blList = [...HOME_OWNED.flatMap(o => [{ id:o.id, b:ownedBox(o) }]), ...OBJ.flatMap(o => (movedObj(o).boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => movedDecor(d).boxes.map(b => ({ id: d.id, b }))), ...WALLS, ...(southOn() ? SWALLS : [])].filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && hasObj(k.id)); }
++  UPON = upOn(); setExtra(UPON ? UP_RECTS : []);
++  const key = PLANR.ver + (UPON ? 'u' : '') + (wingOn() ? 'w' : '') + (southOn() ? 's' : '') + [...LUX_IDS].filter(hasObj).join(',') + JSON.stringify(HOME_LAYOUT);
++  if (key !== blKey) { blKey = key; blList = [...HOME_OWNED.flatMap(o => [{ id:o.id, b:ownedBox(o) }]), ...OBJ.flatMap(o => (movedObj(o).boxes || []).map(b => ({ id: o.id, b }))), ...DECOR.flatMap(d => movedDecor(d).boxes.map(b => ({ id: d.id, b }))), ...WALLS, ...(southOn() ? SWALLS : []), ...(UPON ? UP_BLOCKS : [])].filter(k => (wingOn() || (!WING_IDS.has(k.id) && k.id !== 'wall')) && hasObj(k.id)); }
+   return blList;
+ };
+ // Apply what the server says you own: build/remove the wing, move the family in, show the luxury items.
+@@ -460,6 +468,7 @@
+ 
+ function tick(dt: number) {
+   if (!S.speed) return;
++  if (S.pos[1] < -4.35 && !upOn()) { S.pos = [PLANR.spawn[0], PLANR.spawn[1]]; S.q = []; S.cur = null; }   // the upstairs is gone (another house, or the house was re-planned)
+   const gm = dt * 6; S.min = worldMinute(); // time is shared by every player: it follows the world clock and can't be paused or sped up
+   const calm = (has('smart_home') ? .88 : 1);
+   (Object.keys(S.needs) as N[]).forEach(k => { S.needs[k] = cl(S.needs[k] - DECAY[k] * gm * calm * (k === 'energy' && has('split_ac') ? .7 : 1) * (k === 'hygiene' && has('borehole') ? .75 : 1) * (k === 'hunger' && has('fridge') ? .88 : 1) * (k === 'social' ? 1 - famAvg() / 250 : 1)); });
+@@ -654,7 +663,7 @@
+   useFrame(({ clock }) => {
+     const sleep = S.pose === 'sleep', sit = S.pose === 'sit';
+     const lo = sit && S.cur?.t === 'act' ? loungeOff(S.cur.a.anim, S.rot) : [0, 0] as [number, number];
+-    g.current.position.set(sleep ? -4.95 : S.pos[0] + lo[0], sleep ? .86 : 0, sleep ? -2.45 : S.pos[1] + lo[1]); g.current.rotation.y = sleep ? 0 : S.rot;
++    g.current.position.set(sleep ? -4.95 : S.pos[0] + lo[0], sleep ? .86 : yAt(S.pos[0], S.pos[1], UPON), sleep ? -2.45 : S.pos[1] + lo[1]); g.current.rotation.y = sleep ? 0 : S.rot;
+     inner.current.rotation.x = sleep ? -Math.PI / 2 : 0; inner.current.position.y = 0; void sit;
+     pg.current.position.set(0, sleep ? 1.1 : 2.45 * look.height + Math.sin(clock.elapsedTime * 2) * .06, sleep ? -1.7 : 0); plumb.current.rotation.y = clock.elapsedTime * 1.6;
+     const m = mood(), col = m > 60 ? '#35e07a' : m > 35 ? '#f2c230' : '#ef4b4b';
+@@ -887,16 +896,16 @@
+ };
+ 
+ // Static shell of the flat: tiles, rugs, walls, windows, wall decor.
+-function Room() {
++function Room({ up }: { up: boolean }) {
+   return <>
+     <Tiles x={-.05} z={-3.55} w={2.9} d={2.1} a="#ebe5d6" b="#a9b4b8" /><Tiles x={4.2} z={-3.5} w={3.6} d={2.2} a="#e9f0f2" b="#cfdde2" />
+     <Rug x={-4.2} z={-2.6} w={3.4} d={3.6} c1={HL.rug1a} c2={HL.rug1b} /><Rug x={-4} z={1.2} w={3.4} d={3.2} c1={HL.rug2a} c2={HL.rug2b} />
+-    <B p={[0, 1.3, -4.7]} s={[12.6, 2.6, .2]} c={HL.w1} ro={.95} r={.01} /><B p={[-6.3, 1.3, 0]} s={[.2, 2.6, 9.4]} c={HL.w2} ro={.95} r={.01} />
++    {up ? <><B p={[(-6.3 + DOOR.x0) / 2, 1.3, -4.7]} s={[DOOR.x0 + 6.3, 2.6, .2]} c={HL.w1} ro={.95} r={.01} /><B p={[(DOOR.x1 + 6.3) / 2, 1.3, -4.7]} s={[6.3 - DOOR.x1, 2.6, .2]} c={HL.w1} ro={.95} r={.01} /></> : <B p={[0, 1.3, -4.7]} s={[12.6, 2.6, .2]} c={HL.w1} ro={.95} r={.01} />}<B p={[-6.3, 1.3, 0]} s={[.2, 2.6, 9.4]} c={HL.w2} ro={.95} r={.01} />
+     <B p={[0, .07, -4.58]} s={[12.4, .14, .04]} c="#f4f0e6" ro={.5} r={.01} /><B p={[-6.18, .07, 0]} s={[.04, .14, 9.2]} c="#f4f0e6" ro={.5} r={.01} />
+     <B p={[0, 2.57, -4.58]} s={[12.4, .06, .05]} c="#f4f0e6" ro={.5} r={.01} /><B p={[-6.18, 2.57, 0]} s={[.05, .06, 9.2]} c="#f4f0e6" ro={.5} r={.01} />
+     <Win p={[.75, 1.6, -4.59]} w={1.4} h={1.2} /><Win p={[-6.19, 1.6, -2.9]} ry={Math.PI / 2} w={1.8} h={1.2} />
+     <group position={[-4.6, 1.95, -4.57]}><B p={[0, 0, 0]} s={[1.0, .66, .04]} c="#2a1b10" ro={.5} /><B p={[0, 0, .02]} s={[.88, .54, .02]} c="#f1e3c0" ro={1} /><B p={[0, .12, .035]} s={[.88, .26, .005]} c="#e0742a" ro={1} /><B p={[0, -.06, .035]} s={[.88, .12, .005]} c="#d9a22b" ro={1} /><B p={[0, -.17, .035]} s={[.88, .2, .005]} c="#1d7654" ro={1} /><Sp p={[0, .1, .045]} r={.08} c="#f6d36b" sc={[1, 1, .1]} /></group>
+-    <group position={[2.0, 2.0, -4.57]}><C p={[0, 0, .02]} r={.2} h={.04} c="#2b2b2e" rot={[Math.PI / 2, 0, 0]} /><C p={[0, 0, .045]} r={.17} h={.01} c="#f6f2e6" ro={.4} rot={[Math.PI / 2, 0, 0]} /><B p={[0, .05, .06]} s={[.012, .1, .006]} c="#222" /><B p={[.04, 0, .06]} s={[.08, .012, .006]} c="#222" /></group>
++    {!up && <group position={[2.0, 2.0, -4.57]}><C p={[0, 0, .02]} r={.2} h={.04} c="#2b2b2e" rot={[Math.PI / 2, 0, 0]} /><C p={[0, 0, .045]} r={.17} h={.01} c="#f6f2e6" ro={.4} rot={[Math.PI / 2, 0, 0]} /><B p={[0, .05, .06]} s={[.012, .1, .006]} c="#222" /><B p={[.04, 0, .06]} s={[.08, .012, .006]} c="#222" /></group>}
+     {[.6, 1.2, 1.8].map((z, i) => <Frame key={z} p={[-6.17, 1.95 + (i === 1 ? .08 : 0), z]} ry={Math.PI / 2} w={i === 1 ? .46 : .36} h={i === 1 ? .56 : .46} />)}
+     <B p={[-5.75, .02, 3.5]} s={[.55, .02, .85]} c="#5a4a38" ro={1} r={.008} /><B p={[-5.75, .032, 3.5]} s={[.45, .006, .75]} c="#7a6650" ro={1} r={.003} />
+   </>;
+@@ -1099,12 +1108,16 @@
+       if (m > .05 && R.current.kbd) { const fx = -Math.sin(TP.yaw), fz = -Math.cos(TP.yaw), n = Math.max(1, m); TP.dir = [(fx * fw + -fz * rt) / n, (fz * fw + fx * rt) / n]; if (R.current.sel) R.current.setSel(null); } else TP.dir = null;
+     } else TP.dir = null;
+     tick(d);
++    if (!tpOn && UPON && ctl.current) {   // overview camera: glide north to the upstairs while you are there, and back to the flat afterwards
++      const north = S.pos[1] < -4.4, t = ctl.current.target, k = 1 - Math.exp(-d * 2.5);
++      t.x += ((north ? S.pos[0] : ui.wing ? 2.6 : 0) - t.x) * k; t.y += ((north ? yAt(S.pos[0], S.pos[1], true) * .8 : 0) - t.y) * k; t.z += ((north ? S.pos[1] : ui.south ? 2.2 : 0) - t.z) * k;
++    }
+     if (!tpOn) return;
+-    const sleep = S.pose === 'sleep', px = sleep ? -4.95 : S.pos[0], pz = sleep ? -2.45 : S.pos[1], ty = 1.35 * (look.height || 1);
+-    const okAt = (x: number, z: number) => z > 4.5 ? (x > -6.05 && x < 6.05 && z < (southOn() ? 9.2 : 4.5)) : (x > -6.05 && x < (wingOn() ? 11.2 : 6.05) && z > -4.5);
++    const sleep = S.pose === 'sleep', px = sleep ? -4.95 : S.pos[0], pz = sleep ? -2.45 : S.pos[1], py = sleep ? 0 : yAt(px, pz, UPON), ty = 1.35 * (look.height || 1) + py;
++    const okAt = (x: number, z: number) => (UPON && isUp(x, z)) || (z > 4.5 ? (x > -6.05 && x < 6.05 && z < (southOn() ? 9.2 : 4.5)) : (x > -6.05 && x < (wingOn() ? 11.2 : 6.05) && z > -4.5));
+     const hFull = TP.dist * Math.cos(TP.pitch), dx = Math.sin(TP.yaw), dz = Math.cos(TP.yaw); let h = hFull;
+     while (h > .5 && !okAt(px + dx * h, pz + dz * h)) h -= .12;
+-    const want = new THREE.Vector3(px + dx * h, Math.min(2.5, ty + TP.dist * Math.sin(TP.pitch) + (hFull - h) * .7), pz + dz * h), c = cam.current, a = c.init ? 1 - Math.exp(-d * 11) : 1;
++    const want = new THREE.Vector3(px + dx * h, Math.min(2.5 + py, ty + TP.dist * Math.sin(TP.pitch) + (hFull - h) * .7), pz + dz * h), c = cam.current, a = c.init ? 1 - Math.exp(-d * 11) : 1;
+     c.p.lerp(want, a); c.t.lerp(new THREE.Vector3(px, ty, pz), a); c.init = true;
+     st.camera.position.copy(c.p); st.camera.lookAt(c.t);
+     if (st.clock.elapsedTime - nearAt.current > .12) { // the piece of furniture you are next to (for the "E" prompt)
+@@ -1128,7 +1141,8 @@
+       onFloor={(x, z) => { if (BUILDST.on) { buildTap(x, z); return; } setSel(null); if (editingHome) { setHomeSel(null); return; } walk(x, z); }} />}
+     {!free && <mesh rotation-x={-Math.PI / 2} position={[ui.wing ? 2.6 : 0, .01, 0]} receiveShadow onClick={e => { if (e.delta > 4) return; e.stopPropagation(); if (BUILDST.on) { buildTap(e.point.x, e.point.z); return; } setSel(null); if (editingHome) { setHomeSel(null); return; } walk(e.point.x, e.point.z); }}>
+       <planeGeometry args={[ui.wing ? 17.6 : 12.4, 9.2]} /><meshStandardMaterial key={HL.floorKind} map={HL.floorKind === 'wood' ? floorTex : HL.floorKind === 'tile' ? tileFloor : null} color={HL.floorTint} roughness={HL.floorKind === 'marble' ? .22 : .7} metalness={HL.floorKind === 'marble' ? .12 : 0} /></mesh>}
+-    {!free && <Room />}
++    {!free && <Room up={upOn()} />}
++    {!free && upOn() && <Upstairs tall={tpOn} onFloor={(x, z) => { if (BUILDST.on) return; setSel(null); if (editingHome) { setHomeSel(null); return; } walk(x, z); }} />}
+     {!free && ui.south && <SouthWing ui={ui} />}
+     {!free && (ui.wing ? <Wing /> : <EastWall />)}
+     <group position={[15, 0, -2]}><B p={[0, .9, 0]} s={[.3, 1.8, .3]} c="#5a3a22" /><mesh position={[0, 2.4, 0]} castShadow><sphereGeometry args={[1.3, 16, 12]} /><meshStandardMaterial color="#2f6b3a" /></mesh></group>
+@@ -1140,7 +1154,7 @@
+     {ui.homeOwned.map(i => <OwnedFurniture key={i.id} item={i} editing={editingHome} onSelect={setHomeSel} />)}
+     {editingHome && homeSel && (() => { const q = homePos(homeSel); return q ? <mesh rotation-x={-Math.PI / 2} position={[q[0], .035, q[1]]}><ringGeometry args={[.62, .76, 40]} /><meshBasicMaterial color="#f0b94a" transparent opacity={.95} depthTest={false} /></mesh> : null; })()}
+     {hov && hov !== sel?.id && (() => { const o = find(hov); return <Html position={[o.p[0], 2.3, o.p[1]]} center zIndexRange={[15, 5]} style={{ pointerEvents: 'none' }}><div className="tag">{o.name}</div></Html>; })()}
+-    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /><HomePeers look={look} sample={homeSample} /></Suspense>
++    <Suspense fallback={null}><Avatar look={look} bubble={ui.cur ? ui.cur.e : moodFace(ui.mood)} /><HomeCompanion pos={() => S.pos as [number, number]} free={(x, z) => !blocked(BL(), [x, z], undefined, HARD) && !(UPON && z < -4.25)} /><Family looks={flooks} ui={ui} onPick={id => setSel(famObj(id))} /><HomePeers look={look} sample={homeSample} /></Suspense>
+     {sel && <Html position={[sel.p[0], 2.6, sel.p[1]]} center zIndexRange={[20, 10]} calculatePosition={keepMenuOnScreen}><div className="pie"><b>{sel.name}</b>
+       {sel.acts.filter(a => a.k !== 'together' || COMPANION.phase === 'home').map((a, i) => <button key={a.k} disabled={(!!a.pow && !ui.power) || (a.cost || 0) > ui.cash || (USES[a.k]?.meals || 0) > ui.meals || (a.all === 'dinner' && ui.fam.every(f => f.away))} onClick={() => { if (a.k === 'together') spendNight(); else enq(sel, a); setSel(null); }}>{TP.on && <i className="tpK">{i + 1}</i>}{a.e} {a.label}<small>{a.cost ? `-${naira(a.cost)}` : a.pay ? `+${naira(a.pay)}` : (USES[a.k]?.meals || 0) > ui.meals ? 'no groceries 🛒' : USES[a.k]?.supplies && ui.supplies < 1 ? `${a.dur} min · no toiletries` : a.k === 'together' ? 'tonight' : `${a.dur} min`}</small></button>)}</div></Html>}
+     {BUILDST.on && <BuildGhost />}

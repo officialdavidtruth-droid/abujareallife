@@ -19,23 +19,35 @@ const covered = (rooms: Rect[], x: number, z: number, r: number) => {
   for (const [dx, dz] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]]) if (!inRooms(rooms, x + dx, z + dz)) return false;
   return true;
 };
+/** Extra walkable rectangles outside the main flat: the stair and the upstairs rooms of a two-storey house (lib/upstairs.ts). Empty for everyone else. */
+export const EXTRA: Rect[] = [];
+let GX0 = BOUNDS.x0, GZ0 = BOUNDS.z0;   // where the path-finding grid starts (the flat's corner, or further out when extra rectangles reach beyond it)
+function regrid() {
+  GX0 = Math.min(BOUNDS.x0, ...EXTRA.map(r => r.x)); GZ0 = Math.min(BOUNDS.z0, ...EXTRA.map(r => r.z));
+  const x1 = Math.max(PLAN.rooms ? BOUNDS.x1 : FULL_X1, ...EXTRA.map(r => r.x + r.w)), z1 = Math.max(BOUNDS.z1, ...EXTRA.map(r => r.z + r.d));
+  NX = Math.ceil((x1 - GX0) / G) + 1; NZ = Math.ceil((z1 - GZ0) / G) + 1;
+}
+export function setExtra(rects: Rect[]) {
+  if (rects.length === EXTRA.length && rects.every((r, i) => r.x === EXTRA[i].x && r.z === EXTRA[i].z && r.w === EXTRA[i].w && r.d === EXTRA[i].d)) return;
+  EXTRA.length = 0; EXTRA.push(...rects); regrid();
+}
 /** Switch to a room plan (or back to the old fixed flat with null). Re-sizes the path-finding grid to fit. */
 export function setPlan(rooms: Rect[] | null) {
   if (rooms && rooms.length) {
     PLAN.rooms = rooms;
     BOUNDS.x0 = Math.min(...rooms.map(r => r.x)); BOUNDS.x1 = Math.max(...rooms.map(r => r.x + r.w));
     BOUNDS.z0 = Math.min(...rooms.map(r => r.z)); BOUNDS.z1 = Math.max(...rooms.map(r => r.z + r.d));
-    NX = Math.ceil((BOUNDS.x1 - BOUNDS.x0) / G) + 1; NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
   } else {
     PLAN.rooms = null; Object.assign(BOUNDS, LEGACY);
-    NX = Math.ceil((FULL_X1 - BOUNDS.x0) / G) + 1; NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
   }
+  regrid();
 }
 const G = 0.15; // grid cell size for path-finding
 
 export const inside = (p: P, k: Box, r = 0) => p[0] > k[0] - r && p[0] < k[1] + r && p[1] > k[2] - r && p[1] < k[3] + r;
-export const blocked = (blks: Blk[], p: P, own?: string, r = R) =>
-  (PLAN.rooms ? !covered(PLAN.rooms, p[0], p[1], r) : false) || p[0] < BOUNDS.x0 || p[0] > BOUNDS.x1 || p[1] < BOUNDS.z0 || p[1] > BOUNDS.z1 || blks.some(k => k.id !== own && inside(p, k.b, r));
+const inBox = (p: P) => p[0] >= BOUNDS.x0 && p[0] <= BOUNDS.x1 && p[1] >= BOUNDS.z0 && p[1] <= BOUNDS.z1;
+const walkable = (p: P, r: number) => (PLAN.rooms ? covered(PLAN.rooms, p[0], p[1], r) : inBox(p)) || (EXTRA.length > 0 && covered(EXTRA, p[0], p[1], r));
+export const blocked = (blks: Blk[], p: P, own?: string, r = R) => !walkable(p, r) || blks.some(k => k.id !== own && inside(p, k.b, r));
 
 function clear(blks: Blk[], a: P, b: P, own?: string) { // is the straight line a→b free?
   const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(d / 0.07));
@@ -44,8 +56,8 @@ function clear(blks: Blk[], a: P, b: P, own?: string) { // is the straight line 
 }
 
 let NX = Math.ceil((FULL_X1 - BOUNDS.x0) / G) + 1, NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / G) + 1;
-const cell = (p: P): [number, number] => [Math.round((p[0] - BOUNDS.x0) / G), Math.round((p[1] - BOUNDS.z0) / G)];
-const pos = (i: number, j: number): P => [i * G + BOUNDS.x0, j * G + BOUNDS.z0];
+const cell = (p: P): [number, number] => [Math.round((p[0] - GX0) / G), Math.round((p[1] - GZ0) / G)];
+const pos = (i: number, j: number): P => [i * G + GX0, j * G + GZ0];
 
 /** Nearest walkable point to p (p itself if it is already free). */
 export function nearestFree(blks: Blk[], p: P, own?: string): P {

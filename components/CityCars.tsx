@@ -183,7 +183,7 @@ function FittedCar({ src, real, steer }: { src: THREE.Object3D; real: boolean; s
   return <group ref={root}><primitive object={obj} /></group>;
 }
 
-export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax, steer }: { steer?: () => number; pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
+export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax, steer, damageLevel = 0 }: { steer?: () => number; pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void; damageLevel?: number }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const glb = useCarGlb(spec.id);
   // Two-wheel vehicles use purpose-built procedural models instead of rendering as cars.
@@ -191,15 +191,19 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
   if (spec.type === 'BICYCLE') return <BicycleBody scale={0.92} rider={driver} />;
   if (spec.type === 'HELICOPTER') return <HelicopterBody scale={1.05} />;
   if (spec.type === 'BOAT') return <BoatBody color={style?.paint && style.paint !== 'factory' ? style.paint : color} scale={1.05} />;
+  if (spec.type === 'TRAIN') return <TrainBody color={style?.paint && style.paint !== 'factory' ? style.paint : color} passenger={/carriage/i.test(spec.model)} scale={1.05} />;
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
   const grille = premium ? '#c7ccd1' : '#20252a'; const bodyColor = style?.paint && style.paint !== 'factory' ? style.paint : color; const rimColor = style?.rims === 'sport' ? '#d8dde3' : style?.rims === 'black' ? '#15171a' : '#b4bac1';
+  const damage = Math.max(0, Math.min(100, damageLevel));
   if (glb) return <group>
     <FittedCar src={glb.src} real={glb.real} steer={steer} />
+    <CarDamageVisuals level={damage} />
     {driver && <group position={[0, suv ? 0 : -.1, 0]} scale={[1, suv ? 1 : .85, 1]}><CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={false} driverRef={driverRef} look={look} pax={pax} steer={steer} /></group>}
   </group>;
   return <group scale={sc}>
+    <CarDamageVisuals level={damage} />
     <mesh geometry={kit.body} material={bodyMat(bodyColor)} castShadow />
     {driver && <CarInterior seed={bodyColor + spec.model} shirt={shirt} suv={suv} driverRef={driverRef} look={look} pax={pax} steer={steer} />}
     {/* driver-side door: hinged at the front edge, swings outward. Closed it is a normal door; open it shows a recessed door well, an inner trim panel and an empty window frame */}
@@ -224,6 +228,29 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
     <mesh geometry={kit.trim} material={TRIM_MAT} />
     <mesh geometry={kit.head} material={kit.headM} /><mesh geometry={kit.tail} material={kit.tailM} />
     <mesh position={[-1.55, .58, .91]} material={new THREE.MeshStandardMaterial({ color: '#111', metalness: .25, roughness: .55 })}><boxGeometry args={[.5, .05, .05]} /></mesh>
+  </group>;
+}
+
+/** Cosmetic damage layer driven by a 0..100 damage level from the vehicle state. */
+function CarDamageVisuals({ level }: { level: number }) {
+  if (level < 5) return null;
+  const dent = new THREE.MeshStandardMaterial({ color: '#34383d', roughness: .88, metalness: .15, transparent: true, opacity: Math.min(.78, .18 + level / 125) });
+  const crack = new THREE.LineBasicMaterial({ color: '#dce8ef', transparent: true, opacity: Math.min(.95, .35 + level / 150) });
+  const broken = level >= 30;
+  return <group>
+    {/* compressed dark panels read as dents/scrapes on the front corners and side panels */}
+    <mesh position={[2.08, .48, -.53]} rotation-z={-.16} material={dent}><boxGeometry args={[.12, .16 + level / 500, .24]} /></mesh>
+    <mesh position={[2.08, .48, .53]} rotation-z={.16} material={dent}><boxGeometry args={[.12, .16 + level / 500, .24]} /></mesh>
+    <mesh position={[-.25, .66, -.86]} rotation-z={.04} material={dent}><boxGeometry args={[.65 + level / 180, .06 + level / 700, .035]} /></mesh>
+    <mesh position={[-.25, .66, .86]} rotation-z={-.04} material={dent}><boxGeometry args={[.65 + level / 180, .06 + level / 700, .035]} /></mesh>
+    {broken && <group>
+      <mesh position={[2.18, .62, -.48]} material={new THREE.MeshStandardMaterial({ color: '#17191c', emissive: '#080808' })}><boxGeometry args={[.035, .13, .2]} /></mesh>
+      <mesh position={[2.18, .62, .48]} material={new THREE.MeshStandardMaterial({ color: '#17191c', emissive: '#080808' })}><boxGeometry args={[.035, .13, .2]} /></mesh>
+    </group>}
+    {level >= 45 && <group position={[.72, 1.08, -.69]}>
+      <line material={crack} geometry={new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(.13,-.12,.01), new THREE.Vector3(.08,-.22,.015)])} />
+      <line material={crack} geometry={new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(.13,-.12,.01), new THREE.Vector3(.27,-.15,.01)])} />
+    </group>}
   </group>;
 }
 
@@ -430,5 +457,23 @@ export function PoliceBody({ kit, refs }: { kit: Kit; refs?: BodyRefs }) {
     <mesh position={[-.17, 1.55, .3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={red} color="#ff2b2b" emissive="#ff1010" emissiveIntensity={1} /></mesh>
     <mesh position={[-.17, 1.55, -.3]}><boxGeometry args={[.3, .11, .5]} /><meshStandardMaterial ref={blue} color="#2b6bff" emissive="#1050ff" emissiveIntensity={1} /></mesh>
     {[1, -1].map(sd => <Text key={sd} position={[-.2, .78, sd * .94]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.2} color="#1d3f8f" anchorX="center" anchorY="middle">POLICE</Text>)}
+  </group>;
+}
+
+/** Step 5 train rolling-stock silhouette. This is a visual model only; rail paths, station stops and passenger boarding are not wired yet. */
+export function TrainBody({ color = '#173e63', passenger = false, scale = 1 }: { color?: string; passenger?: boolean; scale?: number }) {
+  const bodyMat = useMemo(() => new THREE.MeshStandardMaterial({ color, metalness: .28, roughness: .38 }), [color]);
+  const glassMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#83b9d4', metalness: .18, roughness: .2 }), []);
+  const trimMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e8e9e7', metalness: .35, roughness: .42 }), []);
+  return <group scale={[scale, scale, scale]}>
+    <mesh position={[0, .82, 0]}><boxGeometry args={[4.25, 1.18, 1.32]} /><primitive object={bodyMat} attach="material" /></mesh>
+    <mesh position={[passenger ? 0 : 1.7, .86, 0]}><boxGeometry args={[passenger ? 3.95 : .5, .92, 1.35]} /><primitive object={bodyMat} attach="material" /></mesh>
+    {!passenger && <mesh position={[2.12, .72, 0]} rotation-z={-.12}><boxGeometry args={[.12, .78, 1.28]} /><primitive object={trimMat} attach="material" /></mesh>}
+    {Array.from({ length: passenger ? 6 : 4 }, (_, i) => { const x = passenger ? -1.52 + i * .61 : -.95 + i * .62; return <mesh key={i} position={[x, 1.02, .671]}><boxGeometry args={[.38, .42, .035]} /><primitive object={glassMat} attach="material" /> </mesh>; })}
+    {Array.from({ length: 4 }, (_, i) => { const x = -1.5 + i; return <group key={i} position={[x, .28, 0]}>
+      {[-.53, .53].map(z => <mesh key={z} position={[0, 0, z]} rotation-x={Math.PI / 2}><cylinderGeometry args={[.22, .22, .12, 16]} /><meshStandardMaterial color="#20252a" metalness={.55} roughness={.55} /></mesh>)}
+    </group>; })}
+    <mesh position={[0, .43, 0]}><boxGeometry args={[4.05, .13, 1.12]} /><primitive object={trimMat} attach="material" /></mesh>
+    <mesh position={[passenger ? 0 : 2.15, .87, -.69]}><boxGeometry args={[.34, .15, .025]} /><meshStandardMaterial color="#ffedb0" emissive="#ffcc66" emissiveIntensity={.65} /></mesh>
   </group>;
 }

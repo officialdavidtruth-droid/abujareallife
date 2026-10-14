@@ -11,7 +11,7 @@ import { guestKey, guestsOf } from './cityPax';
 import { hs, wrap } from './cityShared';
 import { JACK } from './CityTraffic';
 import { BoatModel } from './CityTerrain';
-import { SWIM_DEPTH, WATER_Y, terrainH } from '../lib/terrain';
+import { SWIM_DEPTH, WATER_Y, driveH } from '../lib/terrain';
 
 
 /* ───────────── other real players ───────────── */
@@ -38,11 +38,11 @@ export function Remote({ name, bub, onPick }: { name: string; bub?: string; onPi
     const gKey = guestKey(name); if (gKey !== gkRef.current) { gkRef.current = gKey; setGk(gKey); }
     if (rideG.current) { rideG.current.visible = near && rd > 0; rideG.current.position.set(q.x, 0, q.z); rideG.current.rotation.y = q.r; }   // riding a taxi: x, z, r are the vehicle's pose
     /* ground height is worked out from the position (terrain is the same on every client), so nothing extra travels over the network */
-    const gy = terrainH(q.x, q.z), swimming = !q.drv && !rd && !q.pa && !q.pl && WATER_Y - gy > SWIM_DEPTH, boating = q.w === 3 && q.drv;
+    const gy = driveH(q.x, q.z), swimming = !q.drv && !rd && !q.pa && !q.pl && WATER_Y - gy > SWIM_DEPTH, boating = q.w === 3 && q.drv;
     body.current.visible = near && !q.drv && !rd && !q.pa && !q.pl; body.current.rotation.order = 'YXZ';
     { const lean = swimming && !q.ko ? (q.w === 2 ? 1.35 : 1.15) : 0, off = lean * .7, fy = swimming ? WATER_Y - .35 - (q.w === 2 ? 2.2 : 0) : gy;
       body.current.position.set(q.x - Math.sin(q.r) * off, fy + (q.ko ? .28 : 0), q.z - Math.cos(q.r) * off); body.current.rotation.y = q.r; body.current.rotation.x = q.ko ? -Math.PI / 2 : lean; }
-    { const cfx = Math.cos(q.cr), cfz = -Math.sin(q.cr), hf = terrainH(q.cx + cfx * 2, q.cz + cfz * 2), hb = terrainH(q.cx - cfx * 2, q.cz - cfz * 2), hl = terrainH(q.cx - cfz * .9, q.cz + cfx * .9), hr = terrainH(q.cx + cfz * .9, q.cz - cfx * .9);
+    { const cfx = Math.cos(q.cr), cfz = -Math.sin(q.cr), hf = driveH(q.cx + cfx * 2, q.cz + cfz * 2), hb = driveH(q.cx - cfx * 2, q.cz - cfz * 2), hl = driveH(q.cx - cfz * .9, q.cz + cfx * .9), hr = driveH(q.cx + cfz * .9, q.cz - cfx * .9);
       car.current.visible = near && (q.cp || q.drv) && !boating && !JACK.hides(name); car.current.rotation.order = 'YZX'; car.current.position.set(q.cx, (hf + hb + hl + hr) / 4, q.cz); car.current.rotation.set(Math.atan2(hr - hl, 1.8), q.cr, Math.atan2(hf - hb, 4)); }
     if (boat.current) { boat.current.visible = near && boating; boat.current.position.set(q.cx, WATER_Y + .03 + Math.sin(performance.now() / 600) * .04, q.cz); boat.current.rotation.set(0, q.cr, Math.sin(performance.now() / 800) * .02); }
     if (drvObj.current) drvObj.current.visible = !!q.drv;   // somebody sits in a remote car only while that player is driving it (a parked car is empty)

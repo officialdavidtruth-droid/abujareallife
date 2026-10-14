@@ -2,8 +2,9 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { BOAT_DEPTH, CORE, DOCKS, WATER_Y, WORLD_LIM, dockNear, groundColor, scatter, terrainH } from '../lib/terrain';
+import { BOAT_DEPTH, CORE, DOCKS, HIGHWAYS, HW_HALF, HW_STEP, WATER_Y, WORLD_LIM, dockNear, groundColor, hwPoint, scatter, terrainH, type Highway } from '../lib/terrain';
 import { GAME } from './cityShared';
+import { ROAD_MAT } from './CityLook';
 
 /* The ground outside the city: rolling hills, beaches, a river and a lake, drawn as a grid of chunks (so the GPU only draws the ones in view),
    plus the water surface, trees, rocks, boat docks and the boats that wait at them. The city core is flat (see lib/terrain.ts), so nothing inside it moves. */
@@ -211,9 +212,76 @@ export function PlayerBoat() {
   </group>;
 }
 
+/* ───── highways and bridges (see lib/terrain.ts for the road height and the bridge spans) ─────
+   Each highway is drawn as ribbons that follow the graded ground: asphalt, a dashed centre line, edge lines and, over water, a bridge deck with
+   parapets, a fascia and concrete piers standing on the river bed. Built once per highway, a handful of meshes in total. */
+type RP = { x: number; z: number; nx: number; nz: number; y: number; s: number };
+class Geo {
+  pos: number[] = []; idx: number[] = [];
+  /** a strip between two curves along the road: lateral offsets (oa, ob) and heights above the road surface (ya, yb); `flat` strips are lit as level ground */
+  strip(pts: RP[], oa: number, ya: number, ob: number, yb: number) {
+    const base = this.pos.length / 3;
+    for (const p of pts) this.pos.push(p.x + p.nx * oa, p.y + ya, p.z + p.nz * oa, p.x + p.nx * ob, p.y + yb, p.z + p.nz * ob);
+    for (let i = 0; i < pts.length - 1; i++) { const a = base + i * 2; this.idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  build(flat: boolean) {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3)); g.setIndex(this.idx);
+    if (flat) { const n = new Float32Array(this.pos.length); for (let i = 1; i < n.length; i += 3) n[i] = 1; g.setAttribute('normal', new THREE.BufferAttribute(n, 3)); } else g.computeVertexNormals();
+    g.computeBoundingSphere(); return g;
+  }
+}
+const samples = (h: Highway, s0: number, s1: number): RP[] => {
+  const out: RP[] = [], n = Math.max(1, Math.round((s1 - s0) / HW_STEP));
+  for (let i = 0; i <= n; i++) { const s = s0 + (s1 - s0) * i / n, p = hwPoint(h, s); out.push({ x: p.x, z: p.z, nx: -p.tz, nz: p.tx, y: p.y, s }); }   // (nx, nz): lateral direction, to the left of travel
+  return out;
+};
+const ASPHALT_Y = .13;
+
+function HighwayMeshes({ h }: { h: Highway }) {
+  const built = useMemo(() => {
+    const all = samples(h, 0, h.len), top = new Geo(), lines = new Geo(), edges = new Geo(), conc = new Geo();
+    top.strip(all, -HW_HALF, ASPHALT_Y, HW_HALF, ASPHALT_Y);
+    // dashed centre line (8 m on, 8 m off) and continuous edge lines
+    for (let i = 0; i + 1 < all.length; i += 4) lines.strip(all.slice(i, i + 3), -.11, ASPHALT_Y + .02, .11, ASPHALT_Y + .02);
+    edges.strip(all, -HW_HALF + .45, ASPHALT_Y + .02, -HW_HALF + .62, ASPHALT_Y + .02); edges.strip(all, HW_HALF - .62, ASPHALT_Y + .02, HW_HALF - .45, ASPHALT_Y + .02);
+    const piers: { x: number; z: number; y0: number; y1: number }[] = [];
+    for (const [a, b] of h.spans) {
+      const sp = samples(h, a, b), o = HW_HALF + .55;
+      conc.strip(sp, -o, -.95, o, -.95);                                      // underside of the deck
+      conc.strip(sp, -o, -.95, -o, ASPHALT_Y + .05); conc.strip(sp, o, -.95, o, ASPHALT_Y + .05);   // fascia beams along both edges
+      conc.strip(sp, -o, ASPHALT_Y + .05, -HW_HALF, ASPHALT_Y + .05); conc.strip(sp, HW_HALF, ASPHALT_Y + .05, o, ASPHALT_Y + .05);   // kerbs
+      for (const side of [-1, 1]) { const po = side * (o - .08); conc.strip(sp, po, ASPHALT_Y + .05, po, 1.15); conc.strip(sp, po - .2, 1.15, po + .2, 1.15); }   // parapet walls with a cap
+      for (let s = a + 24; s <= b - 24; s += 28) { const p = hwPoint(h, s); for (const side of [-1, 1]) { const x = p.x - p.tz * side * 3.4, z = p.z + p.tx * side * 3.4; piers.push({ x, z, y0: terrainH(x, z) - .8, y1: p.y - .9 }); } }
+    }
+    return { top: top.build(true), lines: lines.build(true), edges: edges.build(true), conc: conc.build(false), piers };
+  }, [h]);
+  const pier = useRef<THREE.InstancedMesh>(null!);
+  useEffect(() => {
+    if (!pier.current) return; const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
+    built.piers.forEach((e, i) => { const hh = Math.max(.5, e.y1 - e.y0); p.set(e.x, e.y0 + hh / 2, e.z); sc.set(1, hh, 1); m.compose(p, q, sc); pier.current.setMatrixAt(i, m); });
+    pier.current.instanceMatrix.needsUpdate = true;
+  }, [built]);
+  useEffect(() => () => { built.top.dispose(); built.lines.dispose(); built.edges.dispose(); built.conc.dispose(); }, [built]);
+  const mLine = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e8e4d0', roughness: .8, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), []);
+  const mEdge = useMemo(() => new THREE.MeshStandardMaterial({ color: '#f1f1f1', roughness: .8, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), []);
+  const mConc = useMemo(() => new THREE.MeshStandardMaterial({ color: '#a9a8a2', roughness: .9, side: THREE.DoubleSide }), []);
+  const mTop = useMemo(() => { const m = ROAD_MAT.clone(); m.side = THREE.DoubleSide; m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -1; return m; }, []);
+  useFrame(() => { mTop.color.copy(ROAD_MAT.color); mTop.roughness = ROAD_MAT.roughness; mTop.metalness = ROAD_MAT.metalness; });   // follows the city roads when it rains
+  useEffect(() => () => { mLine.dispose(); mEdge.dispose(); mConc.dispose(); mTop.dispose(); }, [mLine, mEdge, mConc, mTop]);
+  return <group>
+    <mesh geometry={built.top} material={mTop} receiveShadow frustumCulled={false} />
+    <mesh geometry={built.lines} material={mLine} frustumCulled={false} />
+    <mesh geometry={built.edges} material={mEdge} frustumCulled={false} />
+    {built.conc.attributes.position.count > 0 && <mesh geometry={built.conc} material={mConc} castShadow receiveShadow frustumCulled={false} />}
+    {built.piers.length > 0 && <instancedMesh ref={pier} args={[undefined, undefined, built.piers.length]} frustumCulled={false} castShadow><cylinderGeometry args={[.8, .95, 1, 10]} /><meshStandardMaterial color="#9d9c96" roughness={.95} /></instancedMesh>}
+  </group>;
+}
+function Highways() { return <>{HIGHWAYS.map(h => <HighwayMeshes key={h.id} h={h} />)}</>; }
+
 export default function CityTerrain() {
   return <>
     <Ground />
+    <Highways />
     <Water />
     <Scenery />
     <Docks />

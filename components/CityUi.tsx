@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NET } from '../lib/cityNet';
 import { createRoot, type Root } from 'react-dom/client';
 import { GRID, WS, halfW } from '../lib/roadRoute';
+import { HIGHWAYS, HW_HALF, hwPath } from '../lib/terrain';
 import { BUILDS, CAMV, Ctl, GAME, Hud, toggleDriveCam } from './cityShared';
 
 /** Renders plain DOM into document.body from inside <Canvas>. react-dom's createPortal can't be used there: R3F's reconciler would try to build <button>/<small> as THREE objects. */
@@ -46,6 +47,10 @@ export function LookPad({ ctl }: { ctl: React.MutableRefObject<Ctl> }) {
   ><span>↔ LOOK</span></div>;
 }
 
+/** highway centre lines (and their bridge stretches), worked out once for the minimap */
+const HW_LINES = HIGHWAYS.map(h => ({ line: hwPath(h), bridges: h.spans.map(([a, b]) => hwPath(h, a, b, 8)) }));
+const strokePath = (g: CanvasRenderingContext2D, pts: [number, number][]) => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke(); };
+
 export function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onOpen?: () => void }) {
   const ref = useRef<HTMLCanvasElement>(null), north = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -58,6 +63,8 @@ export function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onO
       g.translate(S / 2, S / 2); g.rotate(-Math.atan2(h.fx, -h.fz)); g.scale(sc, sc); g.translate(-h.x, -h.z);
       { const tm = getTerrainMap(); if (tm) { g.imageSmoothingEnabled = true; g.drawImage(tm, -TERRAIN_MAP_EXTENT, -TERRAIN_MAP_EXTENT, TERRAIN_MAP_EXTENT * 2, TERRAIN_MAP_EXTENT * 2); } }   // water, beaches, hills and countryside under the roads
       g.fillStyle = '#6a6f77'; for (let i = -5; i <= 5; i++) { g.fillRect(i * GRID - halfW(i), -125 * WS, halfW(i) * 2, 250 * WS); g.fillRect(-125 * WS, i * GRID - halfW(i), 250 * WS, halfW(i) * 2); }
+      g.lineJoin = 'round'; g.lineCap = 'butt'; g.setLineDash([]);
+      for (const hw of HW_LINES) { g.strokeStyle = '#6a6f77'; g.lineWidth = HW_HALF * 2; strokePath(g, hw.line); g.strokeStyle = '#d9c27a'; g.lineWidth = HW_HALF * 2 + 3; for (const b of hw.bridges) { strokePath(g, b); } g.strokeStyle = '#6a6f77'; g.lineWidth = HW_HALF * 2 - 1; for (const b of hw.bridges) strokePath(g, b); }   // highways out of the city; a gold edge marks the bridges
       for (const b of BUILDS) { g.fillStyle = b.color; g.fillRect(b.x - b.w / 2, b.z - b.d / 2, b.w, b.d); }
       const rt = GAME.route, nv = GAME.nav;
       if (rt && nv) {

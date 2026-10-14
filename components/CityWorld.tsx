@@ -46,7 +46,7 @@ import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPla
 import { hint } from '../lib/touch';
 import { vehicleById, vehicleByName } from '../lib/vehicles';
 import CityTerrain, { BOAT, SWIM, boatTarget } from './CityTerrain';
-import { BOAT_DEPTH, SWIM_DEPTH, WATER_Y, terrainH, waterDepth } from '../lib/terrain';
+import { BOAT_DEPTH, SWIM_DEPTH, WATER_Y, driveH, groundFor, terrainH, waterDepth } from '../lib/terrain';
 /* How far the camera may swing round to look UP (polar angle; PI/2 = level with the head). 1.9 lets you tilt up about 17 degrees to read billboards. */
 const LOOK_UP = 1.9;
 
@@ -351,8 +351,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const auth = THREE.MathUtils.clamp(V.v / 4, -1, 1) * (1 - Math.min(.55, Math.abs(V.v) / 55));
       V.r -= ix * 2.1 * auth * (wantJump ? 1.5 : 1) * dt;
       V.x += Math.cos(V.r) * V.v * dt; V.z -= Math.sin(V.r) * V.v * dt;
-      { const hf = terrainH(V.x + Math.cos(V.r) * 2, V.z - Math.sin(V.r) * 2), hb = terrainH(V.x - Math.cos(V.r) * 2, V.z + Math.sin(V.r) * 2); if (hf !== hb) V.v -= (hf - hb) / 4 * 5.5 * dt; }   // hills: slower uphill, quicker downhill (flat inside the city, so nothing changes there)
-      if (waterDepth(V.x, V.z) > .55) { V.x -= Math.cos(V.r) * V.v * dt; V.z += Math.sin(V.r) * V.v * dt; V.v *= -.25; const now = performance.now(); if (now - wmsg.current > 2500) { wmsg.current = now; GAME.notice = '🌊 Too deep to drive. Find a boat at a dock.'; } }
+      { const hf = driveH(V.x + Math.cos(V.r) * 2, V.z - Math.sin(V.r) * 2), hb = driveH(V.x - Math.cos(V.r) * 2, V.z + Math.sin(V.r) * 2); if (hf !== hb) V.v -= (hf - hb) / 4 * 5.5 * dt; }   // hills: slower uphill, quicker downhill (flat inside the city, so nothing changes there)
+      if (WATER_Y - driveH(V.x, V.z) > .55) { V.x -= Math.cos(V.r) * V.v * dt; V.z += Math.sin(V.r) * V.v * dt; V.v *= -.25; const now = performance.now(); if (now - wmsg.current > 2500) { wmsg.current = now; GAME.notice = '🌊 Too deep to drive. Find a boat at a dock.'; } }
       driveKm.current += Math.abs(V.v*dt)/1000; if(VEH.drv && driveKm.current >= .5 && performance.now()-lastDrivePost.current>5000){ const km=driveKm.current; driveKm.current=0; lastDrivePost.current=performance.now(); fetch('/api/vehicles',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'drive',vehicleId:(window as any).__arlVehicleId||'',km})}).catch(()=>{}); }
       hitCool.current -= dt;
       let hit = 0; const fxw = Math.cos(V.r), fzw = -Math.sin(V.r);
@@ -385,7 +385,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       /* ── on foot ── */
       moving.current = mag > .08; running.current = wantRun;
       const wx = ix * -fz + iy * fx, wz = ix * fx + iy * fz;
-      const wd0 = Math.max(0, WATER_Y - terrainH(p.x, p.z)), swim0 = wd0 > SWIM_DEPTH && !GAME.jailed;   // wading slows you, deep water makes you swim
+      const wd0 = Math.max(0, WATER_Y - groundFor(p.x, p.z, p.g)), swim0 = wd0 > SWIM_DEPTH && !GAME.jailed;   // wading slows you, deep water makes you swim
       if (moving.current) {
         if (wantRun && c.crouch && !swim0) c.crouch = false;
         const sp = swim0 ? (wantRun ? 4.6 : 2.9) : (c.crouch ? 2.3 : wantRun ? 9 : 4.6) * (wd0 > .25 ? 1 - Math.min(.45, (wd0 - .25) * .55) : 1);
@@ -412,7 +412,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       p.x = THREE.MathUtils.clamp(p.x, -LIM, LIM); p.z = THREE.MathUtils.clamp(p.z, -LIM, LIM);
       if (GAME.tp) { p.x = GAME.tp.x; p.z = GAME.tp.z; GAME.tp = null; }
       if (GAME.jailed) { VEH.drv = false; p.x = THREE.MathUtils.clamp(Math.abs(p.x - CELL.x) > 3 ? CELL.x : p.x, CELL.x - 2.6, CELL.x + 2.6); p.z = THREE.MathUtils.clamp(Math.abs(p.z - CELL.z) > 3 ? CELL.z : p.z, CELL.z - 2.6, CELL.z + 2.6); }
-      const g1 = terrainH(p.x, p.z), wd1 = Math.max(0, WATER_Y - g1);
+      const g1 = groundFor(p.x, p.z, p.g), wd1 = Math.max(0, WATER_Y - g1);   // on a bridge deck you stand on it (when you walked up onto it); under it you swim
       p.g = g1;
       if (wd1 > SWIM_DEPTH && !GAME.jailed) {
         /* ── swimming: float at the surface; Dive (Z, or the Dive button) takes you under, Space / Jump brings you up. Air lasts about 30 s. ── */
@@ -439,7 +439,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       if (JACK.on && !VEH.drv && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) { JACK.release(); if (OWN.had) { VEH.x = OWN.x; VEH.z = OWN.z; VEH.r = OWN.r; VEH.v = 0; VEH.placed = true; } else { VEH.placed = false; VEH.homed = false; } } // an abandoned stolen car goes back to traffic; your own car is still where you parked it
     }
     c.jump = false;
-    GAME.player.x = p.x; GAME.player.z = p.z; GAME.player.r = p.r;
+    GAME.player.x = p.x; GAME.player.z = p.z; GAME.player.r = p.r; GAME.player.g = p.g;
     group.current.rotation.order = 'YXZ'; const lying = me.ko > nowMs || JACK.victimUntil > nowMs;
     p.sp += ((p.sw && !lying ? (p.dv > .45 ? 1.35 : 1.15) : 0) - p.sp) * Math.min(1, dt * 6);   // swimmers lean forward, face down
     { const so = p.sp * .7; group.current.position.set(p.x - Math.sin(p.r) * so, p.g + p.y + (lying ? .28 : 0), p.z - Math.cos(p.r) * so); }
@@ -453,7 +453,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── car mesh, brake lights, headlights, floating label ── */
     if (carG.current) {
       carG.current.visible = VEH.placed;
-      { const cfx = Math.cos(VEH.r), cfz = -Math.sin(VEH.r), hf = terrainH(VEH.x + cfx * 2, VEH.z + cfz * 2), hb = terrainH(VEH.x - cfx * 2, VEH.z - cfz * 2), hl = terrainH(VEH.x - cfz * .9, VEH.z + cfx * .9), hr = terrainH(VEH.x + cfz * .9, VEH.z - cfx * .9);
+      { const cfx = Math.cos(VEH.r), cfz = -Math.sin(VEH.r), hf = driveH(VEH.x + cfx * 2, VEH.z + cfz * 2), hb = driveH(VEH.x - cfx * 2, VEH.z - cfz * 2), hl = driveH(VEH.x - cfz * .9, VEH.z + cfx * .9), hr = driveH(VEH.x + cfz * .9, VEH.z - cfx * .9);
         carG.current.rotation.order = 'YZX'; carG.current.position.set(VEH.x, (hf + hb + hl + hr) / 4, VEH.z); carG.current.rotation.set(Math.atan2(hr - hl, 1.8), VEH.r, Math.atan2(hf - hb, 4)); }   // the car sits on the slope (flat inside the city)
       (pkit().tailM as THREE.MeshStandardMaterial).emissiveIntensity = VEH.drv && VEH.brake ? 3.2 : 1.2;
       spot.current.intensity = VEH.drv || VEH.placed ? NIGHT.n * 220 : 0;
@@ -636,7 +636,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   /* plane buttons for phones: "Plane" (board / get out) appears next to the plane or while flying, "View" switches cockpit / outside */
   const [pl, setPl] = useState<'' | 'near' | 'fly' | 'pax'>('');
   const [bt, setBt] = useState<'' | 'near' | 'on'>(''), [wet, setWet] = useState(false);   // boat button (appears next to a boat or while driving one) and the Dive label (while swimming)
-  useEffect(() => { const f = () => { const v: '' | 'near' | 'on' = BOAT.on ? 'on' : boatTarget(GAME.player.x, GAME.player.z) ? 'near' : '', w = !BOAT.on && waterDepth(GAME.player.x, GAME.player.z) > SWIM_DEPTH; setBt(o => o === v ? o : v); setWet(o => o === w ? o : w); }; f(); const i = setInterval(f, 300); return () => clearInterval(i); }, []);
+  useEffect(() => { const f = () => { const v: '' | 'near' | 'on' = BOAT.on ? 'on' : boatTarget(GAME.player.x, GAME.player.z) ? 'near' : '', w = !BOAT.on && WATER_Y - groundFor(GAME.player.x, GAME.player.z, GAME.player.g) > SWIM_DEPTH; setBt(o => o === v ? o : v); setWet(o => o === w ? o : w); }; f(); const i = setInterval(f, 300); return () => clearInterval(i); }, []);
   useEffect(() => { const f = () => { const v = PLANE.on ? 'fly' : PLANE.pax ? 'pax' : planeNear(GAME.player.x, GAME.player.z) ? 'near' : ''; setPl(o => o === v ? o : v); }; f(); const i = setInterval(f, 300); window.addEventListener('arl-plane', f); return () => { clearInterval(i); window.removeEventListener('arl-plane', f); }; }, []);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
   useEffect(() => { // killed: climb out of any vehicle, drop the waypoint and the arrival spot; Sim.tsx puts you back in your house

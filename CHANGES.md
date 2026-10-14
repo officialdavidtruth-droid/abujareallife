@@ -53,3 +53,10 @@
 - New sign-ups must enter a valid date of birth proving they are 18+ and acknowledge the mature-content notice; the server independently validates both requirements.
 - Stores date of birth and mature-content acknowledgement timestamps on the User record. Database migration `0022_adult_access` added; the one-shot database setup and fix SQL were updated too.
 - Added a Nightclub lounge panel with five varied fictional hostess NPC profiles and fictional in-game contraband rumours. Sexual activity is not depicted; rumours are narrative flavour and do not imply real-world sourcing. The existing weed trade remains the only implemented drug-trade mechanic.
+
+
+## 2026-10-14 — Vehicle expansion, Step 1
+- Added Honda CB500F and Yamaha MT-07 motorcycles to the dealership catalog.
+- Motorcycle catalog entries use the existing MOTORCYCLE database enum and existing procedural motorbike model, so they do not render as four-wheeled cars.
+- Updated garage/dealership cards to show a motorcycle icon for motorcycle entries.
+- Later steps remain separate: bicycles, helicopters, boats, trains, then collision damage/dents and breakable vehicle parts.

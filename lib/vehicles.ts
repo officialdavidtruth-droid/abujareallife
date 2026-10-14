@@ -1,5 +1,5 @@
 export type VehicleBrand = 'Toyota' | 'Lexus' | 'Mercedes-Benz' | 'BMW' | 'Honda' | 'Land Rover' | 'Porsche' | 'Alfa Romeo' | 'Yamaha' | 'Trek' | 'Giant' | 'Robinson' | 'Bell' | 'Yamaha Boats' | 'Bayliner' | 'Abuja Rail';
-export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: 'CAR' | 'SUV' | 'MOTORCYCLE' | 'BICYCLE' | 'HELICOPTER' | 'BOAT' | 'TRAIN'; topSpeed: number; accel: number; handling: number; color: string };
+export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: 'CAR' | 'SUV' | 'MOTORCYCLE' | 'BICYCLE' | 'HELICOPTER' | 'BOAT' | 'TRAIN' | 'BUS'; topSpeed: number; accel: number; handling: number; color: string };
 
 export const VEHICLE_CATALOG: VehicleSpec[] = [
   { id: 'toyota-camry-2024', brand: 'Toyota', model: 'Camry', year: 2024, price: 18_500_000, type: 'CAR', topSpeed: 210, accel: 7.9, handling: 78, color: '#c9c9c9' },

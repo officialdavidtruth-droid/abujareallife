@@ -1,15 +1,11 @@
-ARL Vercel TRAIN VehicleType Build Fix
+ARL Vercel build fix: BUS vehicle type
 
-File included:
-  prisma/schema.prisma
+Replace lib/vehicles.ts in your current project with the included file.
+This expands VehicleSpec.type to include BUS, matching the existing Prisma VehicleType enum and GameLayer.tsx garage/dealership icon checks.
 
-Apply:
-1. Back up your current prisma/schema.prisma.
-2. Copy this file into your repository at prisma/schema.prisma.
-3. Confirm enum VehicleType contains TRAIN (and preserve any additional enum values specific to your current branch).
-4. Run: npx prisma generate
-5. Run: npm run build
-6. Commit and push the schema change to the branch Vercel deploys.
+Then run:
+  npx prisma generate
+  npm run build
 
-Important:
-This schema is from the ARL Step 9 project archive. Compare it with your current schema before replacing it, so you do not overwrite newer project-specific schema changes. If your database has not had the TRAIN enum migration applied, deploy the appropriate existing migration separately with your normal database migration workflow.
+If the build passes, commit and push the change to GitHub to trigger Vercel.
+Only replace this one file; do not overwrite your entire project with an older ZIP.

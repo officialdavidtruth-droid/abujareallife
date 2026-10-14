@@ -12,6 +12,7 @@ type Props = { look: Look; getState: () => HumanState; getAnim?: () => string | 
  *  () => true = everyone uses a GLB character; () => false switches the GLB off; (look) => look.gender === 'f' = women only. */
 export const useGlbFor: (look: Look) => boolean = () => false;   // false = the procedural creator character (hair, outfits, shoes, accessories) driven by the Mixamo clips
 
+if (typeof window !== 'undefined') void loadMixamo();   // start downloading the Mixamo motion files the moment the game code loads, not when the first character appears
 const GlbHuman = lazy(() => import('./GlbHuman'));   // loaded only if useGlbFor switches the skinned GLB characters back on (so its big models are not downloaded otherwise)
 
 // Procedural character from the creator, animated with the Mixamo motion files (lib/mixamoRetarget.ts): idle, walk, run, dances, doors, car, punches ...

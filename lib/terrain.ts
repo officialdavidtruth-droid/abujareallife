@@ -55,7 +55,9 @@ const ISLAND = { x: -790, z: -150, r: 75 };
 /** raw hill height before water is carved (always >= 0) */
 function hills(x: number, z: number) {
   const big = fbm(x * .0042 + 11.7, z * .0042 - 4.2, 4), mid = fbm(x * .013 - 3.1, z * .013 + 8.8, 3);
-  return Math.pow(big, 1.55) * 64 + mid * 5.5;
+  const ridge = Math.pow(Math.max(0, big - .28), 1.28) * 210;
+  const detail = (mid - .42) * 20 + (fbm(x * .032 + 21, z * .032 - 17, 2) - .45) * 5;
+  return Math.max(0, ridge + detail);
 }
 
 /** natural ground (hills, lake, river, sea) before highways are graded in. 0 across the whole city core. */

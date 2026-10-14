@@ -86,7 +86,7 @@ export function Water() {
 /* ───── trees and rocks (instanced: a handful of draw calls for the whole countryside) ───── */
 function Scenery() {
   const [data, setData] = useState<{ trees: [number, number, number, number][]; stones: [number, number, number, number][] } | null>(null);
-  useEffect(() => { const id = setTimeout(() => setData({ trees: scatter(1100, 3, WATER_Y + 1.6, 42, .55), stones: scatter(260, 8, WATER_Y + .2, 60, 5) }), 900); return () => clearTimeout(id); }, []);   // planted a moment after the city appears so loading is not held up
+  useEffect(() => { const id = setTimeout(() => setData({ trees: scatter(1750, 3, WATER_Y + 1.6, 105, .72), stones: scatter(260, 8, WATER_Y + .2, 60, 5) }), 900); return () => clearTimeout(id); }, []);   // planted a moment after the city appears so loading is not held up
   return data ? <SceneryInstances trees={data.trees} stones={data.stones} /> : null;
 }
 
@@ -95,12 +95,12 @@ function SceneryInstances({ trees, stones }: { trees: [number, number, number, n
   useEffect(() => {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
     trees.forEach(([x, z, k, kind], i) => {
-      const y = terrainH(x, z), h = 3.2 * k, rot = (x * 13 + z * 7) % 6.28;
+      const y = terrainH(x, z), h = (4.2 + kind * .55) * k, rot = (x * 13 + z * 7) % 6.28;
       q.setFromAxisAngle(up, rot);
       p.set(x, y + h * .25, z); s.set(.28 * k, h * .5, .28 * k); m.compose(p, q, s); trunk.current.setMatrixAt(i, m);
-      p.set(x, y + h * .62, z); s.set(1.7 * k, h * .55, 1.7 * k); m.compose(p, q, s); crown.current.setMatrixAt(i, m);
+      p.set(x, y + h * .60, z); s.set(1.85 * k, h * .52, 1.65 * k); m.compose(p, q, s); crown.current.setMatrixAt(i, m);
       c.setHSL(.27 + kind * .035 + ((i * 37) % 10) * .004, .5, .22 + ((i * 11) % 9) * .012); crown.current.setColorAt(i, c);
-      p.set(x, y + h * .95, z); s.set(1.15 * k, h * .45, 1.15 * k); m.compose(p, q, s); crown2.current.setMatrixAt(i, m); crown2.current.setColorAt(i, c);
+      p.set(x, y + h * .91, z); s.set(1.28 * k, h * .40, 1.24 * k); m.compose(p, q, s); crown2.current.setMatrixAt(i, m); crown2.current.setColorAt(i, c);
     });
     trunk.current.instanceMatrix.needsUpdate = crown.current.instanceMatrix.needsUpdate = crown2.current.instanceMatrix.needsUpdate = true;
     if (crown.current.instanceColor) crown.current.instanceColor.needsUpdate = true; if (crown2.current.instanceColor) crown2.current.instanceColor.needsUpdate = true;
@@ -109,8 +109,8 @@ function SceneryInstances({ trees, stones }: { trees: [number, number, number, n
   }, [trees, stones]);
   return <>
     <instancedMesh ref={trunk} args={[undefined, undefined, trees.length]} frustumCulled={false}><cylinderGeometry args={[.6, 1, 1, 6]} /><meshStandardMaterial color="#5a3d26" roughness={1} /></instancedMesh>
-    <instancedMesh ref={crown} args={[undefined, undefined, trees.length]} frustumCulled={false} castShadow><coneGeometry args={[1, 1, 7]} /><meshStandardMaterial roughness={1} /></instancedMesh>
-    <instancedMesh ref={crown2} args={[undefined, undefined, trees.length]} frustumCulled={false}><coneGeometry args={[1, 1, 7]} /><meshStandardMaterial roughness={1} /></instancedMesh>
+    <instancedMesh ref={crown} args={[undefined, undefined, trees.length]} frustumCulled={false} castShadow><icosahedronGeometry args={[1, 1]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
+    <instancedMesh ref={crown2} args={[undefined, undefined, trees.length]} frustumCulled={false}><icosahedronGeometry args={[1, 1]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
     <instancedMesh ref={rocks} args={[undefined, undefined, stones.length]} frustumCulled={false}><dodecahedronGeometry args={[1, 0]} /><meshStandardMaterial color="#7a7870" roughness={1} flatShading /></instancedMesh>
   </>;
 }

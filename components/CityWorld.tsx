@@ -70,7 +70,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
   const [near, setN] = useState<any>(null);
   const [touchDevice, setTouchDevice] = useState(false);
   const [vehicleModel, setVehicleModel] = useState(GAME.vehicleModel);
-  useEffect(() => { let dead = false; const load = async () => { try { const r = await fetch('/api/vehicles'); if (!r.ok) return; const d = await r.json(); const m = d.active || GAME.vehicleModel; if (d.vehicles?.[0]) (window as any).__arlVehicleId=d.vehicles[0].id; if (!dead) { GAME.vehicleModel = m; setVehicleModel(m); } } catch {} }; load(); const id = setInterval(load, 8000); return () => { dead = true; clearInterval(id); }; }, []);
+  useEffect(() => { let dead = false; const load = async () => { try { const r = await fetch('/api/vehicles'); if (!r.ok) return; const d = await r.json(); const m = d.active || GAME.vehicleModel; if (d.vehicles?.[0]) (window as any).__arlVehicleId=d.vehicles[0].id; const ownedHeli = (d.vehicles || []).find((v: any) => v.type === 'HELICOPTER'); HELI.owned = !!ownedHeli; HELI.vehicleId = ownedHeli?.id || ''; (window as any).__arlHeliVehicleId = HELI.vehicleId; if (!dead) { GAME.vehicleModel = m; setVehicleModel(m); } } catch {} }; load(); const id = setInterval(load, 8000); return () => { dead = true; clearInterval(id); }; }, []);
   useEffect(() => { let dead=false; const push=()=>{ if(dead||document.hidden)return; const p=GAME.player; const district=CITY.districts.reduce((a,b)=>Math.hypot(a.x-p.x,a.z-p.z)<Math.hypot(b.x-p.x,b.z-p.z)?a:b); fetch('/api/position',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({x:p.x,z:p.z,r:p.r,district:district.name,driving:VEH.drv})}).catch(()=>{}); }; push(); const id=setInterval(push,5000); return()=>{dead=true;clearInterval(id)}; }, []);
   useEffect(() => { const m = window.matchMedia('(pointer: coarse), (max-width: 700px)'); const sync = () => setTouchDevice(m.matches); sync(); m.addEventListener?.('change', sync); return () => m.removeEventListener?.('change', sync); }, []);
   const nearBuilding = near ? BUILDS.find(x => x.business?.id === near.id) : null;
@@ -94,7 +94,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     const dt = Math.min(dtRaw, .05), c = ctl.current, k = c.keys, p = P.current, oc = controls.current;
     if (!oc) return;
     stepPax(p, dt, pushOut);   // ride-along: a guest follows the host's vehicle; a host drops guests when the ride ends
-    NET.me.pl = 0; stepPlaneNet(dt, p);   // plane multiplayer: mirror another player's flight onto the plane, give way if they boarded first (the pilot branch below sets pl = 1 again)
+    NET.me.pl = 0; NET.me.hl = 0; stepPlaneNet(dt, p);   // plane multiplayer: mirror another player's flight onto the plane, give way if they boarded first (the pilot branch below sets pl = 1 again)
 
     /* ── time of day (follows the in-game clock) ── */
     const hrs = ((((getMinute ? getMinute() : worldMinute()) / 60) % 24) + 24) % 24, ang = (hrs - 6) / 12 * Math.PI, el = Math.sin(ang);
@@ -165,7 +165,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       stepHelicopter(dt, c, p, cam, oc.target);
       if (HELI.on) {
         GAME.player.x = p.x; GAME.player.z = p.z;
-        NET.me.x = p.x; NET.me.z = p.z; NET.me.r = p.r; NET.me.mv = 0; NET.me.drv = false; NET.me.rd = 0; NET.me.pl = 0;
+        NET.me.x = p.x; NET.me.z = p.z; NET.me.r = p.r; NET.me.mv = 0; NET.me.drv = false; NET.me.rd = 0; NET.me.pl = 0; NET.me.hl = 1; NET.me.hf = [HELI.x, HELI.z, HELI.heading, HELI.y, HELI.pitch, HELI.roll, HELI.speed, HELI.verticalSpeed];
         hud.current = { x: p.x, z: p.z, fx: Math.cos(HELI.heading), fz: Math.sin(HELI.heading), r: HELI.heading, vx: p.x, vz: p.z, vp: false, spd: Math.abs(HELI.speed) * 3.6, drv: false, prompt: `🚁 ${Math.round(HELI.y)} m · Shift lift · Space descend · W/S pitch · A/D yaw · K view · E exit when landed` };
         updateDetails(p.x, p.z, performance.now());
         return;

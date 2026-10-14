@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { currentUser, err } from '../../../lib/auth';
 import { VEHICLE_CATALOG, vehicleById } from '../../../lib/vehicles';
+import { applyVehicleCollisionDamage, pristineVehicle, type DamageZone, type VehicleDamageState } from '../../../lib/vehicleDamage';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,12 +18,35 @@ export async function POST(req: Request) {
   const action = String(body.action || 'buy');
   const save = await prisma.save.findUnique({ where: { userId: u.id } });
   if (!save) return err('Create your character first.', 409);
+  if (action === 'takeout') {
+    const vehicle = await prisma.vehicle.findFirst({ where: { userId: u.id, id: String(body.vehicleId || ''), type: 'HELICOPTER' } });
+    if (!vehicle) return err('You must own this helicopter before taking it out.', 404);
+    if (vehicle.fuel <= 0) return err('Your helicopter is out of fuel. Refuel it in the garage first.', 409);
+    if (vehicle.condition <= 0) return err('Your helicopter needs repairs before it can fly.', 409);
+    const row = await prisma.vehicle.update({ where: { id: vehicle.id }, data: { parkedAt: null } });
+    return NextResponse.json({ ok: true, vehicle: row });
+  }
   if (action === 'drive') { // server-side wear: call with the km driven; burns fuel, wears condition, adds mileage
     const v = await prisma.vehicle.findFirst({ where: { userId: u.id, id: String(body.vehicleId || '') } }); if (!v) return err('Vehicle not found.', 404);
     const km = Math.max(0, Math.min(50, Number(body.km) || 0));
     if (v.fuel <= 0) return err('Out of fuel. Refuel first.', 409);
     const row = await prisma.vehicle.update({ where: { id: v.id }, data: { fuel: Math.max(0, v.fuel - Math.ceil(km * 1.2)), condition: Math.max(0, v.condition - Math.floor(km / 6)), mileage: { increment: Math.round(km) }, parkedAt: null } });
     return NextResponse.json({ ok: true, vehicle: row });
+  }
+  if (action === 'collision') { // Server-authoritative collision damage; client sends impact details, never the resulting health.
+    const vehicle = await prisma.vehicle.findFirst({ where: { userId: u.id, id: String(body.vehicleId || '') } });
+    if (!vehicle) return err('Vehicle not found.', 404);
+    const allowedZones: DamageZone[] = ['front', 'rear', 'left', 'right', 'windshield', 'headlight-left', 'headlight-right'];
+    const zone = allowedZones.includes(body.zone as DamageZone) ? body.zone as DamageZone : 'front';
+    const speedKph = Math.max(0, Math.min(180, Number(body.speedKph) || 0));
+    const severity = Math.max(0, Math.min(1, Number(body.severity ?? 1)));
+    const stored = vehicle.damage && typeof vehicle.damage === 'object' && !Array.isArray(vehicle.damage)
+      ? vehicle.damage as unknown as VehicleDamageState
+      : { ...pristineVehicle(), health: vehicle.condition };
+    const nextDamage = applyVehicleCollisionDamage(stored, { speedKph, zone, severity });
+    // Keep legacy condition in sync so existing garage/repair screens continue to work.
+    const row = await prisma.vehicle.update({ where: { id: vehicle.id }, data: { damage: nextDamage as object, condition: nextDamage.health } });
+    return NextResponse.json({ ok: true, vehicle: row, damage: nextDamage, damageLevel: 100 - nextDamage.health, stage: nextDamage.health < 35 ? 'wrecked' : nextDamage.health < 75 ? 'damaged' : nextDamage.health < 96 ? 'scratched' : 'clean' });
   }
   if (action === 'park') {
     const v = await prisma.vehicle.findFirst({ where: { userId: u.id, id: String(body.vehicleId || '') } }); if (!v) return err('Vehicle not found.', 404);
@@ -34,7 +58,7 @@ export async function POST(req: Request) {
     if (!vehicle) return err('Vehicle not found.', 404);
     const costs: Record<string,number> = { register: 250000, insure: 180000, repair: Math.max(50000, Math.round((100-vehicle.condition)*vehicle.price*.012)), refuel: Math.max(15000, Math.round((100-vehicle.fuel)*1200)), wash: 8000, paint: 35000, rims: 60000, tint: 25000, steal: 0 };
     const cost = costs[action]; if (!cost) return err('Unknown vehicle action.',400); if (save.cash < cost) return err(`You need ₦${cost.toLocaleString()}.`,402);
-    const data:any = action==='register'?{registered:true}:action==='insure'?{insured:true}:action==='repair'?{condition:100}:action==='refuel'?{fuel:100}:action==='wash'?{condition:Math.min(100,vehicle.condition+3)}:action==='paint'?{paint:String(body.paint||'factory').slice(0,30)}:action==='rims'?{rims:String(body.rims||'factory').slice(0,30)}:action==='tint'?{tint:Math.max(0,Math.min(80,Number(body.tint)||0))}:action==='steal'?{stolen:true,registered:false,insured:false}:{};
+    const data:any = action==='register'?{registered:true}:action==='insure'?{insured:true}:action==='repair'?{condition:100,damage:{health:100,dents:{},brokenLights:[],crackedWindshield:false}}:action==='refuel'?{fuel:100}:action==='wash'?{condition:Math.min(100,vehicle.condition+3)}:action==='paint'?{paint:String(body.paint||'factory').slice(0,30)}:action==='rims'?{rims:String(body.rims||'factory').slice(0,30)}:action==='tint'?{tint:Math.max(0,Math.min(80,Number(body.tint)||0))}:action==='steal'?{stolen:true,registered:false,insured:false}:{};
     const row = await prisma.$transaction(async tx=>{await tx.save.update({where:{userId:u.id},data:{cash:{decrement:cost}}});await tx.transaction.create({data:{userId:u.id,type:'SPEND',amount:-cost,description:`vehicle-${action}:${vehicle.name}`}});return tx.vehicle.update({where:{id:vehicle.id},data});});
     return NextResponse.json({ok:true,vehicle:row,cash:save.cash-cost});
   }

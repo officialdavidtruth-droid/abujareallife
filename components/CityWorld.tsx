@@ -327,10 +327,12 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
         VEH.drv = false; VEH.v = 0; engineStop();
         const lx = -Math.sin(VEH.r), lz = -Math.cos(VEH.r);
         p.x = VEH.x + lx * 2.4; p.z = VEH.z + lz * 2.4; pushOut(p); p.r = Math.atan2(lx, lz); p.y = 0; p.vy = 0;
-        NET.me.anim = 'door'; NET.me.animUntil = Date.now() + 900;   // opens the car door as they step out
+        NET.me.anim = 'door'; NET.me.animUntil = Date.now() + 900;   // reaches for the handle while the door swings open
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('arl-car-door', { detail: { open: false } })), 850);
       } else if (VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) < 9) {
         p.r = Math.atan2(VEH.x - p.x, VEH.z - p.z);   // face the car, reach for the handle, then get in
-        handDoor(650, () => { VEH.drv = true; VEH.v = 0; engineStart(); DOORP.snap = true; });
+        window.dispatchEvent(new CustomEvent('arl-car-door', { detail: { open: true } }));
+        handDoor(650, () => { VEH.drv = true; VEH.v = 0; engineStart(); DOORP.snap = true; window.setTimeout(() => window.dispatchEvent(new CustomEvent('arl-car-door', { detail: { open: false } })), 220); });
         nearId.current = null; setN(null); setNear(null);
       } else if (GAME.hasCar) { const dd = Math.round(Math.hypot(p.x - VEH.x, p.z - VEH.z)); GAME.notice = VEH.placed ? `🚗 Your car is parked ${dd} m away: walk to it (see the map).` : '🚗 Your car is not in the city right now.'; }
       else GAME.notice = '🚗 You do not own a car yet. Buy one at a Car Dealer.';

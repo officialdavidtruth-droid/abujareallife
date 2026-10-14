@@ -1,5 +1,5 @@
-export type VehicleBrand = 'Toyota' | 'Lexus' | 'Mercedes-Benz' | 'BMW' | 'Honda' | 'Land Rover' | 'Porsche' | 'Alfa Romeo' | 'Yamaha' | 'Trek' | 'Giant';
-export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: 'CAR' | 'SUV' | 'MOTORCYCLE' | 'BICYCLE'; topSpeed: number; accel: number; handling: number; color: string };
+export type VehicleBrand = 'Toyota' | 'Lexus' | 'Mercedes-Benz' | 'BMW' | 'Honda' | 'Land Rover' | 'Porsche' | 'Alfa Romeo' | 'Yamaha' | 'Trek' | 'Giant' | 'Robinson' | 'Bell';
+export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: 'CAR' | 'SUV' | 'MOTORCYCLE' | 'BICYCLE' | 'HELICOPTER'; topSpeed: number; accel: number; handling: number; color: string };
 
 export const VEHICLE_CATALOG: VehicleSpec[] = [
   { id: 'toyota-camry-2024', brand: 'Toyota', model: 'Camry', year: 2024, price: 18_500_000, type: 'CAR', topSpeed: 210, accel: 7.9, handling: 78, color: '#c9c9c9' },
@@ -18,6 +18,9 @@ export const VEHICLE_CATALOG: VehicleSpec[] = [
   // Step 2: bicycles are separate vehicle types and use their own procedural model.
   { id: 'trek-marlin-7-2024', brand: 'Trek', model: 'Marlin 7 Mountain Bicycle', year: 2024, price: 650_000, type: 'BICYCLE', topSpeed: 45, accel: 5.2, handling: 94, color: '#d71920' },
   { id: 'giant-escape-3-2024', brand: 'Giant', model: 'Escape 3 City Bicycle', year: 2024, price: 420_000, type: 'BICYCLE', topSpeed: 35, accel: 4.5, handling: 96, color: '#1769aa' },
+  // Step 3: helicopters are catalogued as aircraft; flight controls and airspace are a separate gameplay milestone.
+  { id: 'robinson-r44-2024', brand: 'Robinson', model: 'R44 Raven II Helicopter', year: 2024, price: 185_000_000, type: 'HELICOPTER', topSpeed: 240, accel: 4.2, handling: 70, color: '#f0f0e8' },
+  { id: 'bell-407-2024', brand: 'Bell', model: '407 Utility Helicopter', year: 2024, price: 420_000_000, type: 'HELICOPTER', topSpeed: 260, accel: 3.8, handling: 74, color: '#d9a52e' },
 ];
 export const vehicleById = (id: string) => VEHICLE_CATALOG.find(v => v.id === id) || VEHICLE_CATALOG[0];
 export const vehicleByName = (name: string) => VEHICLE_CATALOG.find(v => `${v.brand} ${v.model}`.toLowerCase() === name.toLowerCase()) || VEHICLE_CATALOG[0];

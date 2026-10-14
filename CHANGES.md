@@ -68,3 +68,11 @@
 - Added the BICYCLE vehicle type to Prisma and a PostgreSQL enum migration for existing databases.
 - Updated garage/dealership and inventory icons to distinguish bicycles from motorcycles and cars.
 - This step adds the catalogue and visual model; riding physics, mounting/dismounting and bicycle-specific animation still need in-game testing and refinement.
+
+
+## Step 3 — Helicopters
+- Added Robinson R44 and Bell 407 helicopter catalogue entries.
+- Added the HELICOPTER Prisma enum value and PostgreSQL migration.
+- Added a procedural helicopter model with animated main and tail rotors.
+- Added helicopter icons to the dealership, garage and inventory.
+- Flight controls, pilot seating, take-off/landing, helipads and network synchronization remain separate work and are not claimed complete.

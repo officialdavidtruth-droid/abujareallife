@@ -189,6 +189,7 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
   // Two-wheel vehicles use purpose-built procedural models instead of rendering as cars.
   if (spec.type === 'MOTORCYCLE') return <BikeBody scale={0.9} rider={driver} />;
   if (spec.type === 'BICYCLE') return <BicycleBody scale={0.92} rider={driver} />;
+  if (spec.type === 'HELICOPTER') return <HelicopterBody scale={1.05} />;
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
@@ -369,6 +370,34 @@ export function BikeBody({ scale = 1, rider, driverRef, riderLook }: { scale?: n
     <mesh position={[-.3, .27, .2]} rotation-z={Math.PI / 2 - .06}><cylinderGeometry args={[.05, .045, .85, 10]} /><meshStandardMaterial color={steel} metalness={.85} roughness={.25} /></mesh>
     <mesh position={[-.72, .3, .2]}><cylinderGeometry args={[.07, .07, .3, 10]} /><meshStandardMaterial color="#8d9399" metalness={.8} roughness={.3} /></mesh>
     {rider && <group ref={driverRef}><group position={[-.2, .66, 0]} rotation-y={Math.PI / 2} scale={.5}><Human look={riderLook || { ...DEFAULT_LOOK, name: 'Bike Driver', outfit: '#2d8f62' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group></group>}
+  </group>;
+}
+
+
+/** Step 3 procedural helicopter silhouette. Rotor animation is visual only; flight controls are not wired yet. */
+export function HelicopterBody({ scale = 1 }: { scale?: number }) {
+  const mainRotor = useRef<THREE.Group>(null), tailRotor = useRef<THREE.Group>(null);
+  const hull = '#e8e8df', glass = new THREE.MeshStandardMaterial({ color: '#6ba8c7', metalness: .25, roughness: .18, transparent: true, opacity: .78 });
+  useFrame((_, dt) => { if (mainRotor.current) mainRotor.current.rotation.y += dt * 24; if (tailRotor.current) tailRotor.current.rotation.x += dt * 34; });
+  return <group scale={[scale, scale, scale]}>
+    {/* cabin and rounded nose face +x, matching ARL vehicle orientation */}
+    <mesh position={[.12, .86, 0]} scale={[1.18, .52, .48]}><sphereGeometry args={[1, 20, 14]} /><meshStandardMaterial color={hull} metalness={.28} roughness={.4} /></mesh>
+    <mesh position={[.72, .96, 0]} scale={[.48, .34, .405]}><sphereGeometry args={[1, 18, 12]} /><primitive object={glass} attach="material" /></mesh>
+    <mesh position={[-1.05, .91, 0]} rotation-z={-.04}><cylinderGeometry args={[.13, .2, 1.65, 12]} /><meshStandardMaterial color={hull} metalness={.25} roughness={.42} /></mesh>
+    <mesh position={[-1.9, 1.0, 0]} rotation-z={-.08}><boxGeometry args={[.5, .48, .08]} /><meshStandardMaterial color={hull} metalness={.25} roughness={.42} /></mesh>
+    <group ref={mainRotor} position={[-.05, 1.42, 0]}>
+      <mesh><cylinderGeometry args={[.12, .12, .12, 12]} /><meshStandardMaterial color="#33383d" metalness={.7} /></mesh>
+      {[0, Math.PI / 2].map((a) => <mesh key={a} rotation-y={a} position={[0, .035, 0]}><boxGeometry args={[2.9, .035, .13]} /><meshStandardMaterial color="#262b30" metalness={.45} roughness={.4} /></mesh>)}
+    </group>
+    <group ref={tailRotor} position={[-2.12, 1.02, .12]}>
+      <mesh rotation-x={Math.PI / 2}><cylinderGeometry args={[.08, .08, .12, 10]} /><meshStandardMaterial color="#343a40" /></mesh>
+      {[0, Math.PI / 2].map((a) => <mesh key={a} rotation-z={a}><boxGeometry args={[.48, .045, .06]} /><meshStandardMaterial color="#343a40" /></mesh>)}
+    </group>
+    {[-.55, .55].map((z) => <group key={z}>
+      <mesh position={[.02, .34, z]} rotation-z={Math.PI / 2}><cylinderGeometry args={[.035, .035, .85, 8]} /><meshStandardMaterial color="#4a5056" metalness={.7} /></mesh>
+      <mesh position={[.02, .22, z]}><sphereGeometry args={[.12, 10, 8]} /><meshStandardMaterial color="#22272c" /></mesh>
+    </group>)}
+    <mesh position={[.95, .72, 0]}><boxGeometry args={[.08, .12, .12]} /><meshStandardMaterial color="#fff2c2" emissive="#fff0a0" emissiveIntensity={.7} /></mesh>
   </group>;
 }
 

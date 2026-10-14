@@ -6,7 +6,7 @@
 DO $$ BEGIN CREATE TYPE "Gender" AS ENUM ('MALE','FEMALE','OTHER'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "JobStatus" AS ENUM ('ACTIVE','INACTIVE'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "PropertyType" AS ENUM ('ROOM','APARTMENT','HOUSE','MANSION'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE "VehicleType" AS ENUM ('CAR','SUV','MOTORCYCLE','BICYCLE','BUS'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE "VehicleType" AS ENUM ('CAR','SUV','MOTORCYCLE','BICYCLE','HELICOPTER','BUS'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "MissionStatus" AS ENUM ('AVAILABLE','ACTIVE','COMPLETED','FAILED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ---------- User (create, then upgrade older versions) ----------
@@ -219,3 +219,4 @@ CREATE INDEX IF NOT EXISTS "HomeFurniture_homeId_createdAt_idx" ON "HomeFurnitur
 
 -- Step 2: support bicycles for existing databases.
 ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'BICYCLE';
+ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'HELICOPTER';

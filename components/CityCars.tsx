@@ -402,7 +402,7 @@ export function BikeBody({ scale = 1, rider, driverRef, riderLook }: { scale?: n
 }
 
 
-/** Step 3 procedural helicopter silhouette. Rotor animation is visual only; flight controls are not wired yet. */
+/** Procedural helicopter body used by the flyable Step 8 helicopter craft. */
 export function HelicopterBody({ scale = 1 }: { scale?: number }) {
   const mainRotor = useRef<THREE.Group>(null), tailRotor = useRef<THREE.Group>(null);
   const hull = '#e8e8df', glass = new THREE.MeshStandardMaterial({ color: '#6ba8c7', metalness: .25, roughness: .18, transparent: true, opacity: .78 });

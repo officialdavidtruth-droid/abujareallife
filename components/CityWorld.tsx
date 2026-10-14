@@ -43,6 +43,7 @@ import PaxUi from './PaxUi';
 import { PAX, stepPax } from './cityPax';
 import { PlaneTag, planeBroadcast, stepPlaneNet } from './planeNet';
 import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane, togglePlaneView } from './cityPlane';
+import { HELI, HelicopterPads, boardHelicopter, helicopterNear, stepHelicopter, toggleHelicopterView } from './cityHelicopter';
 import { hint } from '../lib/touch';
 import { vehicleById, vehicleByName } from '../lib/vehicles';
 import CityTerrain, { BOAT, SWIM, boatTarget } from './CityTerrain';
@@ -159,6 +160,18 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       updateDetails(p.x, p.z, performance.now());
       return;
     } else { group.current.visible = true; }
+    if (HELI.on) {   /* ── Step 8: helicopter flight ── */
+      group.current.visible = false; moving.current = false; running.current = false; oc.enabled = false;
+      stepHelicopter(dt, c, p, cam, oc.target);
+      if (HELI.on) {
+        GAME.player.x = p.x; GAME.player.z = p.z;
+        NET.me.x = p.x; NET.me.z = p.z; NET.me.r = p.r; NET.me.mv = 0; NET.me.drv = false; NET.me.rd = 0; NET.me.pl = 0;
+        hud.current = { x: p.x, z: p.z, fx: Math.cos(HELI.heading), fz: Math.sin(HELI.heading), r: HELI.heading, vx: p.x, vz: p.z, vp: false, spd: Math.abs(HELI.speed) * 3.6, drv: false, prompt: `🚁 ${Math.round(HELI.y)} m · Shift lift · Space descend · W/S pitch · A/D yaw · K view · E exit when landed` };
+        updateDetails(p.x, p.z, performance.now());
+        return;
+      }
+      oc.enabled = true; firstCam.current = true; group.current.visible = true;
+    }
     if (PLANE.on) {   /* ── flying the airport plane (components/cityPlane.tsx) ── */
       group.current.visible = false; moving.current = false; running.current = false; oc.enabled = false;
       stepPlane(dt, c, p, pushOut);
@@ -296,6 +309,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
       if (taxiI >= 0) ROAM.openSheet(taxiI);
       else if (doorH) { if (doorH.mine) handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter-home'))); else { GAME.notice = `🔒 ${doorH.u}'s house is locked.`; window.dispatchEvent(new CustomEvent('arl-break-in', { detail: { slot: doorH.slot } })); } }
+      else if (!VEH.drv && !GAME.ride && helicopterNear(p.x, p.z)) { boardHelicopter(p); nearId.current = null; setN(null); setNear(null); }
       else if (!VEH.drv && !GAME.ride && planeNear(p.x, p.z)) { boardPlane(p); nearId.current = null; setN(null); setNear(null); }
       else if (BOAT.on) {   // get out of the boat: onto the pier or shore if one is close, otherwise over the side into the water
         BOAT.on = false; BOAT.parked = true; BOAT.v = 0; engineStop();
@@ -574,6 +588,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <AirportExtras />
       <Plane />
       <PlaneTag />
+      <HelicopterPads />
       <ChopYards />
       <JailCell />
       <group ref={group}>
@@ -635,6 +650,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
   /* plane buttons for phones: "Plane" (board / get out) appears next to the plane or while flying, "View" switches cockpit / outside */
   const [pl, setPl] = useState<'' | 'near' | 'fly' | 'pax'>('');
+  const [hl, setHl] = useState<'' | 'near' | 'fly'>('');
+  useEffect(() => { const f = () => { const v: '' | 'near' | 'fly' = HELI.on ? 'fly' : helicopterNear(GAME.player.x, GAME.player.z) ? 'near' : ''; setHl(o => o === v ? o : v); }; f(); const i = setInterval(f, 250); window.addEventListener('arl-helicopter', f); return () => { clearInterval(i); window.removeEventListener('arl-helicopter', f); }; }, []);
   const [bt, setBt] = useState<'' | 'near' | 'on'>(''), [wet, setWet] = useState(false);   // boat button (appears next to a boat or while driving one) and the Dive label (while swimming)
   useEffect(() => { const f = () => { const v: '' | 'near' | 'on' = BOAT.on ? 'on' : boatTarget(GAME.player.x, GAME.player.z) ? 'near' : '', w = !BOAT.on && WATER_Y - groundFor(GAME.player.x, GAME.player.z, GAME.player.g) > SWIM_DEPTH; setBt(o => o === v ? o : v); setWet(o => o === w ? o : w); }; f(); const i = setInterval(f, 300); return () => clearInterval(i); }, []);
   useEffect(() => { const f = () => { const v = PLANE.on ? 'fly' : PLANE.pax ? 'pax' : planeNear(GAME.player.x, GAME.player.z) ? 'near' : ''; setPl(o => o === v ? o : v); }; f(); const i = setInterval(f, 300); window.addEventListener('arl-plane', f); return () => { clearInterval(i); window.removeEventListener('arl-plane', f); }; }, []);
@@ -712,21 +729,31 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <button type="button" className="cwPhoneBtn" aria-label="Phone" onClick={() => window.dispatchEvent(new Event('arl-open-phone'))}>📱</button>
       <div className="cwBtns">
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
-        {(pl === 'fly' || pl === 'near') && <HoldBtn cls="cwTouch" label={pl === 'fly' ? 'Exit plane' : 'Board plane'} icon="✈️" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
-        {(pl === 'fly' || pl === 'pax') && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
-        {bt && <HoldBtn cls="cwTouch" label={bt === 'on' ? 'Exit boat' : 'Boat'} icon="⛵" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
-        {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
-        <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
-        <HoldBtn cls="" label="Interact" icon="🖐️" down={() => { unlockAudio(); if (nearBiz.current?.id) { const id = nearBiz.current.id; handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter', { detail: id }))); } else ctl.current.interact = true; }} />
-        <HoldBtn cls="" label="Phone" icon="📱" down={() => { window.dispatchEvent(new Event('arl-open-phone')); }} />
-        <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
-        <HoldBtn cls="" label={wet ? 'Dive' : 'Crouch'} icon={wet ? '🤿' : '🧎'} down={() => { ctl.current.crouch = !ctl.current.crouch; }} />
-        {armed && <HoldBtn cls="" label="Fire" icon="🔫" down={() => { window.dispatchEvent(new Event('arl-trigger-fire')); }} />}
-        <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
-        <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
-        <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
+        {(hl === 'fly' || hl === 'near') && <HoldBtn cls="cwTouch" label={hl === 'fly' ? 'Land / Exit' : 'Board heli'} icon="🚁" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+        {hl === 'fly' && <HoldBtn cls="cwTouch" label="Lift" icon="⬆️" down={() => { ctl.current.run = true; ctl.current.keys.add('shift'); }} up={() => { ctl.current.run = false; ctl.current.keys.delete('shift'); }} />}
+        {hl === 'fly' && <HoldBtn cls="cwTouch" label="Descend" icon="⬇️" down={() => { ctl.current.keys.add(' '); }} up={() => { ctl.current.keys.delete(' '); }} />}
+        {hl === 'fly' && <HoldBtn cls="cwTouch" label="Forward" icon="↗️" down={() => { ctl.current.keys.add('w'); }} up={() => { ctl.current.keys.delete('w'); }} />}
+        {hl === 'fly' && <HoldBtn cls="cwTouch" label="Back" icon="↙️" down={() => { ctl.current.keys.add('s'); }} up={() => { ctl.current.keys.delete('s'); }} />}
+        {hl === 'fly' && <HoldBtn cls="cwTouch" label="Yaw left" icon="↶" down={() => { ctl.current.keys.add('a'); }} up={() => { ctl.current.keys.delete('a'); }} />}
+        {hl === 'fly' && <HoldBtn cls="cwTouch" label="Yaw right" icon="↷" down={() => { ctl.current.keys.add('d'); }} up={() => { ctl.current.keys.delete('d'); }} />}
+        {hl === 'fly' && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { toggleHelicopterView(); }} />}
+        {hl !== 'fly' && <>
+          {(pl === 'fly' || pl === 'near') && <HoldBtn cls="cwTouch" label={pl === 'fly' ? 'Exit plane' : 'Board plane'} icon="✈️" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+          {(pl === 'fly' || pl === 'pax') && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
+          {bt && <HoldBtn cls="cwTouch" label={bt === 'on' ? 'Exit boat' : 'Boat'} icon="⛵" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+          {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
+          <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
+          <HoldBtn cls="" label="Interact" icon="🖐️" down={() => { unlockAudio(); if (nearBiz.current?.id) { const id = nearBiz.current.id; handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter', { detail: id }))); } else ctl.current.interact = true; }} />
+          <HoldBtn cls="" label="Phone" icon="📱" down={() => { window.dispatchEvent(new Event('arl-open-phone')); }} />
+          <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
+          <HoldBtn cls="" label={wet ? 'Dive' : 'Crouch'} icon={wet ? '🤿' : '🧎'} down={() => { ctl.current.crouch = !ctl.current.crouch; }} />
+          {armed && <HoldBtn cls="" label="Fire" icon="🔫" down={() => { window.dispatchEvent(new Event('arl-trigger-fire')); }} />}
+          <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
+          <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
+          <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
+        </>}
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter · <b>Z</b> crouch / dive · <b>F</b> punch · <b>M</b> missions · <b>G</b> weapon · <b>R</b> reload · <b>V</b> fire (guns are sold at Gun Shops)<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter · <b>Z</b> crouch / dive · <b>F</b> punch · <b>M</b> missions · <b>G</b> weapon · <b>R</b> reload · <b>V</b> fire (guns are sold at Gun Shops)<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}🚁 Helicopter: Shift lift · Space descend · W/S pitch · A/D yaw · K camera · E exit after landing<br />Gamepad works too</div>
     </div>
   );
 }

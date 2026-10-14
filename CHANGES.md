@@ -83,3 +83,15 @@
 - Added Yamaha 242X Sport Boat and Bayliner VR5 Bowrider catalogue entries.
 - Added procedural boat model and dealership/inventory icons.
 - Boat water physics, boarding, driving and docking remain future work.
+
+## Step 5 — Trains (catalogue and visual model)
+- Added `TRAIN` to the Prisma vehicle enum and migration `0035_train_vehicle_type`.
+- Added Abuja Rail electric locomotive and passenger carriage catalogue entries.
+- Added a procedural train model and train icon in garage/dealership listings.
+- Train routes, stations, passenger boarding and train-specific movement are not implemented in this step.
+
+
+## Step 8 — Helicopter flight
+- Added a flyable airport helicopter loop with collective lift, descent, pitch/yaw steering, chase/cockpit camera and helipad boarding/exit.
+- Added touch controls for mobile. See `STEP-8-HELICOPTER-FLIGHT.md`.
+- Multiplayer helicopter replication and full collision/damage remain follow-up work.

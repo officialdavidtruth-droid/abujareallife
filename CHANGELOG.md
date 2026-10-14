@@ -12,6 +12,15 @@ Legend of "how to apply" boilerplate that appeared in nearly every note: *copy f
 
 ---
 
+## Unreleased — water and terrain: hills, river, lake, sea, swimming, diving, boats 🌊
+- The map is now ±860 m instead of ±202 m. The city, houses, airport and railway sit on a perfectly flat core (±305 m, height 0), so nothing inside the city moves. Outside it the land rolls into hills and countryside with trees and rocks, a river winds round the east and south to the sea, and a big lake with an island fills the west. (`lib/terrain.ts`, `components/CityTerrain.tsx`)
+- Swimming: deep water makes you swim (slower, face down, ripples). Dive with the Dive button (mobile) or Z, come up with Jump / Space. About 30 s of air; running out slowly hurts and never kills you. Underwater has blue murky fog and a tint. Wading in shallows slows you a little. (`components/CityWorld.tsx`)
+- Boats: a rental speedboat waits at each of four docks (Lake Jabi Marina, Lakeside Pier, River Landing, Southbank Landing). Walk or swim up and press E / the Boat button to climb in; W/S throttle, A/D steer, Shift boost, Space brake. Get out anywhere: the boat stays moored, and floats back to its dock when you are 170 m away. Boats cannot enter shallows.
+- Cars follow the hills (pitch and roll with the slope, slower uphill, faster downhill) and cannot drive into deep water. The plane crashes into hillsides and water.
+- Other players: swimmers, divers and boats show for everyone in the room (one new `w` field in the position broadcast, `lib/cityNet.ts`); ground height is worked out from the terrain on each client.
+- Minimap shows water, beaches and hills (`lib/terrainMap.ts`).
+- Not done yet: roads and bridges out into the countryside, the big full-screen map (`components/City.tsx`) still shows only the old city area.
+
 ## Unreleased — billboard flyers, /adminad portal, admin-set prices 🛠
 - Advertisers can upload their own landscape flyer; it is cut to the board's shape in the browser (fit or fill) and drawn on the 3D billboard unlit and unstretched. (`app/adbooking/page.tsx`, `app/adbooking/AdBoard.tsx`, `components/CityScenery.tsx`, `app/api/ads/image/[id]/route.ts`)
 - New admin portal at `/adminad`: review queue with flyer preview, approve / reject (+refund), take down live ads, and a Prices tab. (`app/adminad/*`)

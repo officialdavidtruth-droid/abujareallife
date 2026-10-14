@@ -45,6 +45,8 @@ import { PlaneTag, planeBroadcast, stepPlaneNet } from './planeNet';
 import { PLANE, Plane, boardPlane, planeCamera, planeNear, planePrompt, resetPlane, stepPlane, togglePlaneView } from './cityPlane';
 import { hint } from '../lib/touch';
 import { vehicleById, vehicleByName } from '../lib/vehicles';
+import CityTerrain, { BOAT, SWIM, boatTarget } from './CityTerrain';
+import { BOAT_DEPTH, SWIM_DEPTH, WATER_Y, terrainH, waterDepth } from '../lib/terrain';
 /* How far the camera may swing round to look UP (polar angle; PI/2 = level with the head). 1.9 lets you tilt up about 17 degrees to read billboards. */
 const LOOK_UP = 1.9;
 
@@ -55,7 +57,8 @@ export { POLICE_CARS } from './CityPolice';
 const LOW_END = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches; // phones / tablets: smaller shadow map and pixel ratio
 
 function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, fight, shoot }: { fight: (to: string) => boolean; shoot: (to: string, weapon: string) => boolean; look: Look; ctl: React.MutableRefObject<Ctl>; hud: React.MutableRefObject<Hud>; setNear: (b: any) => void; getMinute?: () => number; roster: string[]; ver: number; bub: Record<string, string>; onPick: (n: string) => void }) {
-  const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: START.r });
+  const P = useRef({ x: START.x, z: START.z, y: 0, vy: 0, r: START.r, g: 0, sw: 0, dv: 0, ox: 100, sp: 0, ow: false });   // g = ground height under the feet, y = height above it (jump / swim depth), sw = swimming, dv = dive depth, ox = air left, sp = swim lean
+  const wmsg = useRef(0), uwEl = useRef<HTMLElement | null>(null), o2El = useRef<HTMLElement | null>(null);
   const group = useRef<THREE.Group>(null!), controls = useRef<any>(null), sun = useRef<THREE.DirectionalLight>(null!), hemi = useRef<THREE.HemisphereLight>(null!), stars = useRef<THREE.Group>(null!);
   const carG = useRef<THREE.Group>(null!), carTag = useRef<HTMLDivElement | null>(null), spot = useRef<THREE.SpotLight>(null!), nameTag = useRef<HTMLDivElement | null>(null);
   const sunTarget = useMemo(() => new THREE.Object3D(), []);
@@ -261,7 +264,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     if (c.taxi) {
       c.taxi = false;
       // every blocked case now tells the player why (before, the button silently did nothing)
-      if (VEH.drv) GAME.notice = '🚕 Get out of your car first (Car button), then call a taxi.';
+      if (BOAT.on) GAME.notice = '🚕 Get out of the boat first, then call a taxi.';
+      else if (VEH.drv) GAME.notice = '🚕 Get out of your car first (Car button), then call a taxi.';
       else if (GAME.ride || CINE.on) GAME.notice = '🚕 You are already on a ride.';
       else if (GAME.jailed) GAME.notice = '🚫 You cannot call a taxi from jail.';
       else {
@@ -293,6 +297,18 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       if (taxiI >= 0) ROAM.openSheet(taxiI);
       else if (doorH) { if (doorH.mine) handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter-home'))); else { GAME.notice = `🔒 ${doorH.u}'s house is locked.`; window.dispatchEvent(new CustomEvent('arl-break-in', { detail: { slot: doorH.slot } })); } }
       else if (!VEH.drv && !GAME.ride && planeNear(p.x, p.z)) { boardPlane(p); nearId.current = null; setN(null); setNear(null); }
+      else if (BOAT.on) {   // get out of the boat: onto the pier or shore if one is close, otherwise over the side into the water
+        BOAT.on = false; BOAT.parked = true; BOAT.v = 0; engineStop();
+        let best: { x: number; z: number } | null = null;
+        outer: for (const dd of [3.2, 5, 7.5, 10]) for (let a = 0; a < 8; a++) { const an = BOAT.r + Math.PI / 2 + a * Math.PI / 4, tx = BOAT.x + Math.sin(an) * dd, tz = BOAT.z + Math.cos(an) * dd; if (waterDepth(tx, tz) < SWIM_DEPTH) { best = { x: tx, z: tz }; break outer; } }
+        const sx = Math.sin(BOAT.r) * 2.8, sz = Math.cos(BOAT.r) * 2.8;
+        p.x = best ? best.x : BOAT.x + sx; p.z = best ? best.z : BOAT.z + sz; p.r = Math.atan2(p.x - BOAT.x, p.z - BOAT.z); p.y = 0; p.vy = 0; p.dv = 0; c.crouch = false;
+        DOORP.snap = true; GAME.notice = best ? '⛵ You stepped off the boat. It stays moored here.' : '🏊 You dived off the boat. Swim back to it and press E to climb in.';
+      } else if (!VEH.drv && !GAME.ride && boatTarget(p.x, p.z)) {   // climb into the boat waiting at a dock, or the one you left floating
+        const bt = boatTarget(p.x, p.z)!;
+        BOAT.on = true; BOAT.parked = false; BOAT.x = bt.x; BOAT.z = bt.z; BOAT.r = bt.r; BOAT.v = 0; BOAT.roll = 0; BOAT.dock = bt.dock; c.crouch = false; p.sw = 0; p.dv = 0; engineStart(); DOORP.snap = true;
+        GAME.notice = '⛵ Boat: W / S throttle · A / D steer · Shift boost · E to get out';
+      }
       else if (VEH.drv) {
         VEH.drv = false; VEH.v = 0; engineStop();
         const lx = -Math.sin(VEH.r), lz = -Math.cos(VEH.r);
@@ -307,7 +323,23 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     }
     if (c.horn) { c.horn = false; if (VEH.drv) honk(); }
 
-    if (VEH.drv) {
+    if (BOAT.parked && !BOAT.on && Math.hypot(p.x - BOAT.x, p.z - BOAT.z) > 170) { BOAT.parked = false; BOAT.dock = -1; }   // wandered far from the boat you left: it floats back to its dock
+    if (BOAT.on) {
+      /* ── boating: throttle, steer and stay on the water ── */
+      const B = BOAT, vmax = wantRun ? 22 : 14;
+      if (iy > .05) B.v += iy * (wantRun ? 9 : 6) * dt; else if (iy < -.05) B.v += iy * (B.v > 0 ? 8 : 3) * dt; else B.v -= Math.sign(B.v) * Math.min(Math.abs(B.v), 1.4 * dt);
+      if (wantJump) B.v -= Math.sign(B.v) * Math.min(Math.abs(B.v), 10 * dt);
+      B.v = THREE.MathUtils.clamp(B.v * (1 - .12 * dt), -4, vmax);
+      const auth = THREE.MathUtils.clamp(B.v / 3, -1, 1) * (1 - Math.min(.5, Math.abs(B.v) / 40));
+      B.r -= ix * 1.45 * auth * dt;
+      B.roll += (ix * auth * .32 * Math.min(1, Math.abs(B.v) / 10) - B.roll) * Math.min(1, dt * 4);
+      const bfx = Math.cos(B.r), bfz = -Math.sin(B.r), nx = B.x + bfx * B.v * dt, nz = B.z + bfz * B.v * dt, wet = (x: number, z: number) => waterDepth(x, z) > BOAT_DEPTH;
+      if (wet(nx, nz) && wet(nx + bfx * 2.8, nz + bfz * 2.8) && wet(nx - bfx * 2.2, nz - bfz * 2.2)) { B.x = nx; B.z = nz; }
+      else { if (Math.abs(B.v) > 3) thud(Math.abs(B.v) / 20); B.v *= -.3; const now = performance.now(); if (now - wmsg.current > 2500) { wmsg.current = now; GAME.notice = '🏖️ Too shallow: turn the boat round.'; } }
+      const bl = LIM - 2; B.x = THREE.MathUtils.clamp(B.x, -bl, bl); B.z = THREE.MathUtils.clamp(B.z, -bl, bl);
+      p.x = B.x; p.z = B.z; p.y = 0; p.vy = 0; p.g = WATER_Y; p.sw = 0; p.dv = 0; p.ox = 100; p.sp = 0; moving.current = false; running.current = false;
+      engineSet(Math.abs(B.v) / 24, Math.max(0, iy));
+    } else if (VEH.drv) {
       /* ── driving: arcade physics ── */
       const V = VEH, vmax = wantRun ? 34 : 25;
       if (iy > .05) V.v += iy * (V.v < 0 ? 28 : wantRun ? 16 : 12) * dt;
@@ -319,6 +351,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const auth = THREE.MathUtils.clamp(V.v / 4, -1, 1) * (1 - Math.min(.55, Math.abs(V.v) / 55));
       V.r -= ix * 2.1 * auth * (wantJump ? 1.5 : 1) * dt;
       V.x += Math.cos(V.r) * V.v * dt; V.z -= Math.sin(V.r) * V.v * dt;
+      { const hf = terrainH(V.x + Math.cos(V.r) * 2, V.z - Math.sin(V.r) * 2), hb = terrainH(V.x - Math.cos(V.r) * 2, V.z + Math.sin(V.r) * 2); if (hf !== hb) V.v -= (hf - hb) / 4 * 5.5 * dt; }   // hills: slower uphill, quicker downhill (flat inside the city, so nothing changes there)
+      if (waterDepth(V.x, V.z) > .55) { V.x -= Math.cos(V.r) * V.v * dt; V.z += Math.sin(V.r) * V.v * dt; V.v *= -.25; const now = performance.now(); if (now - wmsg.current > 2500) { wmsg.current = now; GAME.notice = '🌊 Too deep to drive. Find a boat at a dock.'; } }
       driveKm.current += Math.abs(V.v*dt)/1000; if(VEH.drv && driveKm.current >= .5 && performance.now()-lastDrivePost.current>5000){ const km=driveKm.current; driveKm.current=0; lastDrivePost.current=performance.now(); fetch('/api/vehicles',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'drive',vehicleId:(window as any).__arlVehicleId||'',km})}).catch(()=>{}); }
       hitCool.current -= dt;
       let hit = 0; const fxw = Math.cos(V.r), fzw = -Math.sin(V.r);
@@ -351,9 +385,10 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       /* ── on foot ── */
       moving.current = mag > .08; running.current = wantRun;
       const wx = ix * -fz + iy * fx, wz = ix * fx + iy * fz;
+      const wd0 = Math.max(0, WATER_Y - terrainH(p.x, p.z)), swim0 = wd0 > SWIM_DEPTH && !GAME.jailed;   // wading slows you, deep water makes you swim
       if (moving.current) {
-        if (wantRun && c.crouch) c.crouch = false;
-        const sp = c.crouch ? 2.3 : wantRun ? 9 : 4.6;
+        if (wantRun && c.crouch && !swim0) c.crouch = false;
+        const sp = swim0 ? (wantRun ? 4.6 : 2.9) : (c.crouch ? 2.3 : wantRun ? 9 : 4.6) * (wd0 > .25 ? 1 - Math.min(.45, (wd0 - .25) * .55) : 1);
         p.x += wx * sp * dt; p.z += wz * sp * dt;
         p.r += wrap(Math.atan2(wx, wz) - p.r) * Math.min(1, dt * 12);
       }
@@ -377,32 +412,60 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       p.x = THREE.MathUtils.clamp(p.x, -LIM, LIM); p.z = THREE.MathUtils.clamp(p.z, -LIM, LIM);
       if (GAME.tp) { p.x = GAME.tp.x; p.z = GAME.tp.z; GAME.tp = null; }
       if (GAME.jailed) { VEH.drv = false; p.x = THREE.MathUtils.clamp(Math.abs(p.x - CELL.x) > 3 ? CELL.x : p.x, CELL.x - 2.6, CELL.x + 2.6); p.z = THREE.MathUtils.clamp(Math.abs(p.z - CELL.z) > 3 ? CELL.z : p.z, CELL.z - 2.6, CELL.z + 2.6); }
-      if (wantJump && p.y <= .001) p.vy = 6.2;
+      const g1 = terrainH(p.x, p.z), wd1 = Math.max(0, WATER_Y - g1);
+      p.g = g1;
+      if (wd1 > SWIM_DEPTH && !GAME.jailed) {
+        /* ── swimming: float at the surface; Dive (Z, or the Dive button) takes you under, Space / Jump brings you up. Air lasts about 30 s. ── */
+        if (!p.sw) c.crouch = false;   // stepping into deep water never starts you diving by accident
+        p.sw = 1; p.vy = 0;
+        const maxDv = Math.max(0, Math.min(3.4, wd1 - .8));
+        if (p.ox <= 0) c.crouch = false;
+        if (wantJump) { c.crouch = false; p.dv -= 3.4 * dt; } else if (c.crouch) p.dv += 2.4 * dt; else p.dv -= 1.8 * dt;
+        p.dv = THREE.MathUtils.clamp(p.dv, 0, maxDv);
+        p.y += (Math.max(WATER_Y - .35 - p.dv, g1 + .05) - g1 - p.y) * Math.min(1, dt * 9);   // eases you from the bed up to the surface instead of popping
+        if (p.dv > .45) {
+          p.ox = Math.max(0, p.ox - 100 / 30 * dt);
+          if (p.ox < 22 && !p.ow) { p.ow = true; GAME.notice = '🫁 Running out of air: swim up (Space / Jump).'; }
+          if (p.ox <= 0) { me.hp = Math.max(30, me.hp - 7 * dt); me.hurt = nowMs; }
+        } else { p.ox = Math.min(100, p.ox + 80 * dt); if (p.ox > 60) p.ow = false; }
+      } else {
+        if (p.sw) c.crouch = false;   // back on land: stand up
+        p.sw = 0; p.dv = 0; p.ox = Math.min(100, p.ox + 80 * dt); p.ow = false;
+        if (wantJump && p.y <= .001) p.vy = 6.2;
+        c.jump = false;
+        p.vy -= 18 * dt; p.y += p.vy * dt; if (p.y < 0) { p.y = 0; p.vy = 0; }
+      }
       c.jump = false;
-      p.vy -= 18 * dt; p.y += p.vy * dt; if (p.y < 0) { p.y = 0; p.vy = 0; }
       if (JACK.on && !VEH.drv && Math.hypot(p.x - VEH.x, p.z - VEH.z) > 70) { JACK.release(); if (OWN.had) { VEH.x = OWN.x; VEH.z = OWN.z; VEH.r = OWN.r; VEH.v = 0; VEH.placed = true; } else { VEH.placed = false; VEH.homed = false; } } // an abandoned stolen car goes back to traffic; your own car is still where you parked it
     }
     c.jump = false;
     GAME.player.x = p.x; GAME.player.z = p.z; GAME.player.r = p.r;
-    group.current.rotation.order = 'YXZ'; const lying = me.ko > nowMs || JACK.victimUntil > nowMs; group.current.position.set(p.x, p.y + (lying ? .28 : 0), p.z); { const cs = c.crouch && !VEH.drv && !lying ? .8 : 1; group.current.scale.y += (cs - group.current.scale.y) * Math.min(1, dt * 10); } group.current.rotation.y = p.r; group.current.rotation.x = lying ? -Math.PI / 2 : 0; // knocked out: lying on the ground
-    group.current.visible = !VEH.drv;
+    group.current.rotation.order = 'YXZ'; const lying = me.ko > nowMs || JACK.victimUntil > nowMs;
+    p.sp += ((p.sw && !lying ? (p.dv > .45 ? 1.35 : 1.15) : 0) - p.sp) * Math.min(1, dt * 6);   // swimmers lean forward, face down
+    { const so = p.sp * .7; group.current.position.set(p.x - Math.sin(p.r) * so, p.g + p.y + (lying ? .28 : 0), p.z - Math.cos(p.r) * so); }
+    { const cs = c.crouch && !VEH.drv && !lying && !p.sw ? .8 : 1; group.current.scale.y += (cs - group.current.scale.y) * Math.min(1, dt * 10); } group.current.rotation.y = p.r; group.current.rotation.x = lying ? -Math.PI / 2 : p.sp; // knocked out: lying on the ground
+    SWIM.on = !!p.sw && !BOAT.on; SWIM.x = p.x; SWIM.z = p.z; SWIM.moving = moving.current; SWIM.dive = p.dv;
+    group.current.visible = !VEH.drv && !BOAT.on;
+    const inV = VEH.drv || BOAT.on;
     if (JACK.ph) moving.current = JACK.walk;
-    if (nameTag.current && shown.current.drv !== VEH.drv) nameTag.current.style.visibility = VEH.drv ? 'hidden' : 'visible';
+    if (nameTag.current && shown.current.drv !== inV) nameTag.current.style.visibility = inV ? 'hidden' : 'visible';
 
     /* ── car mesh, brake lights, headlights, floating label ── */
     if (carG.current) {
-      carG.current.visible = VEH.placed; carG.current.position.set(VEH.x, 0, VEH.z); carG.current.rotation.y = VEH.r;
+      carG.current.visible = VEH.placed;
+      { const cfx = Math.cos(VEH.r), cfz = -Math.sin(VEH.r), hf = terrainH(VEH.x + cfx * 2, VEH.z + cfz * 2), hb = terrainH(VEH.x - cfx * 2, VEH.z - cfz * 2), hl = terrainH(VEH.x - cfz * .9, VEH.z + cfx * .9), hr = terrainH(VEH.x + cfz * .9, VEH.z - cfx * .9);
+        carG.current.rotation.order = 'YZX'; carG.current.position.set(VEH.x, (hf + hb + hl + hr) / 4, VEH.z); carG.current.rotation.set(Math.atan2(hr - hl, 1.8), VEH.r, Math.atan2(hf - hb, 4)); }   // the car sits on the slope (flat inside the city)
       (pkit().tailM as THREE.MeshStandardMaterial).emissiveIntensity = VEH.drv && VEH.brake ? 3.2 : 1.2;
       spot.current.intensity = VEH.drv || VEH.placed ? NIGHT.n * 220 : 0;
     }
     if (carTag.current) { const want = VEH.placed && !VEH.drv ? 'block' : 'none'; if (carTag.current.style.display !== want) carTag.current.style.display = want; }
-    shown.current = { drv: VEH.drv, placed: VEH.placed };
+    shown.current = { drv: inV, placed: VEH.placed };
     updateDetails(p.x, p.z, performance.now());
     OBS[0].x = p.x; OBS[0].z = p.z; OBS[0].on = !VEH.drv;
     OBS[1].x = VEH.x; OBS[1].z = VEH.z; OBS[1].on = VEH.placed;
 
     /* ── third-person follow camera (player is visible, orbit with mouse/touch) ── */
-    const dist = VEH.drv ? 8.5 : 4.8, targetY = (VEH.drv ? 1.6 : 1.5) + p.y * .6;
+    const dist = BOAT.on ? 10.5 : VEH.drv ? 8.5 : 4.8, targetY = (VEH.drv ? 1.6 : BOAT.on ? 2.3 : 1.5) + p.g + (p.sw ? p.y : p.y * .6);
     // The camera follows a lightly smoothed copy of the player, not the raw position: collision push-out, jump bob and
     // network corrections nudge the body a few cm every frame, and a rigidly attached camera turns that into shake.
     const ca = camA.current;
@@ -415,8 +478,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     oc.minDistance = dist; oc.maxDistance = dist;
     if (c.recenter || snapCam || firstCam.current) {
       firstCam.current = false; c.recenter = false;
-      const yaw = VEH.drv ? VEH.r : p.r;
-      const hx = VEH.drv ? Math.cos(yaw) : Math.sin(yaw), hz = VEH.drv ? -Math.sin(yaw) : Math.cos(yaw);
+      const yaw = BOAT.on ? BOAT.r : VEH.drv ? VEH.r : p.r;
+      const hx = VEH.drv || BOAT.on ? Math.cos(yaw) : Math.sin(yaw), hz = VEH.drv || BOAT.on ? -Math.sin(yaw) : Math.cos(yaw);
       oc.setAzimuthalAngle?.(Math.atan2(-hx, -hz));
       oc.setPolarAngle?.(1.2);
     }
@@ -444,14 +507,20 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       camK = want < camK ? want : camK + (want - camK) * (1 - Math.exp(-dt * 3));
       if (camK < .999) cam.position.set(px + vx * camK, py + vy * camK, pz + vz * camK);
     }
-    if (cam.position.y < .25) cam.position.y = .25;   // looking up swings the camera below head height: never let it dip into the ground
-    sunTarget.position.set(p.x, 0, p.z); sun.current.position.set(p.x + sx * 70, sy * 70 + 8, p.z + 25);
+    { const floor = Math.max(.25, terrainH(cam.position.x, cam.position.z) + .3); if (cam.position.y < floor) cam.position.y = floor; }   // looking up swings the camera below head height: never let it dip into the ground
+    { /* underwater: murky blue fog and a tint while the camera is below the surface */
+      const dep = WATER_Y - cam.position.y, uw = dep > .05 && waterDepth(cam.position.x, cam.position.z) > .05;
+      if (uw && fg && bg) { WX.tmp.set('#0f5a78').multiplyScalar((.25 + .75 * day) * Math.exp(-dep * .16)); fg.color.copy(WX.tmp); fg.near = .5; fg.far = 30 - Math.min(14, dep * 3); bg.copy(WX.tmp); }
+      if (!uwEl.current) uwEl.current = document.getElementById('arlUw'); if (uwEl.current) { const v = uw ? '1' : '0'; if (uwEl.current.dataset.v !== v) { uwEl.current.dataset.v = v; uwEl.current.style.opacity = v; } }
+      if (!o2El.current) o2El.current = document.getElementById('arlO2'); if (o2El.current) { const show = p.sw && p.ox < 99.5; const d = show ? '' : 'none'; if (o2El.current.style.display !== d) o2El.current.style.display = d; if (show) { const b = o2El.current.firstElementChild?.firstElementChild as HTMLElement | null; if (b) { b.style.width = p.ox.toFixed(0) + '%'; b.style.background = p.ox < 25 ? '#ff5b52' : '#4fc3ff'; } } }
+    }
+    { const gy = BOAT.on ? WATER_Y : p.g; sunTarget.position.set(p.x, gy, p.z); sun.current.position.set(p.x + sx * 70, gy + sy * 70 + 8, p.z + 25); }
 
-    { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; M.rd = 0; M.pa = ''; M.ps = 0; }
+    { const M = NET.me; M.x = p.x; M.z = p.z; M.r = p.r; M.mv = moving.current ? (running.current ? 2 : 1) : 0; M.drv = VEH.drv; M.cp = VEH.placed; M.cx = VEH.x; M.cz = VEH.z; M.cr = VEH.r; M.rd = 0; M.pa = ''; M.ps = 0; M.w = BOAT.on ? 3 : p.sw ? (p.dv > .45 ? 2 : 1) : 0; if (BOAT.on) { M.drv = true; M.cp = true; M.cx = BOAT.x; M.cz = BOAT.z; M.cr = BOAT.r; } }
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
     (window as any).__arlPos = { x: p.x, z: p.z };
-    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(VEH.v) * 3.6, drv: VEH.drv, prompt: VEH.drv ? hint('Exit car · handbrake · boost · horn: use the buttons', 'E exit · Space handbrake · Shift boost · H horn') : (() => { const dh = nearDoor(p.x, p.z); return dh ? (dh.mine ? hint('Tap Interact — enter your house', 'E — Enter your house') : `🔒 ${dh.u}'s house`) : VEH.placed && dCar < 9 ? hint('Tap Car — get in your car', 'E — Get in your car') : ''; })() };
+    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(BOAT.on ? BOAT.v : VEH.v) * 3.6, drv: VEH.drv || BOAT.on, prompt: BOAT.on ? hint('Boat: tap Boat to get out', 'E exit boat · Shift boost · Space brake') : p.sw ? hint('Swimming: Dive to go under, Jump to come up', 'Swimming · Z dive · Space up') : VEH.drv ? hint('Exit car · handbrake · boost · horn: use the buttons', 'E exit · Space handbrake · Shift boost · H horn') : (() => { const dh = nearDoor(p.x, p.z); return dh ? (dh.mine ? hint('Tap Interact — enter your house', 'E — Enter your house') : `🔒 ${dh.u}'s house`) : VEH.placed && dCar < 9 ? hint('Tap Car — get in your car', 'E — Get in your car') : boatTarget(p.x, p.z) ? hint('Tap Boat — climb in', 'E — Get in the boat') : ''; })() };
     if (!VEH.drv) {
       let best: CityBuilding | null = null, bd = 2.6;
       for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }
@@ -469,7 +538,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <primitive object={sunTarget} />
       <Atmosphere sun={sun} />
       <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.06, 0]} receiveShadow><planeGeometry args={[1900, 1900]} /><meshStandardMaterial color="#5d7f55" /></mesh>
+      <CityTerrain />{/* the flat city floor, the hills, the river, the lake and the sea, plus docks and boats */}
       <Roads />
       <Billboards />
       <TransportVehicles look={look} />
@@ -508,7 +577,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <ChopYards />
       <JailCell />
       <group ref={group}>
-        <Human look={look} getState={() => (moving.current ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : undefined; }} getSpeed={() => (running.current ? 2.4 : 1.1)} />
+        <Human look={look} getState={() => (moving.current || P.current.sw ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current || P.current.sw) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : undefined; }} getSpeed={() => (P.current.sw ? (moving.current ? 1.3 : .6) : running.current ? 2.4 : 1.1)} />
         <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <StreetNpcScene />
@@ -539,6 +608,7 @@ const CSS = `
 .cwGear{top:268px}
 .cwMute{position:absolute;left:12px;top:222px;z-index:7;width:38px;height:38px;border-radius:50%;border:2px solid #ffffff44;background:#0b1511cc;color:#fff;font-size:17px;cursor:pointer}
 .cwTouch{display:none}
+.cwUw{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:0;transition:opacity .25s;background:radial-gradient(ellipse at center,#1a7ba033 30%,#0a3b5acc 100%)}.cwO2{position:absolute;left:50%;top:64px;transform:translateX(-50%);z-index:12;display:flex;align-items:center;gap:8px;color:#fff;font:800 12px system-ui;pointer-events:none;text-shadow:0 2px 0 #000}.cwO2 i{display:block;width:150px;height:10px;border:2px solid #04202e;border-radius:99px;background:#0009;overflow:hidden}.cwO2 b{display:block;height:100%;width:100%;background:#4fc3ff;transition:width .15s}
 @media (pointer:coarse),(max-width:700px){.cwLookPad{display:block}.cwStick{display:block}.cwHint{display:none}.cwMap{width:96px;height:96px;top:96px;left:10px}.cwBtns{bottom:20px;right:14px;grid-template-columns:58px 58px 72px;gap:8px}.cwBtn{width:58px;height:58px}.cwBtn.big{width:70px;height:70px}.cwBtn.cam{width:48px;height:48px}.cwTouch{display:flex}.cwSpeed{right:auto;left:14px;bottom:166px}.cwTip{bottom:170px;font-size:11px}.cwMute{left:10px;top:200px}.cwGear{top:246px!important}}
 `;
 
@@ -565,6 +635,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
   const cfg = useSettings(), [hasCar, setHasCar] = useState(GAME.hasCar), [armed, setArmed] = useState(false);
   /* plane buttons for phones: "Plane" (board / get out) appears next to the plane or while flying, "View" switches cockpit / outside */
   const [pl, setPl] = useState<'' | 'near' | 'fly' | 'pax'>('');
+  const [bt, setBt] = useState<'' | 'near' | 'on'>(''), [wet, setWet] = useState(false);   // boat button (appears next to a boat or while driving one) and the Dive label (while swimming)
+  useEffect(() => { const f = () => { const v: '' | 'near' | 'on' = BOAT.on ? 'on' : boatTarget(GAME.player.x, GAME.player.z) ? 'near' : '', w = !BOAT.on && waterDepth(GAME.player.x, GAME.player.z) > SWIM_DEPTH; setBt(o => o === v ? o : v); setWet(o => o === w ? o : w); }; f(); const i = setInterval(f, 300); return () => clearInterval(i); }, []);
   useEffect(() => { const f = () => { const v = PLANE.on ? 'fly' : PLANE.pax ? 'pax' : planeNear(GAME.player.x, GAME.player.z) ? 'near' : ''; setPl(o => o === v ? o : v); }; f(); const i = setInterval(f, 300); window.addEventListener('arl-plane', f); return () => { clearInterval(i); window.removeEventListener('arl-plane', f); }; }, []);
   useEffect(() => { const w = setInterval(() => { const mid = (window as any).__arlMissionId; if (mid && !(window as any).__arlMissionHold && (GAME.nav as any)?.mission !== mid) { const g = (window as any).__arlMissionGoal as { id: string; x: number; z: number; name: string } | undefined; if (g && g.id === mid) { GAME.nav = { x: g.x, z: g.z, name: g.name, mission: mid }; GAME.notice = '📍 Mission route restored'; } else window.dispatchEvent(new Event('arl-mission-lost')); } }, 800); return () => clearInterval(w); }, []);
   useEffect(() => { // killed: climb out of any vehicle, drop the waypoint and the arrival spot; Sim.tsx puts you back in your house
@@ -604,6 +676,7 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       if (typing(e)) return; const k = e.key.toLowerCase();
       if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
       if (k === 'c') ctl.current.recenter = true;
+      if (k === 'z' && !e.repeat) ctl.current.crouch = !ctl.current.crouch;   // crouch on land, dive when swimming
       if (k === 'f' && !e.repeat) ctl.current.punch = true;
       if (k === 'v' && !e.repeat) window.dispatchEvent(new Event('arl-trigger-fire'));
       if (k === 'e' && !e.repeat) { ctl.current.interact = true; unlockAudio(); }
@@ -623,6 +696,8 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
       <Canvas shadows dpr={LOW_END ? [1, 1.25] : [1, 1.5]} gl={{ powerPreference: 'high-performance' }} camera={{ position: [START.x - Math.sin(START.r) * 8, 4.2, START.z - Math.cos(START.r) * 8], fov: 52, near: .4, far: 600 }}>
         <Scene fight={net.punch} shoot={net.shoot} look={look} ctl={ctl} hud={hud} setNear={(b: any) => { nearBiz.current = b; onNear(b); }} getMinute={getMinute} roster={net.roster} ver={net.ver} bub={net.bub} onPick={setSel} />
       </Canvas>
+      <div id="arlUw" className="cwUw" />
+      <div id="arlO2" className="cwO2" style={{ display: 'none' }}><i><b /></i><span>🫁 Air</span></div>
       <Minimap hud={hud} onOpen={onOpenMap} />
       <CityPeople net={net} sel={sel} setSel={setSel} />
       <LookPad ctl={ctl} />
@@ -639,18 +714,19 @@ export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap
         {hasCar && <HoldBtn cls="cam cwTouch" label="Horn" icon="📣" down={() => { unlockAudio(); ctl.current.horn = true; }} />}
         {(pl === 'fly' || pl === 'near') && <HoldBtn cls="cwTouch" label={pl === 'fly' ? 'Exit plane' : 'Board plane'} icon="✈️" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         {(pl === 'fly' || pl === 'pax') && <HoldBtn cls="cwTouch" label="View" icon="📷" down={() => { togglePlaneView(); }} />}
+        {bt && <HoldBtn cls="cwTouch" label={bt === 'on' ? 'Exit boat' : 'Boat'} icon="⛵" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         {hasCar && <HoldBtn cls="cwTouch" label="Car" icon="🚗" down={() => { unlockAudio(); ctl.current.interact = true; }} />}
         <HoldBtn cls="cwTouch" label="Taxi" icon="🚕" down={() => { unlockAudio(); ctl.current.taxi = true; }} />
         <HoldBtn cls="" label="Interact" icon="🖐️" down={() => { unlockAudio(); if (nearBiz.current?.id) { const id = nearBiz.current.id; handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter', { detail: id }))); } else ctl.current.interact = true; }} />
         <HoldBtn cls="" label="Phone" icon="📱" down={() => { window.dispatchEvent(new Event('arl-open-phone')); }} />
         <HoldBtn cls="" label="Fight" icon="👊" down={() => { ctl.current.punch = true; }} />
-        <HoldBtn cls="" label="Crouch" icon="🧎" down={() => { ctl.current.crouch = !ctl.current.crouch; }} />
+        <HoldBtn cls="" label={wet ? 'Dive' : 'Crouch'} icon={wet ? '🤿' : '🧎'} down={() => { ctl.current.crouch = !ctl.current.crouch; }} />
         {armed && <HoldBtn cls="" label="Fire" icon="🔫" down={() => { window.dispatchEvent(new Event('arl-trigger-fire')); }} />}
         <HoldBtn cls="cam" label="Camera" icon="🎥" down={() => { ctl.current.recenter = true; }} />
         <HoldBtn cls="" label="Sprint" icon="🏃" down={() => { ctl.current.run = true; }} up={() => { ctl.current.run = false; }} />
         <HoldBtn cls="big" label="Jump" icon="⬆️" down={() => { ctl.current.jump = true; }} />
       </div>
-      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter · <b>F</b> punch · <b>M</b> missions · <b>G</b> weapon · <b>R</b> reload · <b>V</b> fire (guns are sold at Gun Shops)<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
+      <div className="cwHint"><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump<br /><b>Drag mouse</b> look · <b>C</b> recenter · <b>Z</b> crouch / dive · <b>F</b> punch · <b>M</b> missions · <b>G</b> weapon · <b>R</b> reload · <b>V</b> fire (guns are sold at Gun Shops)<br />{hasCar ? <><b>E</b> call / enter / exit car · <b>H</b> horn · <b>Space</b> handbrake · </> : null}Gamepad works too</div>
     </div>
   );
 }

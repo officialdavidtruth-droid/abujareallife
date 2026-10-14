@@ -7,15 +7,15 @@ import { KO_DOWN_MS, SAFE_AFTER_WAKE_MS } from './downed';
 
 /* Shared, mutable multiplayer state. The 3D scene writes NET.me every frame and reads NET.peers every frame
    (no React re-renders in the hot path). React state only changes when people join/leave or chat. */
-export type NetMe = { x: number; z: number; r: number; mv: 0 | 1 | 2; drv: boolean; cp: boolean; cx: number; cz: number; cr: number; anim: string; animUntil: number; hp: number; ko: number; hurt: number; safe: number; koKind: string; rd: number; pa: string; ps: number; pl: number; pf: number[] };   // pl: 1 while I fly the airport plane, pf = its pose [x, z, heading, altitude, pitch, roll, speed, airborne]
+export type NetMe = { x: number; z: number; r: number; mv: 0 | 1 | 2; drv: boolean; cp: boolean; cx: number; cz: number; cr: number; anim: string; animUntil: number; hp: number; ko: number; hurt: number; safe: number; koKind: string; rd: number; pa: string; ps: number; pl: number; pf: number[]; w: number };   // w: 1 swimming, 2 diving, 3 driving a boat (then cx, cz, cr are the BOAT's pose). pl: 1 while I fly the airport plane, pf = its pose [x, z, heading, altitude, pitch, roll, speed, airborne]
 export type NetPeer = {
   look: Look; init: boolean; mv: number; drv: boolean; cp: boolean; anim: string; animUntil: number; ko: boolean; safe: boolean;
   x: number; z: number; r: number; tx: number; tz: number; tr: number;
   cx: number; cz: number; cr: number; tcx: number; tcz: number; tcr: number;
-  rd: number; pa: string; ps: number; pl: boolean; pf: number[]; pft: number;   // pl / pf: this player is flying the airport plane (pose, see NetMe); pft: when pf last changed. rd: riding in a taxi / bike / bus (x, z, r are then the VEHICLE's pose); pa: name of the player whose car or taxi I ride in; ps: my seat there
+  rd: number; pa: string; ps: number; pl: boolean; pf: number[]; pft: number; w: number;   // w: swimming / diving / boating (see NetMe). pl / pf: this player is flying the airport plane (pose, see NetMe); pft: when pf last changed. rd: riding in a taxi / bike / bus (x, z, r are then the VEHICLE's pose); pa: name of the player whose car or taxi I ride in; ps: my seat there
 };
 export const NET = {
-  me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0, anim: '', animUntil: 0, hp: 100, ko: 0, hurt: 0, safe: 0, koKind: '', rd: 0, pa: '', ps: 0, pl: 0, pf: [0, 0, 0, 0, 0, 0, 0, 0] } as NetMe,
+  me: { x: 0, z: 16, r: Math.PI, mv: 0, drv: false, cp: false, cx: 0, cz: 0, cr: 0, anim: '', animUntil: 0, hp: 100, ko: 0, hurt: 0, safe: 0, koKind: '', rd: 0, pa: '', ps: 0, pl: 0, pf: [0, 0, 0, 0, 0, 0, 0, 0], w: 0 } as NetMe,
   peers: {} as Record<string, NetPeer>,
   reason: '' as string, // why multiplayer is offline, shown in the chat panel
   msg: '' as string, // one-line toast written by the net layer, shown by the scene
@@ -40,7 +40,7 @@ export function syncDown(downLeft: number, safeLeft: number, kind: string) {
 
 export const MAX_ROOM = 40;   // players per city instance; the 41st player is moved to instance #2, etc.
 const MAX_ROOMS = 50;
-const LIM = 300;   // houses stand in rows out to ~250 m (lib/houses.ts)
+const LIM = 900;   // the whole map: city core, houses out to ~275 m (lib/houses.ts), countryside, river, lake (lib/terrain.ts WORLD_LIM = 860)
 const FLIM = 900;   // the plane may fly further out than anyone can walk (FLY_LIM = 850 in cityPlane.tsx)   // the walkable world is +-202 m (player houses stand outside the ring road, beyond 150 m)
 const SEND_MS = 200;          // 5 position updates / second, only while someone else is in your instance
 const clampN = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(-LIM, Math.min(LIM, v)) : d);
@@ -48,7 +48,7 @@ const clampF = (v: unknown) => (typeof v === 'number' && isFinite(v) ? Math.max(
 const angle = (v: unknown, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const lookKey = (l: Look) => [l.gender, l.hair, l.hairColor, l.skin, l.outfit, l.pants, l.height, l.outfitModel, l.shoeColor, l.shoeStyle, (l.acc || []).join(',')].join('|');
-const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, cp: false, anim: '', animUntil: 0, ko: false, safe: false, x: 0, z: 16, r: 0, tx: 0, tz: 16, tr: 0, cx: 0, cz: 0, cr: 0, tcx: 0, tcz: 0, tcr: 0, rd: 0, pa: '', ps: 0, pl: false, pf: [0, 0, 0, 0, 0, 0, 0, 0], pft: 0 });
+const blank = (look: Look): NetPeer => ({ look, init: false, mv: 0, drv: false, cp: false, anim: '', animUntil: 0, ko: false, safe: false, x: 0, z: 16, r: 0, tx: 0, tz: 16, tr: 0, cx: 0, cz: 0, cr: 0, tcx: 0, tcz: 0, tcr: 0, rd: 0, pa: '', ps: 0, pl: false, pf: [0, 0, 0, 0, 0, 0, 0, 0], pft: 0, w: 0 });
 
 export const INTERACT_RANGE = 10; // metres: how close you must be to wave / high-five / dance with someone
 export const ACT_LIST = [['wave', '👋', 'Wave'], ['cheer', '🙌', 'High-five'], ['dance', '💃', 'Dance']] as const;
@@ -191,7 +191,7 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
           p.tx = clampN(payload.x); p.tz = clampN(payload.z, 16); p.tr = angle(payload.r, p.tr);
           p.mv = payload.m === 2 ? 2 : payload.m === 1 ? 1 : 0; p.drv = !!payload.d; p.cp = !!payload.p; p.ko = !!payload.k; p.safe = !!payload.s;
           p.tcx = clampN(payload.cx); p.tcz = clampN(payload.cz); p.tcr = angle(payload.cr, p.tcr);
-          p.rd = payload.rd === 1 || payload.rd === 2 || payload.rd === 3 ? payload.rd : 0; p.pa = typeof payload.pa === 'string' ? payload.pa.slice(0, 24) : ''; p.ps = payload.ps === 1 || payload.ps === 2 ? payload.ps : 0;
+          p.rd = payload.rd === 1 || payload.rd === 2 || payload.rd === 3 ? payload.rd : 0; p.pa = typeof payload.pa === 'string' ? payload.pa.slice(0, 24) : ''; p.ps = payload.ps === 1 || payload.ps === 2 ? payload.ps : 0; p.w = payload.w === 1 || payload.w === 2 || payload.w === 3 ? payload.w : 0;
           if (payload.pl === 1 && Array.isArray(payload.f) && payload.f.length >= 8) {   // flying the airport plane: x, z, heading, altitude, pitch, roll, speed, airborne
             const f = payload.f as unknown[], nf = [clampF(f[0]), clampF(f[1]), angle(f[2]), clampF(f[3]), angle(f[4]), angle(f[5]), clampF(f[6]), f[7] ? 1 : 0];
             if (!p.pl || nf.some((v, i) => v !== p.pf[i])) p.pft = performance.now();
@@ -289,8 +289,8 @@ export function useCityNet(look: Look, onSocial?: (amount?: number) => void) {
     const id = setInterval(() => {
       const c = ch.current; if (!c || statusRef.current !== 'online' || !Object.keys(NET.peers).length) return;
       const m = NET.me, now = Date.now();
-      const pl = { u: name, x: r2(m.x), z: r2(m.z), r: r2(m.r), m: m.mv, d: m.drv, p: m.cp, cx: r2(m.cx), cz: r2(m.cz), cr: r2(m.cr), k: m.ko > now ? 1 : 0, s: m.safe > now ? 1 : 0, rd: m.rd, pa: m.pa, ps: m.ps, pl: m.pl ? 1 : 0, f: m.pl ? m.pf.map(r2) : undefined };
-      const key = `${pl.x}|${pl.z}|${pl.r}|${pl.m}|${pl.d}|${pl.p}|${pl.cx}|${pl.cz}|${pl.cr}|${pl.k}|${pl.rd}|${pl.pa}|${pl.ps}|${pl.f ? pl.f.join(',') : ''}`;
+      const pl = { u: name, x: r2(m.x), z: r2(m.z), r: r2(m.r), m: m.mv, d: m.drv, p: m.cp, cx: r2(m.cx), cz: r2(m.cz), cr: r2(m.cr), k: m.ko > now ? 1 : 0, s: m.safe > now ? 1 : 0, rd: m.rd, pa: m.pa, ps: m.ps, pl: m.pl ? 1 : 0, f: m.pl ? m.pf.map(r2) : undefined, w: m.w || 0 };
+      const key = `${pl.x}|${pl.z}|${pl.r}|${pl.m}|${pl.d}|${pl.p}|${pl.cx}|${pl.cz}|${pl.cr}|${pl.k}|${pl.rd}|${pl.pa}|${pl.ps}|${pl.w}|${pl.f ? pl.f.join(',') : ''}`;
       if (key === lastKey.current && now - lastBeat.current < 2500) return;
       lastKey.current = key; lastBeat.current = now;
       c.send({ type: 'broadcast', event: 'pos', payload: pl });

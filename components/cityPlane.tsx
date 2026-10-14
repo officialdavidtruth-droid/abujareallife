@@ -1,4 +1,5 @@
 'use client';
+import { WATER_Y, terrainH } from '../lib/terrain';
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -227,6 +228,9 @@ export function stepPlane(dt: number, c: { keys: Set<string>; joy: { x: number; 
     let dy = Math.sin(pitch) * s * dt; if (dy < 0 && y < 4) dy *= .45 + .1375 * y;   // ground effect: the last few metres cushion the descent (the flare)
     y += dy - stall * stall * 14 * dt;
     if (y > CEILING) { y = CEILING; pitch = Math.min(pitch, 0); }
+    const gy = terrainH(PLANE.x, PLANE.z);   // hills outside the city (the city core, runway included, is flat at 0)
+    if (gy > .3 && y <= gy + .8) { crash(p, 'You flew into the hillside!'); return; }
+    if (y <= 0 && gy < WATER_Y - .3) { crash(p, 'You came down in the water!'); return; }
     if (y <= 0) {
       const sink = -dy / dt + stall * stall * 14;   // m/s downwards at touchdown
       const why = PLANE.gear < .7 ? 'Gear up landing!' : sink > 8 ? 'Too fast down: hard landing!' : Math.abs(roll) > .4 ? 'Wing strike: level the wings before touchdown!' : pitch < -.25 ? 'Nose-first landing!' : !onRwy && sink > 4.5 ? 'Hard landing off the runway!' : '';

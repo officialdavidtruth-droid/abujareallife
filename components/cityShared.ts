@@ -4,6 +4,7 @@ import type { CityBuilding } from '../lib/cityTypes';
 import { JAIL_CELL_POS } from '../lib/profile';
 import { BUILDS_WORLD } from '../lib/destinations';
 import { GRID, WS, halfW } from '../lib/roadRoute';
+import { WORLD_LIM } from '../lib/terrain';
  // road grid, curb spots, taxi/bike driving
 /* ───────────── types & helpers ───────────── */
 export type Ctl = { punch: boolean; shoot: boolean; joy: { x: number; y: number }; look: { x: number; y: number }; keys: Set<string>; run: boolean; jump: boolean; recenter: boolean; interact: boolean; taxi: boolean; horn: boolean; crouch?: boolean };
@@ -45,8 +46,8 @@ export const FH = 3;
  // metres per floor
 export const WSCALE = WS;
  // (some functions below have a local called WS)
-export const LIM = 135 * WSCALE;
- // walkable limit
+export const LIM = WORLD_LIM;
+ // walkable limit: the whole map now (city core, countryside, river, lake and sea; see lib/terrain.ts)
 export const ev = (n: number) => ((n % 2) + 2) % 2 === 0;
 
 export const BUILDS: CityBuilding[] = BUILDS_WORLD;

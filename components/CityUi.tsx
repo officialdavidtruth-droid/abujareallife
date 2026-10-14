@@ -1,4 +1,5 @@
 'use client';
+import { TERRAIN_MAP_EXTENT, getTerrainMap } from '../lib/terrainMap';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NET } from '../lib/cityNet';
 import { createRoot, type Root } from 'react-dom/client';
@@ -55,6 +56,7 @@ export function Minimap({ hud, onOpen }: { hud: React.MutableRefObject<Hud>; onO
       if (north.current) { const th = Math.atan2(h.fx, -h.fz); north.current.style.left = (50 - Math.sin(th) * 46) + '%'; north.current.style.top = (50 - Math.cos(th) * 46) + '%'; }   // 'N' rides the rim of the map and always points north
       g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#35553f'; g.fillRect(0, 0, S, S);
       g.translate(S / 2, S / 2); g.rotate(-Math.atan2(h.fx, -h.fz)); g.scale(sc, sc); g.translate(-h.x, -h.z);
+      { const tm = getTerrainMap(); if (tm) { g.imageSmoothingEnabled = true; g.drawImage(tm, -TERRAIN_MAP_EXTENT, -TERRAIN_MAP_EXTENT, TERRAIN_MAP_EXTENT * 2, TERRAIN_MAP_EXTENT * 2); } }   // water, beaches, hills and countryside under the roads
       g.fillStyle = '#6a6f77'; for (let i = -5; i <= 5; i++) { g.fillRect(i * GRID - halfW(i), -125 * WS, halfW(i) * 2, 250 * WS); g.fillRect(-125 * WS, i * GRID - halfW(i), 250 * WS, halfW(i) * 2); }
       for (const b of BUILDS) { g.fillStyle = b.color; g.fillRect(b.x - b.w / 2, b.z - b.d / 2, b.w, b.d); }
       const rt = GAME.route, nv = GAME.nav;

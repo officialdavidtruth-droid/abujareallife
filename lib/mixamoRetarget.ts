@@ -70,7 +70,8 @@ export const ACTION: Record<string, string> = {
 export const ONCE = new Set(['Dying', 'Salute', 'Opening_Door_Inwards', 'Punching', 'Illegal_Elbow_Punch', 'Body_Block', 'Dismissing_Gesture', 'Situp_To_Idle', 'Running_To_Stop', 'Running_Right_Turn', 'Entering_Car', 'Exiting_Car', 'Honking_Horn', 'Waking']);
 export const CLAMP = new Set(['Dying']);   // stays on the last frame
 
-/** Which Mixamo clip to play, or null when the rig should use its own procedural pose (sitting, sleeping, and actions that have no Mixamo clip such as eating, cooking, shooting, phone). */
+/** Which Mixamo clip to play, or null when the rig should use its own procedural pose: standing, walking, sitting, sleeping, and actions that have no Mixamo clip (eating, cooking, shooting, phone ...).
+ *  Mixamo is used for running and for the actions (dances, doors, cars, punches, ...). */
 export function chooseClip(state: HumanState, anim: string | undefined, speed: number, names: Set<string>): { clip: string; ts: number } | null {
   if (state === 'sit' || state === 'sleep') return null;
   if (anim) {
@@ -78,10 +79,8 @@ export function chooseClip(state: HumanState, anim: string | undefined, speed: n
     const c = direct || ACTION[anim];
     return c && names.has(c) ? { clip: c, ts: 1 } : null;
   }
-  if (state === 'walk') return speed >= 1.8
-    ? { clip: 'Running', ts: Math.min(1.3, Math.max(.8, speed / 2.4)) }
-    : { clip: names.has('Walking') ? 'Walking' : 'Strut_Walking', ts: Math.min(1.4, Math.max(.8, speed / 1.1)) };
-  return { clip: 'Idle', ts: 1 };
+  if (state === 'walk' && speed >= 1.8 && names.has('Running')) return { clip: 'Running', ts: Math.min(1.3, Math.max(.8, speed / 2.4)) };
+  return null;   // standing and normal walking: the original procedural animation
 }
 
 const DOWN = new THREE.Vector3(0, -1, 0), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), qc = new THREE.Quaternion();

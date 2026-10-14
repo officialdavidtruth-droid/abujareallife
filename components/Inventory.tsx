@@ -10,7 +10,7 @@ type Prop = { id: string; name: string; district: string; type: string; price: n
 type Data = { items: Item[]; vehicles: Veh[]; properties: Prop[]; cash: number };
 const naira = (n: number) => '₦' + Math.round(n).toLocaleString();
 const call = async (body: object) => { try { const r = await fetch('/api/inventory', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { ok: r.ok, d: await r.json().catch(() => ({})) as any }; } catch { return { ok: false, d: { error: 'No connection.' } as any }; } };
-const VEH_E: Record<string, string> = { CAR: '🚗', SUV: '🚙', MOTORCYCLE: '🏍️', BUS: '🚌' }, PROP_E: Record<string, string> = { ROOM: '🛏️', APARTMENT: '🏢', HOUSE: '🏠', MANSION: '🏰' };
+const VEH_E: Record<string, string> = { CAR: '🚗', SUV: '🚙', MOTORCYCLE: '🏍️', BICYCLE: '🚲', BUS: '🚌' }, PROP_E: Record<string, string> = { ROOM: '🛏️', APARTMENT: '🏢', HOUSE: '🏠', MANSION: '🏰' };
 
 export default function Inventory({ onClose, onCash }: { onClose: () => void; onCash: (n: number) => void }) {
   const [data, setData] = useState<Data | null>(null), [tab, setTab] = useState<'items' | 'vehicles' | 'properties'>('items'), [cat, setCat] = useState(''), [q, setQ] = useState('');

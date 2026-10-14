@@ -29,6 +29,7 @@ enum VehicleType {
   CAR
   SUV
   MOTORCYCLE
+  BICYCLE
   BUS
 }
 

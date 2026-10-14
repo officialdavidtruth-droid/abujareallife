@@ -186,8 +186,9 @@ function FittedCar({ src, real, steer }: { src: THREE.Object3D; real: boolean; s
 export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax, steer }: { steer?: () => number; pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void }) {
   const spec = model ? (vehicleById(model) || vehicleByName(model)) : VEHICLE_CATALOG[0];
   const glb = useCarGlb(spec.id);
-  // Motorcycles reuse the game's existing procedural okada/motorbike model instead of appearing as four-wheeled cars.
+  // Two-wheel vehicles use purpose-built procedural models instead of rendering as cars.
   if (spec.type === 'MOTORCYCLE') return <BikeBody scale={0.9} rider={driver} />;
+  if (spec.type === 'BICYCLE') return <BicycleBody scale={0.92} rider={driver} />;
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];
@@ -307,6 +308,36 @@ export function TaxiBody({ kit, refs, pax }: { kit: Kit; driver?: boolean; refs?
       <mesh><boxGeometry args={[.9, .2, .5]} /><meshStandardMaterial color="#111" /></mesh>
       {[1, -1].map(sd => <Text key={sd} position={[0, .01, sd * .26]} rotation-y={sd === 1 ? 0 : Math.PI} fontSize={.15} color="#ffd23f" anchorX="center" anchorY="middle">TAXI</Text>)}
     </group>
+  </group>;
+}
+
+/** Procedural city/mountain bicycle. Faces +x like the other drivable vehicles. */
+export function BicycleBody({ scale = 1, rider, driverRef, riderLook }: { scale?: number; rider?: boolean; driverRef?: (g: THREE.Object3D | null) => void; riderLook?: Look }) {
+  const frame = '#d71920', dark = '#171a1d', metal = '#aeb6bd';
+  const tube = (a: [number, number, number], b: [number, number, number], radius = 0.025, color = frame) => {
+    const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), delta = new THREE.Vector3().subVectors(end, start);
+    const geo = new THREE.CylinderGeometry(radius, radius, delta.length(), 8);
+    geo.translate(0, delta.length() / 2, 0);
+    const mesh = <mesh geometry={geo} material={new THREE.MeshStandardMaterial({ color, metalness: .45, roughness: .4 })} position={start.toArray()} quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize())} />;
+    return mesh;
+  };
+  const wheels: [number, number][] = [[-.58, .34], [.58, .34]];
+  return <group scale={[scale, scale, scale]}>
+    {wheels.map(([x, y]) => <group key={x} position={[x, y, 0]}>
+      <mesh><torusGeometry args={[.29, .035, 8, 24]} /><meshStandardMaterial color={dark} roughness={.95} /></mesh>
+      <mesh rotation-x={Math.PI / 2}><cylinderGeometry args={[.018, .018, .09, 10]} /><meshStandardMaterial color={metal} metalness={.75} /></mesh>
+      {Array.from({ length: 12 }, (_, i) => <mesh key={i} rotation-z={i * Math.PI / 6}>
+        <boxGeometry args={[.56, .009, .009]} /><meshStandardMaterial color={metal} metalness={.7} />
+      </mesh>)}
+    </group>)}
+    {tube([-.58,.34,0],[-.18,.72,0])}{tube([-.18,.72,0],[.12,.36,0])}{tube([.12,.36,0],[-.58,.34,0])}
+    {tube([-.18,.72,0],[.58,.34,0])}{tube([.12,.36,0],[.58,.34,0])}{tube([-.18,.72,0],[-.28,.82,0],.025,dark)}
+    {tube([.58,.34,0],[.64,.78,0],.022,metal)}{tube([.64,.78,0],[.45,.83,0],.022,dark)}
+    <mesh position={[-.31,.84,0]}><boxGeometry args={[.24,.045,.13]} /><meshStandardMaterial color={dark} /></mesh>
+    <mesh position={[.12,.36,0]}><cylinderGeometry args={[.055,.055,.08,12]} /><meshStandardMaterial color={dark} /></mesh>
+    {tube([.12,.36,0],[.26,.26,.07],.018,dark)}{tube([.12,.36,0],[-.02,.26,-.07],.018,dark)}
+    <mesh position={[.12,.36,0]} rotation-x={Math.PI/2}><cylinderGeometry args={[.025,.025,.18,10]} /><meshStandardMaterial color={metal} metalness={.8} /></mesh>
+    {rider && <group ref={driverRef} position={[-.02,.72,0]}><group rotation-y={Math.PI/2} scale={.46}><Human look={riderLook || { ...DEFAULT_LOOK, name: 'Cyclist', outfit: '#1769aa' }} getState={() => 'idle'} getAnim={() => undefined} getSpeed={() => 1} /></group></group>}
   </group>;
 }
 

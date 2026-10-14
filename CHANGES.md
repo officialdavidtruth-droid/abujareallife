@@ -60,3 +60,11 @@
 - Motorcycle catalog entries use the existing MOTORCYCLE database enum and existing procedural motorbike model, so they do not render as four-wheeled cars.
 - Updated garage/dealership cards to show a motorcycle icon for motorcycle entries.
 - Later steps remain separate: bicycles, helicopters, boats, trains, then collision damage/dents and breakable vehicle parts.
+
+
+## Step 2 — Bicycles
+- Added Trek Marlin 7 mountain bicycle and Giant Escape 3 city bicycle to the vehicle catalogue.
+- Added a dedicated procedural bicycle model with wheels, spokes, frame, fork, handlebars, seat, crank and rider.
+- Added the BICYCLE vehicle type to Prisma and a PostgreSQL enum migration for existing databases.
+- Updated garage/dealership and inventory icons to distinguish bicycles from motorcycles and cars.
+- This step adds the catalogue and visual model; riding physics, mounting/dismounting and bicycle-specific animation still need in-game testing and refinement.

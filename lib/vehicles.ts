@@ -1,5 +1,5 @@
-export type VehicleBrand = 'Toyota' | 'Lexus' | 'Mercedes-Benz' | 'BMW' | 'Honda' | 'Land Rover' | 'Porsche' | 'Alfa Romeo' | 'Yamaha';
-export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: 'CAR' | 'SUV' | 'MOTORCYCLE'; topSpeed: number; accel: number; handling: number; color: string };
+export type VehicleBrand = 'Toyota' | 'Lexus' | 'Mercedes-Benz' | 'BMW' | 'Honda' | 'Land Rover' | 'Porsche' | 'Alfa Romeo' | 'Yamaha' | 'Trek' | 'Giant';
+export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: 'CAR' | 'SUV' | 'MOTORCYCLE' | 'BICYCLE'; topSpeed: number; accel: number; handling: number; color: string };
 
 export const VEHICLE_CATALOG: VehicleSpec[] = [
   { id: 'toyota-camry-2024', brand: 'Toyota', model: 'Camry', year: 2024, price: 18_500_000, type: 'CAR', topSpeed: 210, accel: 7.9, handling: 78, color: '#c9c9c9' },
@@ -15,6 +15,9 @@ export const VEHICLE_CATALOG: VehicleSpec[] = [
   // Step 1: motorcycles. Keep this first vehicle expansion small before adding bicycles, aircraft, boats, trains and damage.
   { id: 'honda-cb500f-2024', brand: 'Honda', model: 'CB500F Motorcycle', year: 2024, price: 4_800_000, type: 'MOTORCYCLE', topSpeed: 180, accel: 4.8, handling: 88, color: '#d71920' },
   { id: 'yamaha-mt07-2024', brand: 'Yamaha', model: 'MT-07 Motorcycle', year: 2024, price: 7_200_000, type: 'MOTORCYCLE', topSpeed: 214, accel: 3.8, handling: 91, color: '#20252b' },
+  // Step 2: bicycles are separate vehicle types and use their own procedural model.
+  { id: 'trek-marlin-7-2024', brand: 'Trek', model: 'Marlin 7 Mountain Bicycle', year: 2024, price: 650_000, type: 'BICYCLE', topSpeed: 45, accel: 5.2, handling: 94, color: '#d71920' },
+  { id: 'giant-escape-3-2024', brand: 'Giant', model: 'Escape 3 City Bicycle', year: 2024, price: 420_000, type: 'BICYCLE', topSpeed: 35, accel: 4.5, handling: 96, color: '#1769aa' },
 ];
 export const vehicleById = (id: string) => VEHICLE_CATALOG.find(v => v.id === id) || VEHICLE_CATALOG[0];
 export const vehicleByName = (name: string) => VEHICLE_CATALOG.find(v => `${v.brand} ${v.model}`.toLowerCase() === name.toLowerCase()) || VEHICLE_CATALOG[0];

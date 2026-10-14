@@ -32,6 +32,7 @@ enum VehicleType {
   BICYCLE
   HELICOPTER
   BOAT
+  TRAIN
   BUS
 }
 
@@ -136,6 +137,7 @@ model Vehicle {
   price       Int
   fuel        Int         @default(100)
   condition   Int         @default(100)
+  damage      Json?
   mileage     Int         @default(0)
   insured     Boolean     @default(false)
   registered  Boolean     @default(false)

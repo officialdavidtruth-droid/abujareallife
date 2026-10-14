@@ -248,8 +248,8 @@ function CarDamageVisuals({ level }: { level: number }) {
       <mesh position={[2.18, .62, .48]} material={new THREE.MeshStandardMaterial({ color: '#17191c', emissive: '#080808' })}><boxGeometry args={[.035, .13, .2]} /></mesh>
     </group>}
     {level >= 45 && <group position={[.72, 1.08, -.69]}>
-      <line material={crack} geometry={new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(.13,-.12,.01), new THREE.Vector3(.08,-.22,.015)])} />
-      <line material={crack} geometry={new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(.13,-.12,.01), new THREE.Vector3(.27,-.15,.01)])} />
+      <primitive object={new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(.13, -.12, .01), new THREE.Vector3(.08, -.22, .015)]), crack)} />
+      <primitive object={new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(.13, -.12, .01), new THREE.Vector3(.27, -.15, .01)]), crack)} />
     </group>}
   </group>;
 }

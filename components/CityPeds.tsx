@@ -31,7 +31,9 @@ export const PANTS = ['#1f2937', '#374151', '#4b5563', '#111827', '#2b3a55', '#5
 
 export const SKINS = ['#3b2417', '#4a2e1c', '#5a3825', '#6b4429', '#7a4f32', '#8d5f3d'];
 
-export const PED_N = 32;
+/* How many pedestrians walk the city. The same number for everybody: the crowd is a shared simulation (simRand / simSeconds), so players must agree on it. Raise it for a busier city, lower it if phones struggle. */
+export const PED_N = 64;
+const NEAR_MISS = ['Oga watch am!', 'You wan kill me?!', 'Drive well, abeg!', 'Are you blind?!', 'Slow down!', 'Ehn?! Look road!'];   // what people shout when your car flies past them
 
 export function makePeds(): Ped[] {
   return Array.from({ length: PED_N }, (_, n) => {
@@ -144,6 +146,10 @@ export function Pedestrians() {
             }
           }
         }
+      }
+      if (!react && p.down <= 0 && VEH.drv && Math.abs(VEH.v) > 8 && Math.hypot(VEH.x - p.x, VEH.z - p.z) < 3.4 && Math.random() < dt * 8) {   // not a crime, just a close call: they jump clear and shout at you
+        react = rx.current[i] = { kind: 'flee', until: nowS + 1.5, fx: VEH.x, fz: VEH.z, sense: 'saw', callAt: 0, shoutAt: nowS + 3, calledIn: false };   // shoutAt after 'until': the generic "Help!" line must not replace the shout below
+        shout(i, NEAR_MISS[Math.floor(Math.random() * NEAR_MISS.length)], 2.2);
       }
       const rk = react ? (react as Reaction).kind : null; PEDSTATE[i] = rk;   // CrimeActions shows 'demand cash' only once hands are really up
       if (react) {

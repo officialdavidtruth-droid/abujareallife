@@ -9,7 +9,6 @@ import { MGR_TASK_PAY, fmtClock } from '../lib/work';
 import { makeNav } from '../lib/nav';
 import { GAME_LABEL_CSS, INTERIOR_UI_CSS } from '../lib/gameLabels';
 import StoreModal from './StoreModal';
-import SupermarketProps from './SupermarketProps';
 import Underworld from './Underworld';
 import { DrinksMenu } from './Intoxication';
 import Dealers from './Dealers';
@@ -68,9 +67,48 @@ function DecorSet({ kind, items }: { kind: 'box' | 'cyl' | 'sph'; items: Item[] 
     <meshStandardMaterial roughness={.7} /></instancedMesh>;
 }
 // Everything on display (products, plates, monitors, plants, signs...) is drawn with 3 instanced meshes, so it stays cheap on phones.
+function ProductItem({ item, index }: { item: Item; index: number }) {
+  // Retail displays use distinct silhouettes instead of repeating coloured cubes:
+  // bottles, cans, cartons, jars and soft packages. Dimensions and colour come from
+  // the existing shelf layout, so collision/layout data remains unchanged.
+  const kind = index % 6;
+  const y = (item.y ?? 0) + item.h / 2;
+  const w = Math.max(.07, item.w), h = Math.max(.08, item.h), d = Math.max(.07, item.d);
+  const bodyColor = item.c;
+  return <group position={[item.x, y, item.z]}>
+    {kind === 0 ? <group>
+      <mesh position={[0, -h * .06, 0]} castShadow><cylinderGeometry args={[w * .34, w * .39, h * .78, 12]} /><meshStandardMaterial color={bodyColor} roughness={.38} /></mesh>
+      <mesh position={[0, h * .39, 0]}><cylinderGeometry args={[w * .14, w * .2, h * .16, 10]} /><meshStandardMaterial color={bodyColor} roughness={.35} /></mesh>
+      <mesh position={[0, h * .49, 0]}><cylinderGeometry args={[w * .13, w * .13, h * .06, 10]} /><meshStandardMaterial color="#d5d8dc" metalness={.25} roughness={.3} /></mesh>
+    </group> : kind === 1 ? <group>
+      <mesh castShadow><cylinderGeometry args={[Math.min(w,d)*.42, Math.min(w,d)*.42, h*.82, 16]} /><meshStandardMaterial color={bodyColor} metalness={.28} roughness={.3} /></mesh>
+      <mesh position={[0,h*.43,0]}><cylinderGeometry args={[Math.min(w,d)*.42, Math.min(w,d)*.42, h*.05, 16]} /><meshStandardMaterial color="#c5cbd0" metalness={.55} roughness={.25} /></mesh>
+    </group> : kind === 2 ? <group>
+      <mesh castShadow><boxGeometry args={[w*.8,h*.88,d*.8]} /><meshStandardMaterial color={bodyColor} roughness={.65} /></mesh>
+      <mesh position={[0,h*.47,0]}><boxGeometry args={[w*.42,h*.06,d*.42]} /><meshStandardMaterial color="#e8ddbd" roughness={.6} /></mesh>
+    </group> : kind === 3 ? <group>
+      <mesh castShadow><cylinderGeometry args={[w*.36,w*.4,h*.75,12]} /><meshStandardMaterial color={bodyColor} roughness={.42} /></mesh>
+      <mesh position={[0,h*.4,0]}><cylinderGeometry args={[w*.22,w*.22,h*.12,12]} /><meshStandardMaterial color="#ddd8c9" roughness={.4} /></mesh>
+    </group> : kind === 4 ? <group>
+      <mesh castShadow><boxGeometry args={[w*.92,h*.74,d*.9]} /><meshStandardMaterial color={bodyColor} roughness={.82} /></mesh>
+      <mesh position={[0,h*.39,0]}><boxGeometry args={[w*.48,h*.12,d*.52]} /><meshStandardMaterial color="#e6d8bd" roughness={.8} /></mesh>
+    </group> : <group>
+      <mesh castShadow><sphereGeometry args={[Math.min(w,d)*.42,12,9]} scale={[1,Math.max(.7,h/Math.max(w,d)),.8]} /><meshStandardMaterial color={bodyColor} roughness={.75} /></mesh>
+    </group>}
+    <mesh position={[0, 0, d*.405]}><boxGeometry args={[w*.58, h*.22, .008]} /><meshStandardMaterial color={['#f3e8d0','#f7f7f3','#f1c75b','#e9e9e9'][index%4]} roughness={.7} /></mesh>
+  </group>;
+}
+function RetailDecor({ items }: { items: Item[] }) {
+  return <group>{items.map((item, index) => <ProductItem key={index} item={item} index={index} />)}</group>;
+}
 function Decor({ room }: { room: Room }) {
+  const retailRoom = room.decor.length >= 70;
   const g = useMemo(() => ({ box: room.decor.filter(i => !i.round && !i.sphere), cyl: room.decor.filter(i => i.round), sph: room.decor.filter(i => i.sphere) }), [room]);
-  return <group>{(['box', 'cyl', 'sph'] as const).map(k => g[k].length ? <DecorSet key={k + g[k].length} kind={k} items={g[k]} /> : null)}</group>;
+  return <group>
+    {retailRoom ? <RetailDecor items={g.box} /> : g.box.length ? <DecorSet kind="box" items={g.box} /> : null}
+    {g.cyl.length ? <DecorSet kind="cyl" items={g.cyl} /> : null}
+    {g.sph.length ? <DecorSet kind="sph" items={g.sph} /> : null}
+  </group>;
 }
 // An NPC employee at their post: desk staff work in place, others walk their rounds. If a player on a shift is standing at the post, the NPC steps aside.
 function Staff({ post, look, onTalk }: { post: Post; look: Look; onTalk: (idx: number) => void }) {
@@ -330,7 +368,6 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
       <pointLight position={[0, 2.6, 0]} intensity={14} distance={20} color={biz.type === 'Nightclub' ? '#a855f7' : '#fff1d6'} />
       <mesh rotation-x={-Math.PI / 2} receiveShadow onClick={e => { if (e.delta > 6) return; setMenu(null); walk(e.point.x, e.point.z); }}><planeGeometry args={[room.w, room.d]} /><meshStandardMaterial color={room.floor} roughness={.9} /></mesh>
       <Walls room={room} /><Furniture room={room} /><Decor room={room} />
-      {biz.type === 'Supermarket' && <SupermarketProps />}
       {room.posts.map(p => <Staff key={p.idx} post={p} look={staff[p.idx]} onTalk={talk} />)}
       {biz.type === 'Nightclub' && <ClubGuests room={room} />}
       {room.office && <ManagerSeat office={room.office} mgr={mgr} meName={look.name} onTap={() => { const sp = room.spots.find(x => x.id === 'mgmt'); if (sp) goSpot(sp); }} />}

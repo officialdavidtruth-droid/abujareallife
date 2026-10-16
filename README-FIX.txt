@@ -1,18 +1,12 @@
-ABUJA REAL LIFE — INTERIOR DETAIL PATCH
+Abuja Real Life — actual supermarket product-renderer patch
 
-This patch is a first step toward GTA-style interiors, focused on supermarkets:
-- Adds detailed product props (bottles with necks/caps/labels, metal cans, cartons, produce)
-- Adds metal shelving and produce bins
-- Removes the old generic colored-box stock generation for Supermarket only
-- Leaves shop purchase/interaction logic unchanged
+Replace components/Interior.tsx with this file.
 
-Files to copy into project:
-components/SupermarketProps.tsx (new)
-components/Interior.tsx (updated)
-lib/interiors.ts (updated)
+What changed:
+- Dense retail display rooms (70+ decor items) render shelf stock as varied 3D silhouettes rather than one instanced cube mesh.
+- Product silhouettes include bottles with necks/caps, cans with metal tops, cartons, jars and packaged products.
+- Existing room layout, interaction spots and collision definitions are not changed.
 
 Important:
-These props are procedural 3D meshes, not scanned/photogrammetry assets or licensed branded products.
-For full GTA-level realism across every interior, the next step is a reusable GLB asset library
-for supermarket products, shelves, checkout lanes, fridges, shopping carts, and branded signage.
-Back up first and run `npm run build` before pushing. This patch has not been tested with Vercel.
+These are improved procedural 3D product meshes, not scanned or branded real-world assets. For photorealism, add high-quality textured GLB product assets and PBR materials in a later pass.
+Run npm run build and test the Supermarket interior before pushing.

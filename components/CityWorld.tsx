@@ -305,7 +305,8 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── E: get in / get out, H: horn ── */
     if (c.interact) {
       c.interact = false;
-      const doorH = (!VEH.drv && !GAME.ride) ? nearDoor(p.x, p.z) : null;   // GTA style: walk up to your front door and press E
+      const carInReach = !VEH.drv && !GAME.ride && VEH.placed && Math.hypot(p.x - VEH.x, p.z - VEH.z) < 9;
+      const doorH = (!VEH.drv && !GAME.ride && !carInReach) ? nearDoor(p.x, p.z) : null;   // vehicle interaction wins when the player is beside their car
       const taxiI = (!VEH.drv && !GAME.ride) ? ROAM.cars.findIndex((e, i) => isHail(e.c.role) && !e.c.busy && e.c.hail === 2 && TPOS[i] && Math.hypot(p.x - TPOS[i].x, p.z - TPOS[i].z) < 18) : -1;
       if (taxiI >= 0) ROAM.openSheet(taxiI);
       else if (doorH) { if (doorH.mine) handDoor(600, () => window.dispatchEvent(new CustomEvent('arl-enter-home'))); else { GAME.notice = `🔒 ${doorH.u}'s house is locked.`; window.dispatchEvent(new CustomEvent('arl-break-in', { detail: { slot: doorH.slot } })); } }
@@ -536,7 +537,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     /* ── HUD + nearest business ── */
     const dCar = Math.hypot(p.x - VEH.x, p.z - VEH.z);
     (window as any).__arlPos = { x: p.x, z: p.z };
-    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(BOAT.on ? BOAT.v : VEH.v) * 3.6, drv: VEH.drv || BOAT.on, prompt: BOAT.on ? hint('Boat: tap Boat to get out', 'E exit boat · Shift boost · Space brake') : p.sw ? hint('Swimming: Dive to go under, Jump to come up', 'Swimming · Z dive · Space up') : VEH.drv ? hint('Exit car · handbrake · boost · horn: use the buttons', 'E exit · Space handbrake · Shift boost · H horn') : (() => { const dh = nearDoor(p.x, p.z); return dh ? (dh.mine ? hint('Tap Interact — enter your house', 'E — Enter your house') : `🔒 ${dh.u}'s house`) : VEH.placed && dCar < 9 ? hint('Tap Car — get in your car', 'E — Get in your car') : boatTarget(p.x, p.z) ? hint('Tap Boat — climb in', 'E — Get in the boat') : ''; })() };
+    hud.current = { x: p.x, z: p.z, fx, fz, r: p.r, vx: VEH.x, vz: VEH.z, vp: VEH.placed, spd: Math.abs(BOAT.on ? BOAT.v : VEH.v) * 3.6, drv: VEH.drv || BOAT.on, prompt: BOAT.on ? hint('Boat: tap Boat to get out', 'E exit boat · Shift boost · Space brake') : p.sw ? hint('Swimming: Dive to go under, Jump to come up', 'Swimming · Z dive · Space up') : VEH.drv ? hint('Exit car · handbrake · boost · horn: use the buttons', 'E exit · Space handbrake · Shift boost · H horn') : (() => { const dCarNow = Math.hypot(p.x - VEH.x, p.z - VEH.z); if (VEH.placed && dCarNow < 9) return hint('Tap Car — get in your car', 'E — Get in your car'); const dh = nearDoor(p.x, p.z); return dh ? (dh.mine ? hint('Tap Interact — enter your house', 'E — Enter your house') : `🔒 ${dh.u}'s house`) : boatTarget(p.x, p.z) ? hint('Tap Boat — climb in', 'E — Get in the boat') : ''; })() };
     if (!VEH.drv) {
       let best: CityBuilding | null = null, bd = 2.6;
       for (const b of BUILDS) { const d = distTo({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 }, p.x, p.z); if (d < bd && b.business) { bd = d; best = b; } }

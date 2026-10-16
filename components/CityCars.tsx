@@ -180,20 +180,11 @@ function FittedCar({ src, real, steer, doorRef }: { src: THREE.Object3D; real: b
     s.a += s.v * dt;   // metres rolled
     for (const wh of wheels) { wh.spin.rotation.z = -s.a / wh.r; if (wh.front) wh.steer.rotation.y = s.s; }
   });
-  // GLB models often have no named/rigged door meshes. Provide a hinged driver-side door
-  // in the normalized vehicle coordinate system so the shared door animation works for them too.
-  const doorMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#b9a33d', metalness: .55, roughness: .34 }), []);
-  const trimMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#20252a', roughness: .82 }), []);
-  const glassMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#142637', metalness: .15, roughness: .18, transparent: true, opacity: .82 }), []);
-  return <group ref={root}><primitive object={obj} />
-    <group ref={doorRef} position={[.05, 0, -.86]}>
-      <mesh position={[-.5, .57, 0]} material={doorMat} castShadow><boxGeometry args={[.96, .42, .055]} /></mesh>
-      <mesh position={[-.5, .58, .033]} material={trimMat}><boxGeometry args={[.84, .31, .012]} /></mesh>
-      <mesh position={[-.5, .99, 0]} material={glassMat}><boxGeometry args={[.91, .38, .025]} /></mesh>
-      <mesh position={[-.5, 1.19, 0]} material={doorMat}><boxGeometry args={[.96, .035, .04]} /></mesh>
-      <mesh position={[-.09, .68, .04]} material={trimMat}><boxGeometry args={[.09, .025, .018]} /></mesh>
-    </group>
-  </group>;
+   // The supplied car GLBs contain no separate door meshes. Never render a fake
+   // floating door over the model. Expose a neutral ref so vehicle logic remains safe.
+   // For genuinely animated GLB doors, re-export the source model with separate
+   // named door objects and hinge pivots (e.g. door_front_left).
+   return <group ref={root}><primitive object={obj} /><group ref={doorRef} /></group>;
 }
 
 export function CarModel({ kit, color, kind, model, style, shirt, driver = true, doorRef, driverRef, glassRef, look, pax, steer, damageLevel = 0 }: { steer?: () => number; pax?: PaxFig[]; kit: Kit; color: string; kind: number; model?: string; style?: { paint?: string; rims?: string; tint?: number }; shirt?: string; driver?: boolean; look?: DrvLook; doorRef?: (g: THREE.Object3D | null) => void; driverRef?: (g: THREE.Object3D | null) => void; glassRef?: (g: THREE.Object3D | null) => void; damageLevel?: number }) {

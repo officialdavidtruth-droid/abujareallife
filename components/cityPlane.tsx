@@ -1,8 +1,9 @@
 'use client';
 import { WATER_Y, terrainH } from '../lib/terrain';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AIR } from './CityScenery';
 import { BUILDS, GAME, NIGHT } from './cityShared';
 import { hint } from '../lib/touch';
@@ -297,8 +298,37 @@ export function planeCamera(cam: THREE.Camera, target: THREE.Vector3, dt: number
 const VIEW = { hull: null as THREE.Object3D | null, cockpit: null as THREE.Object3D | null };
 function applyView() {
   const inside = PLANE.cam === 'in' && (PLANE.on || PLANE.pax);
-  if (VIEW.hull) VIEW.hull.visible = !inside;
+  if (VIEW.hull) VIEW.hull.visible = !inside && !((VIEW.hull as THREE.Object3D).userData.glbReady);
   if (VIEW.cockpit) VIEW.cockpit.visible = inside;
+}
+
+/* Load the actual CRJ900 GLB for the flyable plane (not only parked scenery). */
+function FlightGlb({ onReady }: { onReady: (ready: boolean) => void }) {
+  const [source, setSource] = useState<THREE.Object3D | null>(null);
+  useEffect(() => {
+    let active = true;
+    new GLTFLoader().load('/models/airport/crj900.glb', gltf => {
+      if (active) { setSource(gltf.scene); onReady(true); }
+    }, undefined, () => { if (active) { setSource(null); onReady(false); } });
+    return () => { active = false; };
+  }, [onReady]);
+  const fitted = useMemo(() => {
+    if (!source) return null;
+    const model = source.clone(true);
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const longest = Math.max(size.x, size.z) || 1;
+    const holder = new THREE.Group();
+    model.position.set(-center.x, -bounds.min.y, -center.z);
+    holder.add(model);
+    holder.scale.setScalar(14 / longest);
+    // Existing flight geometry points along +Z; rotate models authored along X.
+    if (size.x > size.z) holder.rotation.y = -Math.PI / 2;
+    holder.traverse(node => { const mesh = node as THREE.Mesh; if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true; } });
+    return holder;
+  }, [source]);
+  return fitted ? <primitive object={fitted} /> : null;
 }
 
 /* ───────────── the plane itself ───────────── */
@@ -307,6 +337,7 @@ const M = (c: string, m = .2, r = .55) => <meshStandardMaterial color={c} metaln
 
 export function Plane() {
   const g = useRef<THREE.Group>(null!);
+  const [hasFlightGlb, setHasFlightGlb] = useState(false);
   const hull = useRef<THREE.Group>(null!), cockpit = useRef<THREE.Group>(null!);
   const doorG = useRef<THREE.Group>(null!), stairs = useRef<THREE.Group>(null!), fans = useRef<(THREE.Group | null)[]>([]);
   const fanA = useRef(0), lastY = useRef(0), gears = useRef<(THREE.Group | null)[]>([]), flaps = useRef<(THREE.Group | null)[]>([]);
@@ -315,6 +346,7 @@ export function Plane() {
   /* door, airstair and engine fans follow the plane's state every frame */
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, .05);
+    if (hull.current) hull.current.visible = !hasFlightGlb && PLANE.cam !== 'in';
     const want = PLANE.engOn || !!PLANE.remote || (PLANE.pax && PLANE.air) ? 1 : 0;
     PLANE.eng += (want - PLANE.eng) * (1 - Math.exp(-dt * (want ? 1.1 : .7)));
     PLANE.door += clamp(PLANE.doorT - PLANE.door, -dt / .9, dt / .9);
@@ -358,7 +390,8 @@ export function Plane() {
   }, []);
   return <group ref={g}>
     <group position={[0, 2.05, 0]}>
-      <group ref={hull}>
+      <FlightGlb onReady={setHasFlightGlb} />
+      <group ref={hull} visible={!hasFlightGlb}>
       {/* fuselage + nose + tail */}
       <mesh rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[1.15, 1.15, 11, 20]} />{M(W)}</mesh>
       <mesh position={[0, 0, 7.5]} rotation={[Math.PI / 2, 0, 0]} castShadow><coneGeometry args={[1.15, 3, 20]} />{M(W)}</mesh>

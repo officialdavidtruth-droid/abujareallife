@@ -1,13 +1,7 @@
-Abuja Real Life — CityTerrain build fix
+Abuja Real Life — Terrain rendering fix
 
-Copy these files into your repository, preserving the folder paths:
-- components/CityTerrain.tsx
-- lib/terrain.ts
+Copy components/CityTerrain.tsx into the same path in your project, replacing the existing file.
 
-Important: remove the misplaced duplicate at the repository root (CityTerrain.tsx). Keep components/CityTerrain.tsx. Then commit and push.
+This is a targeted terrain rendering adjustment only. Keep the rest of your project unchanged. Then run npm run build locally and deploy the resulting commit.
 
-Commands from the repository root:
-  git rm --ignore-unmatch CityTerrain.tsx
-  git add components/CityTerrain.tsx lib/terrain.ts
-  git commit -m "fix: correct CityTerrain component paths"
-  git push origin main
+Note: this patch does not remove the separate root-level CityTerrain.tsx build-error file. If that file still exists, remove it from Git; keep components/CityTerrain.tsx.

@@ -59,7 +59,7 @@ function Ground() {
     if (sig !== S.shown) { S.shown = sig; setKeys(ready); }
   });
   return <>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.06, 0]} receiveShadow><planeGeometry args={[CORE * 2 + 2, CORE * 2 + 2]} /><meshStandardMaterial color="#5d7f55" /></mesh>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.04, 0]} receiveShadow><planeGeometry args={[CORE * 2 + 2, CORE * 2 + 2]} /><meshStandardMaterial color="#5d7f55" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} /></mesh>
     {keys.map(k => <mesh key={k} geometry={cache.current.get(k)} material={mat} receiveShadow />)}
   </>;
 }

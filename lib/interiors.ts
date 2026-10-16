@@ -40,7 +40,17 @@ export function buildInterior(b: Business): Interior {
   const hx = W / 2, hz = D / 2, slot: Record<'work' | 'shop' | 'quest' | 'crime', [number, number]> = { work: [0, -hz + 3.4], shop: [-hx + 3, 0], quest: [-hx + 3, 2], crime: [hx - 3, -hz + 3.2] };
   const decor: Item[] = [], dc = (x: number, z: number, w: number, d: number, h: number, c: string, o: Partial<Item> = {}) => { decor.push({ x, z, w, d, h, c, ...o }); }, pick = (a: string[], k: number) => a[Math.abs(k) % a.length];
   const car = (x: number, z: number, c: string) => { items.push(F(x, z, 3.2, 1.5, .6, c, { y: .3 })); dc(x - .1, z, 1.7, 1.3, .5, '#a9cde0', { y: .9 }); [[-1, -.7], [1, -.7], [-1, .7], [1, .7]].forEach(([a, e]) => dc(x + a, z + e, .6, .6, .22, '#111', { round: true, lay: true })); dc(x + 1.55, z - .5, .1, .25, .15, '#ffe9a8', { y: .55 }); dc(x + 1.55, z + .5, .1, .25, .15, '#ffe9a8', { y: .55 }); };
-  const stock = (pal: string[]) => items.filter(i => i.h === 1.8 && i.w === 6).forEach((sh, si) => { for (const side of [-1, 1]) for (let t = 0; t < 3; t++) for (let k = 0; k < 10; k++) dc(sh.x - 2.7 + k * .6, sh.z + side * .48, .46, .16, .34, pick(pal, k * 3 + t * 5 + si + (side > 0 ? 2 : 0)), { y: .2 + t * .55 }); for (let k = 0; k < 7; k++) dc(sh.x - 2.5 + k * .8, sh.z, .5, .5, .3 + (k % 3) * .1, pick(pal, k + si * 2), { y: 1.8 }); });
+  const stock = (pal: string[]) => items.filter(i => i.h === 1.8 && i.w >= 3.5 && i.d < 1.0).forEach((sh, si) => {
+    const count = Math.max(4, Math.floor(sh.w / .58));
+    for (const side of [-1, 1]) for (let t = 0; t < 3; t++) for (let k = 0; k < count; k++) {
+      const x = sh.x - sh.w / 2 + .28 + k * ((sh.w - .56) / Math.max(1, count - 1));
+      dc(x, sh.z + side * (sh.d / 2 + .12), .34, .16, .3, pick(pal, k * 3 + t * 5 + si + (side > 0 ? 2 : 0)), { y: .2 + t * .48 });
+    }
+    for (let k = 0; k < Math.max(3, count - 2); k++) {
+      const x = sh.x - sh.w / 2 + .4 + k * ((sh.w - .8) / Math.max(1, count - 3));
+      dc(x, sh.z, .34, .34, .26 + (k % 3) * .06, pick(pal, k + si * 2), { y: 1.8 });
+    }
+  });
   const plant = (x: number, z: number) => { items.push(F(x, z, .55, .55, .45, '#8a5a3a', { round: true })); dc(x, z, .95, .95, .95, '#2f7d4f', { y: .45, sphere: true }); dc(x + .15, z - .1, .6, .6, .6, '#3f9a62', { y: .9, sphere: true }); };
   const monitor = (x: number, z: number, y: number) => { dc(x, z, .12, .12, .12, '#333', { y }); dc(x, z, .55, .05, .38, '#16324f', { y: y + .12 }); };
   const board = (x: number, z: number, w: number, c = '#1e2b25') => { dc(x, z, w, .06, 1.3, c, { y: 1.1 }); for (let k = 0; k < 4; k++) dc(x, z + .04, w * .8, .02, .07, '#f5f5f5', { y: 1.25 + k * .25 }); };
@@ -59,9 +69,17 @@ export function buildInterior(b: Business): Interior {
     items.push(F(0, 0, 8, 8, .05, '#7c3aed', { solid: false, glow: true }), F(0, -hz + 2, 8, 3, .6, '#222'), F(-hx + 1.5, -2, 1, 8, 1.1, '#3a2a55'), F(-6, -hz + 1.2, .8, .8, 2.4, '#111'), F(6, -hz + 1.2, .8, .8, 2.4, '#111'));
     slot.shop = [-hx + 3.4, -2]; slot.work = [0, -hz + 4.4]; slot.quest = [hx - 3, 2];
   } else if (arch === 'store') {
-    [-4.5, 4.5].forEach(x => [-2, 2].forEach(z => items.push(F(x, z, 6, .8, 1.8, type === 'Mechanic' ? '#6b5a48' : '#b99a6a'))));
-    if (type !== 'Supermarket') stock(PROD[type] || PROD.Supermarket);
-    items.push(F(hx - 3, hz - 2.4, 3, 1, 1.1, '#444'));
+    // Retail floor plan: three separated gondola aisles with a clear central spine.
+    // Supermarket/market/pharmacy use shorter shelving runs so players can navigate between them.
+    const shelfColor = type === 'Mechanic' ? '#6b5a48' : type === 'Pharmacy' ? '#e7ecef' : type === 'Fashion Boutique' ? '#8d7967' : '#b99a6a';
+    const runs: Array<[number, number, number, number]> =
+      type === 'Fashion Boutique'
+        ? [[-5.1, -2.8, 4.5, .7], [-5.1, 1.5, 4.5, .7], [4.1, -2.8, 3.8, .7], [4.1, 1.5, 3.8, .7]]
+        : [[-4.7, -2.8, 4.7, .72], [0, -2.8, 4.7, .72], [4.7, -2.8, 4.7, .72], [-4.7, 2.5, 4.7, .72], [0, 2.5, 4.7, .72], [4.7, 2.5, 4.7, .72]];
+    runs.forEach(([x,z,w,d]) => items.push(F(x, z, w, d, 1.8, shelfColor)));
+    stock(PROD[type] || PROD.Supermarket);
+    // Checkout sits near the front-right wall, leaving a wide entrance and central aisle.
+    items.push(F(hx - 2.6, hz - 2.0, 2.8, .85, 1.05, '#444'));
     if (type === 'Car Dealer') { car(-4, -hz + 2.5, '#b43c35'); car(3, -hz + 2.5, '#3d5a80'); }
     if (type === 'Mechanic') { car(-4, -hz + 2.5, '#3d5a80'); items.push(F(hx - 2, -hz + 1, 1.4, .7, 1, '#b43c35')); [0, .25, .5].forEach(y => dc(hx - 4.2, -hz + 1.2, .8, .8, .25, '#1a1a1a', { y, round: true })); }
     slot.shop = [0, 0]; slot.work = [hx - 3, hz - 1.1]; slot.crime = [hx - 6, hz - 3.5]; slot.quest = [-hx + 2.5, -hz + 2.5];

@@ -26,7 +26,16 @@ function chunkGeometry(cx: number, cz: number) {
     { const nx = inCore ? 0 : -(H[k + 1] - H[k - 1]) / (2 * CELL), nz = inCore ? 0 : -(H[k + w] - H[k - w]) / (2 * CELL), nl = Math.hypot(nx, 1, nz); nor[i * 3] = nx / nl; nor[i * 3 + 1] = 1 / nl; nor[i * 3 + 2] = nz / nl; }   // normals come from the height grid (not per chunk), so chunk edges light seamlessly
     pos[i * 3] = x; pos[i * 3 + 1] = inCore ? -.06 : h; pos[i * 3 + 2] = z; col[i * 3] = r; col[i * 3 + 1] = g; col[i * 3 + 2] = bl; i++;
   }
-  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) { const p = a * (n + 1) + b, q = p + n + 1; idx.push(p, q, p + 1, p + 1, q, q + 1); }
+  // The city floor is a separate plane covering [-CORE-1, CORE+1]. Do not draw
+  // terrain triangles underneath it: coplanar meshes at y=-0.06 caused z-fighting,
+  // dark flickering patches and seams where chunk boundaries crossed the city core.
+  const cityHalf = CORE + 1;
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+    const p = a * (n + 1) + b, q = p + n + 1;
+    const x = x0 + (b + .5) * CELL, z = z0 + (a + .5) * CELL;
+    if (Math.abs(x) <= cityHalf && Math.abs(z) <= cityHalf) continue;
+    idx.push(p, q, p + 1, p + 1, q, q + 1);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setIndex(idx);
   g.computeBoundingSphere();
@@ -98,9 +107,16 @@ function SceneryInstances({ trees, stones }: { trees: [number, number, number, n
       const y = terrainH(x, z), h = (4.2 + kind * .55) * k, rot = (x * 13 + z * 7) % 6.28;
       q.setFromAxisAngle(up, rot);
       p.set(x, y + h * .25, z); s.set(.28 * k, h * .5, .28 * k); m.compose(p, q, s); trunk.current.setMatrixAt(i, m);
-      p.set(x, y + h * .60, z); s.set(1.85 * k, h * .52, 1.65 * k); m.compose(p, q, s); crown.current.setMatrixAt(i, m);
-      c.setHSL(.27 + kind * .035 + ((i * 37) % 10) * .004, .5, .22 + ((i * 11) % 9) * .012); crown.current.setColorAt(i, c);
-      p.set(x, y + h * .91, z); s.set(1.28 * k, h * .40, 1.24 * k); m.compose(p, q, s); crown2.current.setMatrixAt(i, m); crown2.current.setColorAt(i, c);
+      // Vary canopy proportions and offsets by deterministic tree kind so groves don't repeat one silhouette.
+      const broad = kind === 0, narrow = kind === 1;
+      p.set(x + (kind - 1) * .16 * k, y + h * (broad ? .59 : .63), z + (1 - kind) * .12 * k);
+      s.set((broad ? 2.05 : narrow ? 1.35 : 1.72) * k, h * (broad ? .47 : narrow ? .62 : .53), (broad ? 1.85 : narrow ? 1.3 : 1.58) * k);
+      m.compose(p, q, s); crown.current.setMatrixAt(i, m);
+      // Richer, less uniform greens with subtle seasonal variation.
+      c.setHSL(.255 + kind * .027 + ((i * 37) % 13) * .003, .43 + ((i * 7) % 5) * .025, .19 + ((i * 11) % 11) * .009); crown.current.setColorAt(i, c);
+      p.set(x + (kind === 2 ? .2 : -.12) * k, y + h * (broad ? .88 : .94), z + (kind === 1 ? .16 : -.08) * k);
+      s.set((broad ? 1.4 : narrow ? 1.02 : 1.25) * k, h * (broad ? .32 : narrow ? .36 : .34), (broad ? 1.35 : narrow ? 1.0 : 1.2) * k);
+      m.compose(p, q, s); crown2.current.setMatrixAt(i, m); crown2.current.setColorAt(i, c);
     });
     trunk.current.instanceMatrix.needsUpdate = crown.current.instanceMatrix.needsUpdate = crown2.current.instanceMatrix.needsUpdate = true;
     if (crown.current.instanceColor) crown.current.instanceColor.needsUpdate = true; if (crown2.current.instanceColor) crown2.current.instanceColor.needsUpdate = true;
@@ -109,8 +125,8 @@ function SceneryInstances({ trees, stones }: { trees: [number, number, number, n
   }, [trees, stones]);
   return <>
     <instancedMesh ref={trunk} args={[undefined, undefined, trees.length]} frustumCulled={false}><cylinderGeometry args={[.6, 1, 1, 6]} /><meshStandardMaterial color="#5a3d26" roughness={1} /></instancedMesh>
-    <instancedMesh ref={crown} args={[undefined, undefined, trees.length]} frustumCulled={false} castShadow><icosahedronGeometry args={[1, 1]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
-    <instancedMesh ref={crown2} args={[undefined, undefined, trees.length]} frustumCulled={false}><icosahedronGeometry args={[1, 1]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
+    <instancedMesh ref={crown} args={[undefined, undefined, trees.length]} frustumCulled={false} castShadow><icosahedronGeometry args={[1, 2]} /><meshStandardMaterial roughness={0.96} flatShading /></instancedMesh>
+    <instancedMesh ref={crown2} args={[undefined, undefined, trees.length]} frustumCulled={false}><dodecahedronGeometry args={[1, 1]} /><meshStandardMaterial roughness={0.98} flatShading /></instancedMesh>
     <instancedMesh ref={rocks} args={[undefined, undefined, stones.length]} frustumCulled={false}><dodecahedronGeometry args={[1, 0]} /><meshStandardMaterial color="#7a7870" roughness={1} flatShading /></instancedMesh>
   </>;
 }

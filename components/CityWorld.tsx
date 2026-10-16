@@ -406,7 +406,19 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       if (moving.current) {
         if (wantRun && c.crouch && !swim0) c.crouch = false;
         const sp = swim0 ? (wantRun ? 4.6 : 2.9) : (c.crouch ? 2.3 : wantRun ? 9 : 4.6) * (wd0 > .25 ? 1 - Math.min(.45, (wd0 - .25) * .55) : 1);
-        p.x += wx * sp * dt; p.z += wz * sp * dt;
+        // Resolve movement one axis at a time. This prevents diagonal movement from
+        // pushing the player through thin corners and lets them slide along walls.
+        const oldX = p.x, oldZ = p.z;
+        p.x += wx * sp * dt;
+        pushOut(p);
+        const resolvedX = p.x;
+        p.z = oldZ;
+        p.x = resolvedX;
+        p.z += wz * sp * dt;
+        pushOut(p);
+        // If the Z-axis resolution moved us through an awkward corner, retain the
+        // resolved X coordinate instead of restoring the original diagonal vector.
+        p.x = resolvedX;
         p.r += wrap(Math.atan2(wx, wz) - p.r) * Math.min(1, dt * 12);
       }
       pushOut(p);

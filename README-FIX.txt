@@ -1,21 +1,18 @@
-ABUJA REAL LIFE — REALISM PATCH
+ABUJA REAL LIFE — INTERIOR DETAIL PATCH
 
-Files:
-- components/CityScenery.tsx
-  Fixes GLB building loading. The old implementation checked each model with a HEAD request
-  and filtered by content-type before attempting to load it. Some static hosting/CDN responses
-  can fail this check, causing the city to fall back to primitive buildings. The patched loader
-  tries loading the actual GLB directly and then falls back to public/models/city/default.glb.
-- components/CityTerrain.tsx
-  Replaces faceted low-poly tree crowns with smoother foliage geometry.
+This patch is a first step toward GTA-style interiors, focused on supermarkets:
+- Adds detailed product props (bottles with necks/caps/labels, metal cans, cartons, produce)
+- Adds metal shelving and produce bins
+- Removes the old generic colored-box stock generation for Supermarket only
+- Leaves shop purchase/interaction logic unchanged
 
-Install:
-1. Back up your project.
-2. Extract these files into the project root, preserving the components/ folder.
-3. Verify that public/models/city/*.glb files remain in your project.
-4. Run npm run build locally before pushing to main.
+Files to copy into project:
+components/SupermarketProps.tsx (new)
+components/Interior.tsx (updated)
+lib/interiors.ts (updated)
 
-Note:
-This uses the realistic GLB assets already included in your uploaded project. It does not add
-new third-party models or textures. The patch has not been tested in a live browser/Vercel
-deployment, so verify the resulting scene and build before merging.
+Important:
+These props are procedural 3D meshes, not scanned/photogrammetry assets or licensed branded products.
+For full GTA-level realism across every interior, the next step is a reusable GLB asset library
+for supermarket products, shelves, checkout lanes, fridges, shopping carts, and branded signage.
+Back up first and run `npm run build` before pushing. This patch has not been tested with Vercel.

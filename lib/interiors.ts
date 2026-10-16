@@ -60,7 +60,7 @@ export function buildInterior(b: Business): Interior {
     slot.shop = [-hx + 3.4, -2]; slot.work = [0, -hz + 4.4]; slot.quest = [hx - 3, 2];
   } else if (arch === 'store') {
     [-4.5, 4.5].forEach(x => [-2, 2].forEach(z => items.push(F(x, z, 6, .8, 1.8, type === 'Mechanic' ? '#6b5a48' : '#b99a6a'))));
-    stock(PROD[type] || PROD.Supermarket);
+    if (type !== 'Supermarket') stock(PROD[type] || PROD.Supermarket);
     items.push(F(hx - 3, hz - 2.4, 3, 1, 1.1, '#444'));
     if (type === 'Car Dealer') { car(-4, -hz + 2.5, '#b43c35'); car(3, -hz + 2.5, '#3d5a80'); }
     if (type === 'Mechanic') { car(-4, -hz + 2.5, '#3d5a80'); items.push(F(hx - 2, -hz + 1, 1.4, .7, 1, '#b43c35')); [0, .25, .5].forEach(y => dc(hx - 4.2, -hz + 1.2, .8, .8, .25, '#1a1a1a', { y, round: true })); }

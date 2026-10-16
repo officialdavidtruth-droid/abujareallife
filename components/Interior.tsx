@@ -9,6 +9,7 @@ import { MGR_TASK_PAY, fmtClock } from '../lib/work';
 import { makeNav } from '../lib/nav';
 import { GAME_LABEL_CSS, INTERIOR_UI_CSS } from '../lib/gameLabels';
 import StoreModal from './StoreModal';
+import SupermarketProps from './SupermarketProps';
 import Underworld from './Underworld';
 import { DrinksMenu } from './Intoxication';
 import Dealers from './Dealers';
@@ -329,6 +330,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
       <pointLight position={[0, 2.6, 0]} intensity={14} distance={20} color={biz.type === 'Nightclub' ? '#a855f7' : '#fff1d6'} />
       <mesh rotation-x={-Math.PI / 2} receiveShadow onClick={e => { if (e.delta > 6) return; setMenu(null); walk(e.point.x, e.point.z); }}><planeGeometry args={[room.w, room.d]} /><meshStandardMaterial color={room.floor} roughness={.9} /></mesh>
       <Walls room={room} /><Furniture room={room} /><Decor room={room} />
+      {biz.type === 'Supermarket' && <SupermarketProps />}
       {room.posts.map(p => <Staff key={p.idx} post={p} look={staff[p.idx]} onTalk={talk} />)}
       {biz.type === 'Nightclub' && <ClubGuests room={room} />}
       {room.office && <ManagerSeat office={room.office} mgr={mgr} meName={look.name} onTap={() => { const sp = room.spots.find(x => x.id === 'mgmt'); if (sp) goSpot(sp); }} />}

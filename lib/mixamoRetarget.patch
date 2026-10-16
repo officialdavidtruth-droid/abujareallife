@@ -1,0 +1,55 @@
+diff --git a/lib/mixamoRetarget.ts b/lib/mixamoRetarget.ts
+--- a/lib/mixamoRetarget.ts
++++ b/lib/mixamoRetarget.ts
+@@ -15,2 +15,23 @@ export const ANIM_URL = '/models/characters/animations.glb';
+ export const WALK_URL = '/models/characters/walking.fbx';
++// Additional individual Mixamo-rigged GLBs supplied for Abuja Real Life.
++// Keep these files in public/models/characters/emotes/.
++const EXTRA_ANIMS: Record<string, string> = {
++  Idle: 'm_idle_neutral_01.glb',
++  Walking: 'm_walk_neutral_01.glb',
++  Running: 'm_run_neutral_01.glb',
++  ARL_Dance: 'm_dancing_neutral.glb',
++  ARL_Wave: 'm_wave_01.glb',
++  ARL_Talk: 'm_gestic_talk_neutral_01.glb',
++  ARL_Think: 'm_gestic_thoughtful_01.glb',
++  ARL_Clap: 'm_claphands_01.glb',
++  ARL_Cheer: 'm_cheer_01.glb',
++  ARL_LookAround: 'm_idle_look_around_01.glb',
++  ARL_FemaleIdle: 'f_idle_neutral_01.glb',
++  ARL_FemaleDance: 'f_dancing_neutral.glb',
++  ARL_FemaleWave: 'f_wave_01.glb',
++  ARL_FemaleTalk: 'f_gestic_talk_neutral_01.glb',
++  ARL_FemaleThink: 'f_gestic_thoughtful_01.glb',
++  ARL_FemaleClap: 'f_claphands_01.glb',
++  ARL_FemaleCheer: 'f_cheer_01.glb',
++  ARL_FemaleLookAround: 'f_idle_look_around_01.glb',
++};
+@@ -69,1 +90,19 @@ export function loadMixamo(): Promise<MixamoSource | null> {
+-      return { scene: g.scene, clips: buildClipMap(g.animations, walk) };
++      const clips = buildClipMap(g.animations, walk);
++      // Each supplied GLB contains a single Take 001 clip. Rename it to a stable game action
++      // and normalize Mixamo bone names so the hidden skeleton can play it.
++      await Promise.all(Object.entries(EXTRA_ANIMS).map(async ([name, file]) => {
++        try {
++          const extra = await new GLTFLoader().loadAsync(`/models/characters/emotes/${file}`);
++          const sourceClip = extra.animations[0];
++          if (!sourceClip) return;
++          const clip = sourceClip.clone();
++          clip.name = name;
++          clip.tracks = clip.tracks.map(track => {
++            const copy = track.clone();
++            copy.name = copy.name.replace(/mixamorig:?/g, 'mixamorig');
++            return copy;
++          });
++          clips.set(name, clip);
++        } catch (err) {
++          console.warn(`[ARL animation] Could not load ${file}`, err);
++        }
++      }));
++      return { scene: g.scene, clips };
+@@ -82,1 +121,3 @@ export const ACTION: Record<string, string> = {
+-  dance: 'Hip_Hop_Dancing', cheer: 'Rumba_Dancing', wave: 'Salute', salute: 'Salute',
++  dance: 'ARL_Dance', cheer: 'ARL_Cheer', wave: 'ARL_Wave', salute: 'Salute',
++  chat: 'ARL_Talk', talk: 'ARL_Talk', think: 'ARL_Think', thoughtful: 'ARL_Think',
++  clap: 'ARL_Clap', lookaround: 'ARL_LookAround',

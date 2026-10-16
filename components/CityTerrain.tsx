@@ -109,8 +109,8 @@ function SceneryInstances({ trees, stones }: { trees: [number, number, number, n
   }, [trees, stones]);
   return <>
     <instancedMesh ref={trunk} args={[undefined, undefined, trees.length]} frustumCulled={false}><cylinderGeometry args={[.6, 1, 1, 6]} /><meshStandardMaterial color="#5a3d26" roughness={1} /></instancedMesh>
-    <instancedMesh ref={crown} args={[undefined, undefined, trees.length]} frustumCulled={false} castShadow><icosahedronGeometry args={[1, 1]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
-    <instancedMesh ref={crown2} args={[undefined, undefined, trees.length]} frustumCulled={false}><icosahedronGeometry args={[1, 1]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
+    <instancedMesh ref={crown} args={[undefined, undefined, trees.length]} frustumCulled={false} castShadow><sphereGeometry args={[1, 12, 9]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
+    <instancedMesh ref={crown2} args={[undefined, undefined, trees.length]} frustumCulled={false}><sphereGeometry args={[1, 12, 9]} /><meshStandardMaterial roughness={1} flatShading /></instancedMesh>
     <instancedMesh ref={rocks} args={[undefined, undefined, stones.length]} frustumCulled={false}><dodecahedronGeometry args={[1, 0]} /><meshStandardMaterial color="#7a7870" roughness={1} flatShading /></instancedMesh>
   </>;
 }

@@ -136,8 +136,12 @@ const MODEL_CACHE = new Map<string, Promise<THREE.Object3D | null>>();
 function loadCityModel(slug: string) {
   let p = MODEL_CACHE.get(slug);
   if (!p) {
+    // Load the GLB directly. HEAD requests are not reliably supported by every static host/CDN,
+    // and content-type sniffing can incorrectly force the game back to primitive buildings.
     const url = `/models/city/${slug}.glb`;
-    p = fetch(url, { method: 'HEAD' }).then(r => r.ok && /model|octet|gltf/i.test(r.headers.get('content-type') || 'model') ? new GLTFLoader().loadAsync(url).then(g => g.scene) : null).catch(() => null);
+    p = new GLTFLoader().loadAsync(url)
+      .then(g => g.scene)
+      .catch(() => null);
     MODEL_CACHE.set(slug, p);
   }
   return p;
@@ -146,7 +150,10 @@ function useCityModel(type: string): THREE.Object3D | null {
   const [m, setM] = useState<THREE.Object3D | null>(null);
   useEffect(() => {
     let dead = false; const slug = type.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    loadCityModel(slug).then(a => a ?? loadCityModel('default')).then(g => { if (!dead) setM(g); });
+    loadCityModel(slug)
+      .then(a => a ?? (slug === 'default' ? null : loadCityModel('default')))
+      .then(g => { if (!dead) setM(g); })
+      .catch(() => { if (!dead) setM(null); });
     return () => { dead = true; };
   }, [type]);
   return m;

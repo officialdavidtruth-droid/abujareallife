@@ -9,7 +9,7 @@ import { ROAD_MAT } from './CityLook';
 /* The ground outside the city: rolling hills, beaches, a river and a lake, drawn as a grid of chunks (so the GPU only draws the ones in view),
    plus the water surface, trees, rocks, boat docks and the boats that wait at them. The city core is flat (see lib/terrain.ts), so nothing inside it moves. */
 
-const CHUNK = 160, CELL = 4, EXT = 960, SHOW = 560;   // chunk size / grid step (metres), half-size of the world drawn, and how far from you chunks are built (fog hides anything further)
+const CHUNK = 160, CELL = 5, EXT = 960, SHOW = 560;   // chunk size / grid step (metres), half-size of the world drawn, and how far from you chunks are built (fog hides anything further)
 const CITY_GROUND: [number, number, number] = [.365, .498, .333];   // #5d7f55, the colour the city floor always had
 
 /** the heightmap for one chunk, with vertex colours (sand / grass / dry grass / rock). Inside the flat city core it matches the old floor exactly. */
@@ -26,7 +26,16 @@ function chunkGeometry(cx: number, cz: number) {
     { const nx = inCore ? 0 : -(H[k + 1] - H[k - 1]) / (2 * CELL), nz = inCore ? 0 : -(H[k + w] - H[k - w]) / (2 * CELL), nl = Math.hypot(nx, 1, nz); nor[i * 3] = nx / nl; nor[i * 3 + 1] = 1 / nl; nor[i * 3 + 2] = nz / nl; }   // normals come from the height grid (not per chunk), so chunk edges light seamlessly
     pos[i * 3] = x; pos[i * 3 + 1] = inCore ? -.06 : h; pos[i * 3 + 2] = z; col[i * 3] = r; col[i * 3 + 1] = g; col[i * 3 + 2] = bl; i++;
   }
-  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) { const p = a * (n + 1) + b, q = p + n + 1; idx.push(p, q, p + 1, p + 1, q, q + 1); }
+  // The city floor is a separate plane covering [-CORE-1, CORE+1]. Do not draw
+  // terrain triangles underneath it: coplanar meshes at y=-0.06 caused z-fighting,
+  // dark flickering patches and seams where chunk boundaries crossed the city core.
+  const cityHalf = CORE + 1;
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+    const p = a * (n + 1) + b, q = p + n + 1;
+    const x = x0 + (b + .5) * CELL, z = z0 + (a + .5) * CELL;
+    if (Math.abs(x) <= cityHalf && Math.abs(z) <= cityHalf) continue;
+    idx.push(p, q, p + 1, p + 1, q, q + 1);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setIndex(idx);
   g.computeBoundingSphere();

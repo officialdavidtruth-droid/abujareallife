@@ -8,7 +8,7 @@ import { DEFAULT_LOOK, type Look } from '../lib/characterModels';
 import { NET } from '../lib/cityNet';
 import { OWNER_CHASE_SECS, OWNER_REPORT_SECS } from '../lib/profile';
 import { engineStart, engineStop, honk, thud } from '../lib/cityAudio';
-import { VEHICLE_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
+import { VEHICLE_CATALOG, ROAD_TRAFFIC_CATALOG, vehicleById, vehicleByName } from '../lib/vehicles';
 import RuntimeStyle from './RuntimeStyle';
 import { worldCalendar, weatherAt, simSeconds } from '../lib/worldClock';
 import { TrafficCore, LOOP } from '../lib/trafficCore';
@@ -97,6 +97,7 @@ export const specOf = (id: string) => vehicleById(id) || vehicleByName(id) || VE
 
 export const COROLLA = 'toyota-corolla-2024';
 
+
 export const J_SHIRT: Partial<Record<JRole, string>> = { taxi: '#d99a42', police: '#1d3f8f', bus: '#5b6b7a', bike: '#2d8f62' };
 
 export const JACK = {
@@ -121,7 +122,7 @@ export const JACK = {
   /** a real player's car: it is already yours server-side, so the scene plays on a frozen copy of it where it stood */
   startGhost(name: string, x: number, z: number, r: number, look: Look) {
     if (JACK.ph || GAME.ride || VEH.drv || GAME.jailed || CINE.on) return false;
-    JACK.release(); const m = VEHICLE_CATALOG[Math.floor(hs(name) * VEHICLE_CATALOG.length)];
+    JACK.release(); const trafficCatalog = ROAD_TRAFFIC_CATALOG.length ? ROAD_TRAFFIC_CATALOG : [VEHICLE_CATALOG[0]]; const m = trafficCatalog[Math.floor(hs(name) * trafficCatalog.length)];
     Object.assign(JACK, { key: 'ghost', idx: -1, role: 'car' as JRole, ghost: true, gp: { x, z, r }, gModel: m.id, gColor: m.color, gLook: look, gName: name, gUntil: Infinity, ghostOn: true, ph: 1, t: 0, wp: 0, fx: false });
     JACK.ghostRefresh(); return true;
   },
@@ -249,7 +250,7 @@ export function makeLanes(): Lane[] {
     for (const axis of ['x', 'z'] as const) for (const dir of [1, -1] as const) {
       const fixed = axis === 'x' ? i * GRID + (dir === 1 ? off : -off) : i * GRID + (dir === 1 ? -off : off); // drive on the right
       const rot = axis === 'x' ? (dir === 1 ? 0 : Math.PI) : (dir === 1 ? -Math.PI / 2 : Math.PI / 2);
-      const cars = Array.from({ length: major ? 2 : 1 }, (_, k): SimCar => { const role = roleOf(n); return { s: (-100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40) * WS, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: VEHICLE_CATALOG[(n + k) % VEHICLE_CATALOG.length].id, role, mul: ROLE_MUL[role], off: 0, laneShift: 0, hail: 0 }; });
+      const cars = Array.from({ length: major ? 2 : 1 }, (_, k): SimCar => { const role = roleOf(n); return { s: (-100 + k * 105 + hs(`${i}${axis}${dir}${k}`) * 40) * WS, color: COLORS[n++ % COLORS.length], kind: (n * 7) % 4, model: ROAD_TRAFFIC_CATALOG[(n + k) % ROAD_TRAFFIC_CATALOG.length].id, role, mul: ROLE_MUL[role], off: 0, laneShift: 0, hail: 0 }; });
       lanes.push({ axis, dir, fixed, speed: major ? 9 : 6.5, rot, road: i, cars });
     }
   }

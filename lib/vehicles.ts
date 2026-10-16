@@ -1,5 +1,7 @@
+import type { VehicleType } from '@prisma/client';
+
 export type VehicleBrand = 'Toyota' | 'Lexus' | 'Mercedes-Benz' | 'BMW' | 'Honda' | 'Land Rover' | 'Porsche' | 'Alfa Romeo' | 'Yamaha' | 'Trek' | 'Giant' | 'Robinson' | 'Bell' | 'Yamaha Boats' | 'Bayliner' | 'Abuja Rail';
-export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: 'CAR' | 'SUV' | 'MOTORCYCLE' | 'BICYCLE' | 'HELICOPTER' | 'BOAT' | 'TRAIN' | 'BUS'; topSpeed: number; accel: number; handling: number; color: string };
+export type VehicleSpec = { id: string; brand: VehicleBrand; model: string; year: number; price: number; type: VehicleType; topSpeed: number; accel: number; handling: number; color: string };
 
 export const VEHICLE_CATALOG: VehicleSpec[] = [
   { id: 'toyota-camry-2024', brand: 'Toyota', model: 'Camry', year: 2024, price: 18_500_000, type: 'CAR', topSpeed: 210, accel: 7.9, handling: 78, color: '#c9c9c9' },
@@ -12,7 +14,9 @@ export const VEHICLE_CATALOG: VehicleSpec[] = [
   { id: 'lexus-lx-2024', brand: 'Lexus', model: 'LX', year: 2024, price: 92_000_000, type: 'SUV', topSpeed: 210, accel: 7.7, handling: 74, color: '#151515' },
   { id: 'porsche-911-carrera-4s-2024', brand: 'Porsche', model: '911 Carrera 4S', year: 2024, price: 185_000_000, type: 'CAR', topSpeed: 308, accel: 3.4, handling: 96, color: '#c9c9c9' },
   { id: 'alfa-romeo-stradale-1967', brand: 'Alfa Romeo', model: '33 Stradale', year: 1967, price: 260_000_000, type: 'CAR', topSpeed: 260, accel: 5.5, handling: 90, color: '#9b1c1c' },
-  // Step 1: motorcycles. Keep this first vehicle expansion small before adding bicycles, aircraft, boats, trains and damage.
+  // Road bus catalogue entry; keep this aligned with Prisma VehicleType and the garage UI.
+  { id: 'toyota-coaster-bus-2024', brand: 'Toyota', model: 'Coaster Bus', year: 2024, price: 38_000_000, type: 'BUS', topSpeed: 130, accel: 14, handling: 58, color: '#e6e0c8' },
+  // Step 1: motorcycles.
   { id: 'honda-cb500f-2024', brand: 'Honda', model: 'CB500F Motorcycle', year: 2024, price: 4_800_000, type: 'MOTORCYCLE', topSpeed: 180, accel: 4.8, handling: 88, color: '#d71920' },
   { id: 'yamaha-mt07-2024', brand: 'Yamaha', model: 'MT-07 Motorcycle', year: 2024, price: 7_200_000, type: 'MOTORCYCLE', topSpeed: 214, accel: 3.8, handling: 91, color: '#20252b' },
   // Step 2: bicycles are separate vehicle types and use their own procedural model.
@@ -28,5 +32,9 @@ export const VEHICLE_CATALOG: VehicleSpec[] = [
   { id: 'abuja-rail-electric-locomotive-2026', brand: 'Abuja Rail', model: 'Electric Locomotive', year: 2026, price: 1_850_000_000, type: 'TRAIN', topSpeed: 160, accel: 2.4, handling: 60, color: '#173e63' },
   { id: 'abuja-rail-passenger-carriage-2026', brand: 'Abuja Rail', model: 'Passenger Carriage', year: 2026, price: 320_000_000, type: 'TRAIN', topSpeed: 160, accel: 2.4, handling: 60, color: '#f1f1ec' },
 ];
+// Only road-capable vehicles may be spawned by the street traffic simulation.
+// Boats, helicopters, trains and bicycles use separate gameplay systems.
+export const ROAD_TRAFFIC_CATALOG = VEHICLE_CATALOG.filter(v => v.type === 'CAR' || v.type === 'SUV' || v.type === 'BUS' || v.type === 'MOTORCYCLE');
+
 export const vehicleById = (id: string) => VEHICLE_CATALOG.find(v => v.id === id) || VEHICLE_CATALOG[0];
 export const vehicleByName = (name: string) => VEHICLE_CATALOG.find(v => `${v.brand} ${v.model}`.toLowerCase() === name.toLowerCase()) || VEHICLE_CATALOG[0];

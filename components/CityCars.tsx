@@ -205,6 +205,7 @@ export function CarModel({ kit, color, kind, model, style, shirt, driver = true,
   if (spec.type === 'HELICOPTER') return <HelicopterBody scale={1.05} />;
   if (spec.type === 'BOAT') return <BoatBody color={style?.paint && style.paint !== 'factory' ? style.paint : color} scale={1.05} />;
   if (spec.type === 'TRAIN') return <TrainBody color={style?.paint && style.paint !== 'factory' ? style.paint : color} passenger={/carriage/i.test(spec.model)} scale={1.05} />;
+  if (spec.type === 'BUS') return <BusBody doorRef={doorRef} driverRef={driverRef} glassRef={glassRef} look={look} />;
   const suv = spec.type === 'SUV' || /land rover|lx/i.test(spec.model);
   const premium = /mercedes|bmw|lexus/i.test(spec.brand);
   const sc: [number, number, number] = suv ? [1.12, 1.32, 1.14] : kind === 1 ? [1.04, 1.22, 1.06] : kind === 2 ? [.9, 1, .98] : [1, 1, 1];

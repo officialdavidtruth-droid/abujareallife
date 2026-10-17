@@ -187,7 +187,15 @@ export function Building({ b }: { b: CityBuilding }) {
   useEffect(() => registerDetail(detail.current, b.x, b.z), [b.x, b.z]);
   const rtank = rw * (r - .5) * .6;
   const model = useCityModel(type);
-  if (model) return <group position={[b.x, 0, b.z]}><FittedModel src={model} w={b.w} d={b.d} h={bodyTop} /><mesh geometry={GBX} material={smat(P.sign, .6)} position={[0, 2.95, fz + .07]} scale={[b.w * .8, .55, .1]} /></group>;
+  if (model) return <group position={[b.x, 0, b.z]}>
+    <FittedModel src={model} w={b.w} d={b.d} h={bodyTop} />
+    {/* Imported building models previously returned early and skipped all rooftop geometry. Add a visible roof cap and service equipment to GLB buildings too. */}
+    <mesh geometry={GBX} material={ROOF} position={[0, bodyTop + .045, 0]} scale={[b.w * .99, .09, b.d * .99]} castShadow receiveShadow />
+    <mesh geometry={GCY} material={M_TANK} position={[b.w * (r - .5) * .45, bodyTop + .58, b.d * .18]} scale={[Math.max(.7, b.w * .055), .95, Math.max(.7, b.w * .055)]} castShadow />
+    <mesh geometry={GBX} material={M_AC} position={[-b.w * .22, bodyTop + .32, -b.d * .18]} scale={[Math.max(1, b.w * .12), .55, Math.max(.8, b.d * .1)]} castShadow />
+    {floors >= 6 && <><mesh geometry={GCY} material={M_MAST} position={[b.w * .3, bodyTop + 1.6, -b.d * .25]} scale={[.09, 3.2, .09]} /><mesh geometry={GSPH} material={M_BEACON} position={[b.w * .3, bodyTop + 3.25, -b.d * .25]} scale={[.2, .2, .2]} /></>}
+    <mesh geometry={GBX} material={smat(P.sign, .6)} position={[0, 2.95, fz + .07]} scale={[b.w * .8, .55, .1]} />
+  </group>;
   return (
     <group position={[b.x, 0, b.z]}>
       {/* always drawn: the silhouette (body, plinth, cornice, name board) */}

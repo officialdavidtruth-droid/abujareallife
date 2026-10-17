@@ -12,6 +12,30 @@ import type { HumanState } from './humanRig';
 
 export const ANIM_URL = '/models/characters/animations.glb';
 export const WALK_URL = '/models/characters/walking.fbx';
+const EMOTE_BASE = '/models/characters/emotes/';
+const EMOTE_FILES: Record<string, string> = {
+  Wave: 'm_wave_01.glb', Dance: 'm_dancing_neutral.glb', Cheer: 'm_cheer_01.glb', Clap: 'm_claphands_01.glb',
+  Talk: 'm_gestic_talk_neutral_01.glb', Thoughtful: 'm_gestic_thoughtful_01.glb', LookAround: 'm_idle_look_around_01.glb',
+  EmoteIdle: 'm_idle_neutral_01.glb', EmoteWalk: 'm_walk_neutral_01.glb', EmoteRun: 'm_run_neutral_01.glb',
+};
+const BIP_TO_MIXAMO: Record<string, string> = {
+  'Bip01 Pelvis':'mixamorigHips','Bip01 Spine':'mixamorigSpine','Bip01 Spine1':'mixamorigSpine1','Bip01 Spine2':'mixamorigSpine2',
+  'Bip01 Neck':'mixamorigNeck','Bip01 Head':'mixamorigHead','Bip01 L Clavicle':'mixamorigLeftShoulder','Bip01 L UpperArm':'mixamorigLeftArm',
+  'Bip01 L Forearm':'mixamorigLeftForeArm','Bip01 L Hand':'mixamorigLeftHand','Bip01 R Clavicle':'mixamorigRightShoulder','Bip01 R UpperArm':'mixamorigRightArm',
+  'Bip01 R Forearm':'mixamorigRightForeArm','Bip01 R Hand':'mixamorigRightHand','Bip01 L Thigh':'mixamorigLeftUpLeg','Bip01 L Calf':'mixamorigLeftLeg',
+  'Bip01 L Foot':'mixamorigLeftFoot','Bip01 R Thigh':'mixamorigRightUpLeg','Bip01 R Calf':'mixamorigRightLeg','Bip01 R Foot':'mixamorigRightFoot',
+  'Bip01 L Finger0':'mixamorigLeftHandThumb1','Bip01 R Finger0':'mixamorigRightHandThumb1'
+};
+function retargetBipClip(source: THREE.AnimationClip, name: string): THREE.AnimationClip {
+  const clip = source.clone(); clip.name = name;
+  clip.tracks = clip.tracks.flatMap(track => {
+    const dot = track.name.lastIndexOf('.'); if (dot < 0) return [];
+    const bone = track.name.slice(0, dot), prop = track.name.slice(dot);
+    const target = BIP_TO_MIXAMO[bone]; if (!target) return [];
+    const copy = track.clone(); copy.name = target + prop; return [copy];
+  });
+  return clip;
+}
 
 type JK = 'hips' | 'spine' | 'head' | 'la' | 'le' | 'ra' | 're' | 'll' | 'lk' | 'lf' | 'rl' | 'rk' | 'rf';
 // aim: for arm joints, the bone pair whose animated direction the segment must follow (fixes the rest-pose difference between the Mixamo skeleton and the rig)
@@ -49,18 +73,24 @@ export function loadMixamo(): Promise<MixamoSource | null> {
   if (typeof window === 'undefined') return Promise.resolve(null);
   return SRC ??= (async () => {
     try {
-      const [g, walk] = await Promise.all([
+      const [g, walk, ...emoteResults] = await Promise.all([
         new GLTFLoader().loadAsync(ANIM_URL),
         new FBXLoader().loadAsync(WALK_URL).then(x => x.animations[0] as THREE.AnimationClip | undefined).catch(() => undefined),
+        ...Object.entries(EMOTE_FILES).map(([, file]) => new GLTFLoader().loadAsync(EMOTE_BASE + file).catch(() => null)),
       ]);
-      return { scene: g.scene, clips: buildClipMap(g.animations, walk) };
+      const clips = buildClipMap(g.animations, walk);
+      Object.entries(EMOTE_FILES).forEach(([name], i) => {
+        const source = emoteResults[i]?.animations?.[0];
+        if (source) { const converted = retargetBipClip(source, name); if (converted.tracks.length) clips.set(name, converted); }
+      });
+      return { scene: g.scene, clips };
     } catch { return null; }
   })();
 }
 
 /** game action name -> Mixamo clip. A clip name passed directly as `anim` (e.g. 'Punching') also works. */
 export const ACTION: Record<string, string> = {
-  dance: 'Hip_Hop_Dancing', cheer: 'Rumba_Dancing', wave: 'Salute', salute: 'Salute',
+  dance: 'Dance', cheer: 'Cheer', wave: 'Wave', salute: 'Salute', clap: 'Clap', talk: 'Talk', thoughtful: 'Thoughtful', look: 'LookAround', lookaround: 'LookAround',
   door: 'Opening_Door_Inwards', work: 'Pilot_Flips_Switches', game: 'Pilot_Flips_Switches',
   pray: 'Praying', dismiss: 'Dismissing_Gesture', punch: 'Punching', fight: 'Punching',
   elbow: 'Illegal_Elbow_Punch', block: 'Body_Block', die: 'Dying', dead: 'Dying', crouch: 'Crouch_Running',
@@ -100,6 +130,8 @@ export class MixamoDriver {
 
   constructor(src: MixamoSource, rig: Rig) {
     this.skel = cloneSkinned(src.scene) as THREE.Object3D;
+    // GLTFLoader preserves Mixamo's colon in node names, but the rig lookup and normalized clip tracks use names without it. Normalize both sides or no joints bind and animations appear not to work.
+    this.skel.traverse(o => { o.name = o.name.replace(/mixamorig:/g, 'mixamorig'); });
     this.clips = src.clips; this.names = new Set(src.clips.keys());
     this.skel.updateMatrixWorld(true); rig.root.updateMatrixWorld(true);
     const rootInv = rig.root.getWorldQuaternion(new THREE.Quaternion()).invert();

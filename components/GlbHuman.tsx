@@ -9,21 +9,17 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import type { HumanState } from '../lib/humanRig';
 import type { Look } from '../lib/characterModels';
 
-export const CHAR_URL = '/models/characters/kara.glb';          // female
+export const CHAR_URL = '/models/characters/louise.glb';          // female
 export const CHAR_URL_M = '/models/characters/remy.glb';         // male
 export const ANIM_URL = '/models/characters/animations.glb';
 export const WALK_URL = '/models/characters/walking.fbx';   // Mixamo "Walking" (without skin), used for the normal walk
 const TARGET_HEIGHT = 1.75;      // the game's human is ~1.75 m; Kara is ~1.66 m
-const MODEL_HEIGHT = 1.66;        // Kara
+const MODEL_HEIGHT = 1.75;        // Louise (Mixamo)
 const MODEL_HEIGHT_M = 3.78;      // Remy (Mixamo, exported through fbx2gltf at 2.1x)
 const FADE = 0.2;
 type Role = 'skin' | 'hair' | 'outfit' | 'pants' | 'accent';
 /** material name -> which part of the Look recolours it. Kara's textures are tinted by (wanted colour / texture average) so shading survives. */
-const ROLE_F: Record<string, [Role, string]> = {
-  Modelpart1_part1_body_Material0: ['skin', '#95735f'], Modelpart1_part1_head_Material0: ['skin', '#725547'], Modelpart1_part1_hands_Material: ['skin', '#9c7868'],
-  Modelpart1_part1_hair1_Material: ['hair', '#201913'], Modelpart1_part1_ebrows_Materia: ['hair', '#6b6463'], Modelpart1_part1_elashes_Materi: ['hair', '#42362a'],
-  Modelpart1_part1_jeans_Material: ['pants', '#27272a'], Modelpart1_part1_shirt1_Materia: ['outfit', '#424548'], Modelpart1_part1_top_Material01: ['outfit', '#453e3b'],
-};
+const ROLE_F: Record<string, [Role, string]> = { Ch07_body: ['skin', '#e3bfa5'], Ch07_hair: ['hair', '#5a4535'] };
 const ROLE_M: Record<string, [Role, string]> = { Bodymat: ['skin', '#d9b49c'], Topmat: ['outfit', '#6b6b6b'], Bottommat: ['pants', '#7a7260'], Hairmat: ['hair', '#c8a060'] };
 /** The walk FBX is optional: if /models/characters/walking.fbx is missing or fails, the characters fall back to the 'Strut_Walking' clip instead of crashing the whole app. Loaded once, shared by every character. */
 let walkPromise: Promise<THREE.AnimationClip[]> | null = null;

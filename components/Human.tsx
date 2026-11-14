@@ -10,7 +10,7 @@ type Props = { look: Look; getState: () => HumanState; getAnim?: () => string | 
 
 /** Which looks use the skinned GLB characters (Kara for women, Man In Suit for men) instead of the procedural rig.
  *  () => true = everyone uses a GLB character; () => false switches the GLB off; (look) => look.gender === 'f' = women only. */
-export const useGlbFor: (look: Look) => boolean = look => look.gender !== 'f';   // false = the procedural creator character (hair, outfits, shoes, accessories) driven by the Mixamo clips
+export const useGlbFor: (look: Look) => boolean = () => true;   // false = the procedural creator character (hair, outfits, shoes, accessories) driven by the Mixamo clips
 
 if (typeof window !== 'undefined') void loadMixamo();   // start downloading the Mixamo motion files the moment the game code loads, not when the first character appears
 const GlbHuman = lazy(() => import('./GlbHuman'));   // loaded only if useGlbFor switches the skinned GLB characters back on (so its big models are not downloaded otherwise)

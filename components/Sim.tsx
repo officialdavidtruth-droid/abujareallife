@@ -602,10 +602,11 @@ const keepMenuOnScreen = (el: THREE.Object3D, camera: THREE.Camera, size: { widt
 const deskMode = (): ScreenMode => { const k = S.cur?.t === 'act' ? S.cur.a.k : ''; return k === 'work' ? 'work' : k === 'hustle' || k === 'bizplan' ? 'hustle' : k === 'browse' || k === 'obrowse' ? 'browse' : null; };
 const deskJob = (): JobInfo => S.cur?.t === 'act' ? { prog: Math.min(1, S.prog / S.cur.a.dur), pay: S.cur.a.pay || 0 } : { prog: 0, pay: 0 };
 const Chair = ({ p, ry = 0, c = '#6b4a2f', pad = '#8c3a2f' }: { p: V3; ry?: number; c?: string; pad?: string }) => <group position={p} rotation-y={ry}>
+  <Prop url="/models/furniture/GreenChair_01.glb" h={.92} ry={Math.PI} fallback={<>
   <B p={[0, .4, 0]} s={[.44, .05, .44]} c={c} /><B p={[0, .445, 0]} s={[.4, .04, .4]} c={pad} ro={.95} r={.02} />
   {[[-.19, -.19], [.19, -.19], [-.19, .19], [.19, .19]].map(([x, z]) => <B key={x + '' + z} p={[x, .19, z]} s={[.04, .38, .04]} c={c} r={.01} />)}
   {[-.19, .19].map(x => <B key={x} p={[x, .68, .2]} s={[.04, .5, .04]} c={c} r={.01} />)}
-  <B p={[0, .86, .2]} s={[.4, .09, .03]} c={c} r={.01} /><B p={[0, .7, .2]} s={[.38, .07, .03]} c={c} r={.01} /><B p={[0, .56, .2]} s={[.38, .06, .03]} c={c} r={.01} /></group>;
+  <B p={[0, .86, .2]} s={[.4, .09, .03]} c={c} r={.01} /><B p={[0, .7, .2]} s={[.38, .07, .03]} c={c} r={.01} /><B p={[0, .56, .2]} s={[.38, .06, .03]} c={c} r={.01} /></>} /></group>;
 const Zone = ({ x, z, w, d, c, y = .02 }: { x: number; z: number; w: number; d: number; c: string; y?: number }) =>
   <mesh rotation-x={-Math.PI / 2} position={[x, y, z]} receiveShadow><planeGeometry args={[w, d]} /><meshStandardMaterial color={c} roughness={.9} /></mesh>;
 const Rug = ({ x, z, w, d, c1, c2, y = .015 }: { x: number; z: number; w: number; d: number; c1: string; c2: string; y?: number }) => <group position={[x, y, z]}>
@@ -722,8 +723,10 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[.35, 1.07, .31]} s={[.66, 1.82, .03]} c="#4a2f1d" /><mesh position={[.35, 1.07, .33]}><planeGeometry args={[.54, 1.7]} /><meshStandardMaterial color="#cfe3ee" metalness={.9} roughness={.04} /></mesh>
     <B p={[-.05, 1.05, .35]} s={[.025, .3, .03]} c="#d9a22b" m={.8} ro={.3} /><B p={[.05, 1.05, .35]} s={[.025, .3, .03]} c="#d9a22b" m={.8} ro={.3} /></>} /></>,
   dining: () => <>
+    <Prop url="/models/furniture/WoodenTable_03.glb" w={1.4} fallback={<>
     <B p={[0, .75, 0]} s={[1.5, .06, .85]} c="#8a6240" ro={.45} r={.02} /><B p={[0, .68, 0]} s={[1.3, .08, .66]} c="#6b4a30" />
     {[[-.65, -.35], [.65, -.35], [-.65, .35], [.65, .35]].map(([x, z]) => <B key={x + '' + z} p={[x, .36, z]} s={[.07, .72, .07]} c="#6b4a30" r={.015} />)}
+    </>} />
     <Part id="dining.c1"><Chair p={[0, 0, .8]} ry={0} /></Part><Part id="dining.c2"><group position={[-.5, 0, .8]} scale={.82}><Chair p={[0, 0, 0]} c="#c0622d" pad="#2f6bb0" /></group></Part><Part id="dining.c3"><Chair p={[-1.0, 0, 0]} ry={-Math.PI / 2} /></Part><Part id="dining.c4"><Chair p={[1.0, 0, 0]} ry={Math.PI / 2} /></Part>
     <group position={[-.35, .78, -.05]}><Prop url="/models/food/wooden_bowl_01.glb" w={.3} fallback={null} /></group>
     <group position={[-.35, .83, -.05]}><Prop url="/models/food/food_apple_01.glb" w={.09} fallback={null} /></group><group position={[-.3, .83, 0]}><Prop url="/models/food/lemon.glb" w={.07} fallback={null} /></group>

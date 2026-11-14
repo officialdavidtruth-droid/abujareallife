@@ -96,7 +96,7 @@ export function buildInterior(b: Business): Interior {
     [-6, 0, 6].forEach(x => { items.push(F(x, -hz + .3, 4.2, .2, 2.4, '#555'), F(x - 2.1, -hz + 2, .2, 3.4, 2.4, '#555'), F(x + 2.1, -hz + 2, .2, 3.4, 2.4, '#555')); for (let i = -3; i <= 3; i++) items.push(F(x + i * .55, -hz + 3.7, .08, .08, 2.4, '#222')); items.push(F(x - 1, -hz + 1.2, 1.6, .8, .5, '#6b5a48')); });
     slot.work = [0, 3.8]; slot.quest = [-hx + 3, 4]; slot.shop = [hx - 3, 3]; slot.crime = [hx - 3, -2];
   } else {
-    [-6, -2, 2, 6].forEach(x => [2, 4.5].forEach(z => items.push(F(x, z, 3, .8, .5, '#3d5a80'))));
+    [-6, -2, 2, 6].forEach(x => [2, 4.5].forEach(z => items.push(F(x, z, 3, .8, .5, '#3d5a80', { m: 'sofa', mw: 2.2 }))));
     items.push(F(0, -hz + 2, 10, 1, 1.1, '#555'), F(hx - 2, -hz + 1, 3, .5, 3, '#222', { glow: true }));
     slot.shop = [-hx + 3, 0]; slot.quest = [hx - 3, 2];
   }

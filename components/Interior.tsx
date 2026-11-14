@@ -52,10 +52,30 @@ function Walls({ room }: { room: Room }) {
     <mesh rotation-x={-Math.PI / 2} position={[0, 0, d / 2 + .9]}><planeGeometry args={[2.2, 2]} /><meshStandardMaterial color="#d99a42" /></mesh>
   </group>;
 }
-function Furniture({ room }: { room: Room }) {
-  return <group>{room.items.map((i, k) => <mesh key={k} position={[i.x, (i.y ?? 0) + i.h / 2, i.z]} castShadow>
+const MODELS: Record<string, string> = { plant: '/models/props/potted_plant_01.glb', chair: '/models/furniture/GreenChair_01.glb', table: '/models/furniture/WoodenTable_03.glb', armchair: '/models/furniture/ArmChair_01.glb', register: '/models/props/CashRegister_01.glb', fridge: '/models/props/fridge.glb' };
+function Box({ i }: { i: Item }) {
+  return <mesh position={[i.x, (i.y ?? 0) + i.h / 2, i.z]} castShadow>
     {i.round ? <cylinderGeometry args={[i.w / 2, i.w / 2, i.h, 20]} /> : <boxGeometry args={[i.w, i.h, i.d]} />}
-    <meshStandardMaterial color={i.c} emissive={i.glow ? i.c : '#000'} emissiveIntensity={i.glow ? .7 : 0} roughness={.8} /></mesh>)}</group>;
+    <meshStandardMaterial color={i.c} emissive={i.glow ? i.c : '#000'} emissiveIntensity={i.glow ? .7 : 0} roughness={.8} /></mesh>;
+}
+// A supermarket-style gondola: real uprights and planks with an open front, so the products sit on shelves instead of a solid slab.
+function Gondola({ i }: { i: Item }) {
+  const m = <meshStandardMaterial color={i.c} roughness={.7} />, plank = <meshStandardMaterial color="#c9ced3" metalness={.35} roughness={.45} />;
+  return <group position={[i.x, 0, i.z]}>
+    {[.17, .65, 1.13].map(y => <mesh key={y} position={[0, y, 0]} castShadow><boxGeometry args={[i.w, .04, i.d]} />{plank}</mesh>)}
+    <mesh position={[0, 1.78, 0]} castShadow><boxGeometry args={[i.w, .05, i.d]} />{m}</mesh>
+    <mesh position={[0, .9, 0]}><boxGeometry args={[i.w - .05, 1.8, .03]} />{m}</mesh>
+    {[-1, 1].map(s => <mesh key={s} position={[s * (i.w / 2 - .03), .9, 0]} castShadow><boxGeometry args={[.06, 1.8, i.d]} />{m}</mesh>)}
+    <mesh position={[0, .06, 0]}><boxGeometry args={[i.w, .12, i.d]} />{m}</mesh>
+  </group>;
+}
+function Furniture({ room }: { room: Room }) {
+  return <group>{room.items.map((i, k) => {
+    if (i.h === 1.8 && i.w >= 3.5 && i.d < 1.0) return <Gondola key={k} i={i} />;
+    const u = i.m && MODELS[i.m];
+    if (u) return <group key={k} position={[i.x, i.y ?? 0, i.z]}><Prop url={u} h={i.mw ? undefined : i.mh} w={i.mw} ry={i.ry ?? 0} fallback={<group position={[-i.x, -(i.y ?? 0), -i.z]}><Box i={i} /></group>} /></group>;
+    return <Box key={k} i={i} />;
+  })}</group>;
 }
 function DecorSet({ kind, items }: { kind: 'box' | 'cyl' | 'sph'; items: Item[] }) {
   const ref = useRef<THREE.InstancedMesh>(null!);

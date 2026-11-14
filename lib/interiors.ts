@@ -5,7 +5,7 @@ import { hasSeat, isSenior, seatTitle, shiftJobs } from './work';
 import { OUTFITS, PANTS, HAIR_COLORS, SKIN_TONES, hairsFor, applyOutfitModel, sanitizeLook, type Look } from './characterModels';
 
 /* Every building type gets a real room. Shared by the room scene (client) and the server (shop prices). */
-export type Item = { x: number; z: number; w: number; d: number; h: number; c: string; y?: number; solid?: boolean; round?: boolean; glow?: boolean; sphere?: boolean; lay?: boolean };
+export type Item = { x: number; z: number; w: number; d: number; h: number; c: string; y?: number; solid?: boolean; round?: boolean; glow?: boolean; sphere?: boolean; lay?: boolean; m?: string; mh?: number; mw?: number; ry?: number };
 /* A staff post: where an NPC employee works. Players who start a shift are placed at the matching post (stand overrides the spot). */
 export type Office = { x: number; z: number; sx: number; sz: number; title: string };
 export type Post = { idx: number; title: string; x: number; z: number; r: number; anim?: string; y?: number; stand?: [number, number]; patrol?: [number, number][] };
@@ -51,7 +51,7 @@ export function buildInterior(b: Business): Interior {
       dc(x, sh.z, .34, .34, .26 + (k % 3) * .06, pick(pal, k + si * 2), { y: 1.8 });
     }
   });
-  const plant = (x: number, z: number) => { items.push(F(x, z, .55, .55, .45, '#8a5a3a', { round: true })); dc(x, z, .95, .95, .95, '#2f7d4f', { y: .45, sphere: true }); dc(x + .15, z - .1, .6, .6, .6, '#3f9a62', { y: .9, sphere: true }); };
+  const plant = (x: number, z: number) => { items.push(F(x, z, .55, .55, 1.3, '#8a5a3a', { round: true, m: 'plant', mh: 1.3 })); };
   const monitor = (x: number, z: number, y: number) => { dc(x, z, .12, .12, .12, '#333', { y }); dc(x, z, .55, .05, .38, '#16324f', { y: y + .12 }); };
   const board = (x: number, z: number, w: number, c = '#1e2b25') => { dc(x, z, w, .06, 1.3, c, { y: 1.1 }); for (let k = 0; k < 4; k++) dc(x, z + .04, w * .8, .02, .07, '#f5f5f5', { y: 1.25 + k * .25 }); };
   const frames = (x0: number, z: number, n: number) => { for (let k = 0; k < n; k++) dc(x0 + k * 1.5, z, 1, .05, .7, pick(['#d18a22', '#3d5a80', '#b43c35', '#2f7d4f', '#6b4a8a'], k * 2 + n), { y: 1.7 }); };
@@ -63,7 +63,7 @@ export function buildInterior(b: Business): Interior {
     slot.quest = [-hx + 3, 0];
   } else if (arch === 'dining') {
     items.push(F(0, -hz + 1.8, W * .6, 1, 1.1, '#6b3f2a'));
-    [-5, 0, 5].forEach(x => [0, 3.5].forEach(z => { items.push(F(x, z, 1.6, 1.6, .8, '#d6b98c', { round: true })); [[-1.2, 0], [1.2, 0], [0, 1.2], [0, -1.2]].forEach(([a, c]) => items.push(F(x + a, z + c, .5, .5, .5, '#6b3f2a', { solid: false }))); }));
+    [-5, 0, 5].forEach(x => [0, 3.5].forEach(z => { items.push(F(x, z, 1.6, 1.6, .8, '#d6b98c', { round: true, m: 'table', mw: 1.5, ry: Math.PI / 2 })); [[-1.2, 0], [1.2, 0], [0, 1.2], [0, -1.2]].forEach(([a, c]) => items.push(F(x + a, z + c, .5, .5, .5, '#6b3f2a', { solid: false, m: 'chair', mh: .92, ry: Math.atan2(-a, -c) }))); }));
     slot.shop = [0, -hz + 3.2]; slot.work = [-hx + 3.4, -hz + 3.2]; slot.quest = [hx - 3, 0];
   } else if (arch === 'club') {
     items.push(F(0, 0, 8, 8, .05, '#7c3aed', { solid: false, glow: true }), F(0, -hz + 2, 8, 3, .6, '#222'), F(-hx + 1.5, -2, 1, 8, 1.1, '#3a2a55'), F(-6, -hz + 1.2, .8, .8, 2.4, '#111'), F(6, -hz + 1.2, .8, .8, 2.4, '#111'));
@@ -79,7 +79,7 @@ export function buildInterior(b: Business): Interior {
     runs.forEach(([x,z,w,d]) => items.push(F(x, z, w, d, 1.8, shelfColor)));
     stock(PROD[type] || PROD.Supermarket);
     // Checkout sits near the front-right wall, leaving a wide entrance and central aisle.
-    items.push(F(hx - 2.6, hz - 2.0, 2.8, .85, 1.05, '#444'));
+    items.push(F(hx - 2.6, hz - 2.0, 2.8, .85, 1.05, '#444')); items.push(F(hx - 2.0, hz - 2.0, .5, .4, .3, '#222', { y: 1.05, solid: false, m: 'register', mh: .3, ry: Math.PI })); if (type === 'Supermarket' || type === 'Market' || type === 'Pharmacy') items.push(F(-hx + .9, hz - 1.4, .9, .8, 1.86, '#ddd', { m: 'fridge', mh: 1.86, ry: Math.PI / 2 }));
     if (type === 'Car Dealer') { car(-4, -hz + 2.5, '#b43c35'); car(3, -hz + 2.5, '#3d5a80'); }
     if (type === 'Mechanic') { car(-4, -hz + 2.5, '#3d5a80'); items.push(F(hx - 2, -hz + 1, 1.4, .7, 1, '#b43c35')); [0, .25, .5].forEach(y => dc(hx - 4.2, -hz + 1.2, .8, .8, .25, '#1a1a1a', { y, round: true })); }
     slot.shop = [0, 0]; slot.work = [hx - 3, hz - 1.1]; slot.crime = [hx - 6, hz - 3.5]; slot.quest = [-hx + 2.5, -hz + 2.5];
@@ -87,7 +87,7 @@ export function buildInterior(b: Business): Interior {
     items.push(F(0, -hz + 2, 5, 1, 1.1, '#6b5a48'));
     if (type === 'Hospital') [-3, 0, 3].forEach(z => items.push(F(-hx + 1.5, z, 1, 2.2, .6, '#cfe8ff'), F(-hx + 2.6, z, .1, 2, 1.8, '#9ec5d6', { solid: false })));
     else if (type === 'Gym') [-5, -2, 1, 4].forEach(x => items.push(F(x, 1, 1, 2, 1.2, '#333'), F(x, 4.5, 1.6, .6, .5, '#8b0000')));
-    else if (type === 'Cinema') { items.push(F(0, -hz + .4, 12, .2, 5, '#f4f4f4', { glow: true })); [1, 3, 5].forEach(z => [-4, -2, 0, 2, 4].forEach(x => items.push(F(x, z, 1.3, .8, .9, '#7a1f2e')))); }
+    else if (type === 'Cinema') { items.push(F(0, -hz + .4, 12, .2, 5, '#f4f4f4', { glow: true })); [1, 3, 5].forEach(z => [-4, -2, 0, 2, 4].forEach(x => items.push(F(x, z, 1.3, .8, .9, '#7a1f2e', { m: 'armchair', mh: .95, ry: Math.PI })))); }
     else if (type === 'School') [-4, 0, 4].forEach(x => [0, 3].forEach(z => items.push(F(x, z, 2.2, 1, .8, '#a9854f'))));
     else [-4, 0, 4].forEach(x => items.push(F(x, 1, 1, 1, .9, '#222'), F(x, -.2, 1.6, .1, 1.8, '#bcd', { solid: false })));
     slot.shop = [hx - 3, -2]; slot.quest = [-hx + 3, 4]; slot.crime = [hx - 3, -hz + 3];

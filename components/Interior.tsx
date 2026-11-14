@@ -1,6 +1,7 @@
 'use client';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, Text } from '@react-three/drei';
+import Prop from './Prop';
 import { Post as GfxPost, ProceduralEnv } from './Graphics';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -68,7 +69,10 @@ function DecorSet({ kind, items }: { kind: 'box' | 'cyl' | 'sph'; items: Item[] 
     <meshStandardMaterial roughness={.7} /></instancedMesh>;
 }
 // Everything on display (products, plates, monitors, plants, signs...) is drawn with 3 instanced meshes, so it stays cheap on phones.
+const FOOD: Record<number, [string, number]> = { 0: ['wine_bottles_01', .3], 2: ['long_life_food', .3], 3: ['croissant', .2], 5: ['food_apple_01', .1] };
 function ProductItem({ item, index }: { item: Item; index: number }) {
+  const real = FOOD[index % 6];
+  if (real && !item.lay) return <group position={[item.x, item.y ?? 0, item.z]}><Prop url={`/models/food/${real[0]}.glb`} w={real[1]} ry={(index % 5) * .5} fallback={null} /></group>;
   // Retail displays use distinct silhouettes instead of repeating coloured cubes:
   // bottles, cans, cartons, jars and soft packages. Dimensions and colour come from
   // the existing shelf layout, so collision/layout data remains unchanged.

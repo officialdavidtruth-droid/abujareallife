@@ -683,6 +683,7 @@ const books = (seed: number, levels: number[]) => { const r = rng(seed), cols = 
 
 const VIS: Record<string, (ui: UI) => ReactNode> = {
   bed: ui => <>
+    <Prop url="/models/furniture/GothicBed_01.glb" w={1.85} fallback={<>
     <B p={[0, .2, 0]} s={[1.8, .26, 2.45]} c={HL.wood} ro={.55} /><B p={[0, .66, -1.22]} s={[1.88, 1.32, .12]} c={HL.wood} ro={.5} />
     <B p={[-.45, .72, -1.15]} s={[.7, .8, .05]} c={HL.wood2} ro={.6} /><B p={[.45, .72, -1.15]} s={[.7, .8, .05]} c={HL.wood2} ro={.6} />
     <B p={[0, .36, 1.22]} s={[1.88, .52, .1]} c={HL.wood} ro={.5} />
@@ -692,6 +693,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     {[-.5, .5, 1.1].map(z => <B key={z} p={[0, .735, z + .08]} s={[1.5, .01, .02]} c={HL.bed2} />)}
     <B p={[0, .72, -.84]} s={[.95, .17, .44]} c="#fbfaf6" ro={1} r={.08} rot={[-.08, 0, 0]} /><B p={[0, .84, -1.0]} s={[.85, .19, .34]} c="#f1eee6" ro={1} r={.08} rot={[-.35, 0, 0]} />
     <B p={[.54, .76, .1]} s={[.34, .13, .3]} c="#d99a42" ro={1} r={.05} rot={[0, .3, 0]} />
+    </>} />
     <Part id="bed.stand">
     <B p={[1.15, .26, -1.0]} s={[.5, .52, .5]} c={HL.wood2} ro={.55} /><B p={[1.15, .38, -.74]} s={[.42, .2, .02]} c={HL.wood} /><B p={[1.15, .14, -.74]} s={[.42, .2, .02]} c={HL.wood} />
     <C p={[1.15, .38, -.73]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} /><C p={[1.15, .14, -.73]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} />
@@ -714,17 +716,21 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[2.15, .885, .03]} s={[.38, .025, .22]} c="#a9784a" ro={.7} />
     <B p={[.75, 1.8, -.31]} s={[.62, .72, .36]} c="#7b563a" ro={.7} /><B p={[.45, 1.8, -.13]} s={[.27, .66, .02]} c="#8a6240" /><B p={[1.05, 1.8, -.13]} s={[.27, .66, .02]} c="#8a6240" /><B p={[.62, 1.8, -.11]} s={[.02, .1, .02]} c="#c9ced1" m={.9} /><B p={[.88, 1.8, -.11]} s={[.02, .1, .02]} c="#c9ced1" m={.9} /></Part></>,
   wardrobe: () => <>
+    <Prop url="/models/furniture/GothicCabinet_01.glb" w={1.4} fallback={<>
     <B p={[0, 1.07, 0]} s={[1.4, 2.0, .6]} c="#5a3b25" ro={.55} r={.03} /><B p={[0, .05, .02]} s={[1.34, .1, .56]} c="#3b2616" /><B p={[0, 2.12, 0]} s={[1.46, .08, .66]} c="#4a2f1d" />
     <B p={[-.35, 1.07, .31]} s={[.66, 1.82, .03]} c="#6b4630" ro={.5} /><B p={[-.35, 1.07, .33]} s={[.5, 1.62, .015]} c="#5a3b25" />
     <B p={[.35, 1.07, .31]} s={[.66, 1.82, .03]} c="#4a2f1d" /><mesh position={[.35, 1.07, .33]}><planeGeometry args={[.54, 1.7]} /><meshStandardMaterial color="#cfe3ee" metalness={.9} roughness={.04} /></mesh>
-    <B p={[-.05, 1.05, .35]} s={[.025, .3, .03]} c="#d9a22b" m={.8} ro={.3} /><B p={[.05, 1.05, .35]} s={[.025, .3, .03]} c="#d9a22b" m={.8} ro={.3} /></>,
+    <B p={[-.05, 1.05, .35]} s={[.025, .3, .03]} c="#d9a22b" m={.8} ro={.3} /><B p={[.05, 1.05, .35]} s={[.025, .3, .03]} c="#d9a22b" m={.8} ro={.3} /></>} /></>,
   dining: () => <>
     <B p={[0, .75, 0]} s={[1.5, .06, .85]} c="#8a6240" ro={.45} r={.02} /><B p={[0, .68, 0]} s={[1.3, .08, .66]} c="#6b4a30" />
     {[[-.65, -.35], [.65, -.35], [-.65, .35], [.65, .35]].map(([x, z]) => <B key={x + '' + z} p={[x, .36, z]} s={[.07, .72, .07]} c="#6b4a30" r={.015} />)}
     <Part id="dining.c1"><Chair p={[0, 0, .8]} ry={0} /></Part><Part id="dining.c2"><group position={[-.5, 0, .8]} scale={.82}><Chair p={[0, 0, 0]} c="#c0622d" pad="#2f6bb0" /></group></Part><Part id="dining.c3"><Chair p={[-1.0, 0, 0]} ry={-Math.PI / 2} /></Part><Part id="dining.c4"><Chair p={[1.0, 0, 0]} ry={Math.PI / 2} /></Part>
-    <B p={[0, .785, .2]} s={[.5, .006, .36]} c="#c0392b" ro={1} r={.002} /><C p={[0, .8, .2]} r={.115} h={.015} c="#f6f4ee" ro={.2} /><C p={[0, .815, .2]} r={.07} rt={.085} h={.03} c="#f6f4ee" ro={.2} /><C p={[0, .82, .2]} r={.07} h={.012} c="#e0742a" ro={.9} />
-    <C p={[.38, .83, .15]} r={.03} h={.08} c="#cfe6f2" ro={.1} /><B p={[-.45, .8, -.05]} s={[.3, .03, .2]} c="#f6f4ee" /><C p={[-.45, .87, -.05]} r={.1} rt={.13} h={.1} c="#e9e2d2" ro={.3} />
-    <Sp p={[-.5, .95, -.05]} r={.045} c="#d9452b" /><Sp p={[-.4, .95, -.02]} r={.045} c="#f0b53a" /></>,
+    <group position={[-.35, .78, -.05]}><Prop url="/models/food/wooden_bowl_01.glb" w={.3} fallback={null} /></group>
+    <group position={[-.35, .83, -.05]}><Prop url="/models/food/food_apple_01.glb" w={.09} fallback={null} /></group><group position={[-.3, .83, 0]}><Prop url="/models/food/lemon.glb" w={.07} fallback={null} /></group>
+    <group position={[.1, .78, .2]}><Prop url="/models/food/strawberry_chocolate_cake.glb" w={.24} fallback={null} /></group>
+    <group position={[.45, .78, -.1]}><Prop url="/models/food/croissant.glb" w={.2} fallback={null} /></group>
+    <group position={[.4, .78, .25]} rotation-y={.4}><Prop url="/models/food/wine_bottles_01.glb" w={.4} fallback={null} /></group>
+    </>,
   shower: () => <>
     <B p={[0, .04, -.2]} s={[1.3, .08, 1.4]} c="#e8edf0" ro={.3} /><C p={[0, .085, -.2]} r={.055} h={.012} c="#c9ced1" m={.9} ro={.2} />
     <B p={[0, 1.2, -.885]} s={[1.3, 2.4, .03]} c="#cfe0e6" ro={.25} />{[.4, .8, 1.2, 1.6, 2.0].map(y => <B key={y} p={[0, y, -.865]} s={[1.3, .008, .01]} c="#9db4bd" />)}
@@ -755,12 +761,12 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     </>} />
     <Part id="tv.side"><B p={[1.5, .3, 0]} s={[.5, .6, .5]} c="#6b4a30" ro={.5} r={.02} /><B p={[1.5, .6, 0]} s={[.58, .03, .58]} c="#8a6240" ro={.4} /><B p={[1.5, .5, .26]} s={[.4, .22, .02]} c="#5a3b25" /><C p={[1.5, .64, 0]} r={.08} h={.02} c="#333" /><C p={[1.5, .78, 0]} r={.014} h={.28} c="#333" /><C p={[1.5, .98, 0]} r={.14} rt={.1} h={.2} c="#f2e6c9" ro={1} e={ui.power ? '#ffd9a0' : undefined} ei={.45} /></Part>
     <Part id="tv.cab">
-    <B p={[0, .3, 2.6]} s={[1.6, .6, .5]} c="#3a2a1e" ro={.5} /><B p={[-.4, .3, 2.34]} s={[.76, .5, .02]} c="#4a3626" /><B p={[.4, .3, 2.34]} s={[.76, .5, .02]} c="#4a3626" />
-    <C p={[-.05, .3, 2.325]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} /><C p={[.05, .3, 2.325]} r={.015} h={.03} c="#d9a22b" m={.8} rot={[Math.PI / 2, 0, 0]} />
-    {[[-.7, -.2], [.7, -.2], [-.7, .2], [.7, .2]].map(([x, z]) => <B key={x + '' + z} p={[x, .03, 2.6 + z]} s={[.06, .06, .06]} c="#222" />)}
-    <B p={[0, .67, 2.6]} s={[.7, .05, .12]} c="#15171a" m={.5} ro={.3} /><B p={[0, .98, 2.62]} s={[1.3, .74, .05]} c="#0d0e10" ro={.25} r={.015} />
-    <MovieScreen p={[0, .98, 2.59]} w={1.24} h={.68} on={ui.power} ry={Math.PI} watch={watchMode} light /><B p={[0, .64, 2.6]} s={[.3, .04, .2]} c="#15171a" m={.5} />
-    <C p={[.55, .74, 2.5]} r={.06} rt={.04} h={.14} c="#e8e2d2" ro={.4} /><Sp p={[.55, .86, 2.5]} r={.08} c="#2f8a3a" /></Part></>,
+    <group position={[0, 0, 2.6]} rotation-y={Math.PI}><Prop url="/models/furniture/ClassicConsole_01.glb" w={1.5} fallback={<B p={[0, .3, 0]} s={[1.6, .6, .5]} c="#3a2a1e" ro={.5} />} /></group>
+    <B p={[0, 1.4, 2.62]} s={[1.3, .74, .05]} c="#0d0e10" ro={.25} r={.015} />
+    <MovieScreen p={[0, 1.4, 2.59]} w={1.24} h={.68} on={ui.power} ry={Math.PI} watch={watchMode} light />
+    <group position={[.5, .94, 2.55]}><Prop url="/models/props/potted_plant_04.glb" w={.2} fallback={null} /></group>
+    <group position={[-.5, .94, 2.55]} rotation-y={Math.PI}><Prop url="/models/props/gaming_console.glb" w={.33} fallback={null} /></group>
+    </Part></>,
   desk: ui => <>
     <B p={[0, .75, 0]} s={[1.6, .045, .8]} c="#8a6240" ro={.45} r={.015} />
     <B p={[-.75, .37, 0]} s={[.04, .74, .7]} c="#2b2b2e" m={.5} ro={.4} /><B p={[.52, .37, 0]} s={[.52, .72, .7]} c="#6b4a30" ro={.6} />
@@ -768,7 +774,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[0, .63, -.34]} s={[1.3, .3, .02]} c="#6b4a30" />
     <B p={[0, .79, -.15]} s={[.3, .012, .18]} c="#2b2b2e" m={.6} /><B p={[0, .9, -.2]} s={[.04, .2, .03]} c="#2b2b2e" m={.6} /><B p={[0, 1.2, -.22]} s={[.7, .4, .03]} c="#0d0e10" ro={.3} r={.01} />
     <MovieScreen p={[0, 1.2, -.19]} w={.64} h={.35} on={ui.power} watch={deskMode} kind="desk" job={deskJob} /><B p={[.02, .785, .14]} s={[.42, .016, .14]} c="#d8d8d8" ro={.5} /><B p={[.34, .785, .14]} s={[.06, .02, .1]} c="#2b2b2e" r={.02} />
-    <C p={[-.62, .79, -.25]} r={.07} h={.02} c="#333" m={.6} /><B p={[-.62, .95, -.25]} s={[.02, .3, .02]} c="#333" /><B p={[-.62, 1.1, -.18]} s={[.03, .03, .2]} c="#333" rot={[.3, 0, 0]} />
+    <group position={[-.62, .775, -.2]}><Prop url="/models/props/desk_lamp_arm_01.glb" h={.55} fallback={null} /></group><group position={[.62, .775, .1]} rotation-y={-.6}><Prop url="/models/props/classic_laptop.glb" w={.34} fallback={null} /></group>
     <C p={[.55, .82, 0]} r={.04} h={.09} c="#e8e2d2" ro={.4} /><B p={[-.45, .775, .2]} s={[.22, .012, .3]} c="#f6f4ee" rot={[0, .2, 0]} /><B p={[-.45, .79, .2]} s={[.2, .02, .27]} c="#d9d4c6" rot={[0, -.1, 0]} />
     <Part id="desk.chair" rel><C p={[0, .04, 0]} r={.25} rt={.03} h={.03} c="#2b2b2e" /><C p={[0, .22, 0]} r={.025} h={.36} c="#555" m={.8} /><B p={[0, .43, 0]} s={[.48, .08, .46]} c="#2f3a4a" ro={.95} r={.04} />
       <B p={[0, .72, .22]} s={[.46, .5, .07]} c="#2f3a4a" ro={.95} r={.05} rot={[.08, 0, 0]} /><B p={[-.26, .6, 0]} s={[.04, .04, .3]} c="#2b2b2e" /><B p={[.26, .6, 0]} s={[.04, .04, .3]} c="#2b2b2e" /></Part></>,
@@ -841,15 +847,17 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     {[[.38, .13], [.7, .085], [.93, .045]].map(([y, r]) => <group key={y}><C p={[-.205, y, 0]} r={r + .02} h={.02} c="#0d0f12" rot={[0, 0, Math.PI / 2]} /><C p={[-.21, y, 0]} r={r} h={.03} c="#2b2f36" ro={.9} rot={[0, 0, Math.PI / 2]} /><C p={[-.225, y, 0]} r={r * .35} h={.02} c="#444a52" m={.6} rot={[0, 0, Math.PI / 2]} /></group>)}
     <C p={[-.2, .16, 0]} r={.012} h={.012} c="#3fb98a" e={ui.power ? '#3fb98a' : undefined} ei={1.2} rot={[0, 0, Math.PI / 2]} /></>,
   shelf: () => <>
+    <Prop url="/models/furniture/Shelf_01.glb" w={1.1} ry={Math.PI / 2} fallback={<>
     <B p={[-.165, 1, 0]} s={[.02, 2, 1.1]} c="#5a3b25" ro={.7} /><B p={[0, 1, -.53]} s={[.35, 2, .04]} c="#6b4630" ro={.6} /><B p={[0, 1, .53]} s={[.35, 2, .04]} c="#6b4630" ro={.6} />
     {[.03, .4, .78, 1.16, 1.54, 1.98].map(y => <B key={y} p={[0, y, 0]} s={[.35, .035, 1.06]} c="#6b4630" ro={.6} r={.01} />)}
     {books(5, [.05, .42, .8, 1.18])}
     <Sp p={[.04, 1.72, -.3]} r={.12} c="#2f6b8a" ro={.3} /><C p={[.04, 1.6, -.3]} r={.04} h={.04} c="#444" /><C p={[.03, 1.7, .25]} r={.06} rt={.04} h={.2} c="#c9a56b" ro={.4} /><B p={[.1, 1.7, .0]} s={[.03, .22, .16]} c="#2a1b10" rot={[0, 0, -.1]} />
-    <C p={[.04, 1.6, .38]} r={.07} rt={.09} h={.12} c="#b5651d" /><Sp p={[.04, 1.72, .38]} r={.08} c="#2f8a3a" /></>,
+    <C p={[.04, 1.6, .38]} r={.07} rt={.09} h={.12} c="#b5651d" /><Sp p={[.04, 1.72, .38]} r={.08} c="#2f8a3a" /></>} /></>,
   plant: () => <>
+    <Prop url="/models/props/potted_plant_01.glb" h={1.35} fallback={<>
     <C p={[0, .25, 0]} r={.22} rt={.3} h={.5} c="#b5651d" ro={.8} /><C p={[0, .51, 0]} r={.27} h={.03} c="#3a2a1c" ro={1} /><C p={[0, .5, 0]} r={.31} h={.04} c="#9a5418" ro={.8} />
     <C p={[0, .9, 0]} r={.022} rt={.015} h={.8} c="#6a4a2a" />
-    {Array.from({ length: 12 }, (_, i) => { const a = i * 2.4, up = .65 + (i % 4) * .22, t = .35 + (i % 3) * .22; return <Sp key={i} p={[Math.cos(a) * (.14 + t * .22), up, Math.sin(a) * (.14 + t * .22)]} r={.2} sc={[.8, .12, .5]} c={i % 2 ? '#2f8a3a' : '#3fa84b'} rot={[Math.sin(a) * t, -a, -Math.cos(a) * t]} />; })}</>,
+    {Array.from({ length: 12 }, (_, i) => { const a = i * 2.4, up = .65 + (i % 4) * .22, t = .35 + (i % 3) * .22; return <Sp key={i} p={[Math.cos(a) * (.14 + t * .22), up, Math.sin(a) * (.14 + t * .22)]} r={.2} sc={[.8, .12, .5]} c={i % 2 ? '#2f8a3a' : '#3fa84b'} rot={[Math.sin(a) * t, -a, -Math.cos(a) * t]} />; })}</>} /></>,
   door: () => <>
     <B p={[.03, 1.025, 0]} s={[.06, 2.05, .95]} c="#5a3a24" ro={.55} r={.01} />
     {[1.55, .55].map(y => [-.2, .2].map(z => <B key={y + '' + z} p={[.066, y, z]} s={[.015, .8, .34]} c="#4a2f1d" ro={.6} r={.01} />))}

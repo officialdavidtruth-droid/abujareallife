@@ -8,6 +8,7 @@ import RuntimeStyle from './RuntimeStyle';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, RoundedBox, Html } from '@react-three/drei';
 import { Post, ProceduralEnv } from './Graphics';
+import Prop from './Prop';
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import Human from './Human';
@@ -743,6 +744,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[.85, 1.5, -.49]} s={[.52, .66, .02]} c="#444" ro={.4} /><mesh position={[.85, 1.5, -.478]}><planeGeometry args={[.46, .6]} /><meshStandardMaterial color="#cfe4ee" metalness={.9} roughness={.04} /></mesh>
     <B p={[1.25, 1.2, -.48]} s={[.26, .5, .02]} c="#2f6bb0" ro={1} /><C p={[1.25, 1.5, -.47]} r={.012} h={.32} c="#c9ced1" m={.9} rot={[0, 0, Math.PI / 2]} /></Part></>,
   tv: ui => <>
+    <Prop url="/models/furniture/sofa.glb" w={2.2} tint={HL.sofa} fallback={<>
     <B p={[0, .19, 0]} s={[2.2, .26, .9]} c={HL.sofa} ro={.95} r={.05} />
     {[-.44, .44].map(x => <B key={x} p={[x, .395, .1]} s={[.86, .15, .62]} c={HL.sofa2} ro={.95} r={.06} />)}
     <B p={[0, .55, -.34]} s={[2.2, .62, .22]} c={HL.sofa} ro={.95} r={.07} />
@@ -750,6 +752,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     {[-1, 1].map(s => <B key={s} p={[s * .99, .36, 0]} s={[.22, .6, .9]} c={HL.sofa} ro={.95} r={.08} />)}
     {[[-1, -.38], [1, -.38], [-1, .38], [1, .38]].map(([x, z]) => <C key={x + '' + z} p={[x * .98, .04, z]} r={.04} rt={.03} h={.08} c="#3b2616" />)}
     <B p={[-.72, .63, .0]} s={[.36, .34, .12]} c={HL.pil1} ro={1} r={.06} rot={[-.2, .3, .15]} /><B p={[.72, .63, .0]} s={[.36, .34, .12]} c={HL.pil2} ro={1} r={.06} rot={[-.2, -.3, -.15]} />
+    </>} />
     <Part id="tv.side"><B p={[1.5, .3, 0]} s={[.5, .6, .5]} c="#6b4a30" ro={.5} r={.02} /><B p={[1.5, .6, 0]} s={[.58, .03, .58]} c="#8a6240" ro={.4} /><B p={[1.5, .5, .26]} s={[.4, .22, .02]} c="#5a3b25" /><C p={[1.5, .64, 0]} r={.08} h={.02} c="#333" /><C p={[1.5, .78, 0]} r={.014} h={.28} c="#333" /><C p={[1.5, .98, 0]} r={.14} rt={.1} h={.2} c="#f2e6c9" ro={1} e={ui.power ? '#ffd9a0' : undefined} ei={.45} /></Part>
     <Part id="tv.cab">
     <B p={[0, .3, 2.6]} s={[1.6, .6, .5]} c="#3a2a1e" ro={.5} /><B p={[-.4, .3, 2.34]} s={[.76, .5, .02]} c="#4a3626" /><B p={[.4, .3, 2.34]} s={[.76, .5, .02]} c="#4a3626" />

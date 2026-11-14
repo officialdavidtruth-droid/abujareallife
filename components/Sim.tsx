@@ -868,7 +868,7 @@ const VIS: Record<string, (ui: UI) => ReactNode> = {
     <B p={[0, .4, 0]} s={[.52, .04, .92]} c="#6b4a30" ro={.45} r={.015} /><B p={[0, .41, 0]} s={[.44, .01, .84]} c="#cfe3ee" op={.35} ro={.05} />
     {[[-.22, -.4], [.22, -.4], [-.22, .4], [.22, .4]].map(([x, z]) => <B key={x + '' + z} p={[x, .19, z]} s={[.04, .38, .04]} c="#4a2f1d" r={.01} />)}<B p={[0, .15, 0]} s={[.44, .02, .8]} c="#5a3b25" />
     <B p={[0, .44, -.2]} s={[.2, .035, .28]} c="#2f6bb0" ro={1} /><B p={[.02, .47, -.2]} s={[.18, .03, .25]} c="#b43c35" ro={1} rot={[0, .2, 0]} /><C p={[0, .46, .24]} r={.05} h={.07} c="#f6f4ee" ro={.3} /><Sp p={[.05, .5, .1]} r={.045} c="#d9452b" /></>} />
-    <Prop url="/models/props/tea_set_01.glb" w={.3} y={.4} /></>,
+    <Prop url="/models/props/tea_set_01.glb" w={.3} y={.4} fallback={null} /></>,
   fan: ui => <>
     <C p={[0, .03, 0]} r={.2} h={.045} c="#2b2b2e" /><C p={[0, .5, 0]} r={.022} h={.95} c="#9aa3a8" m={.85} ro={.25} /><B p={[0, 1.02, 0]} s={[.2, .18, .22]} c="#d8dcde" ro={.4} />
     <mesh position={[0, 1.05, .14]} castShadow><torusGeometry args={[.21, .01, 8, 32]} /><meshStandardMaterial color="#9aa3a8" metalness={.8} roughness={.3} /></mesh>

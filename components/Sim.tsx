@@ -1035,7 +1035,7 @@ function Ceiling({ ui, free, rooms }: { ui: UI; free: boolean; rooms: PlanRoom[]
     ? rooms.map(r => [r.x, r.x + r.w, r.z, r.z + r.d])
     : [[-6.2, ui.wing ? 11.4 : 6.2, -4.6, 4.6], ...(ui.south ? [[-6.2, 6.2, 4.6, 9.35] as [number, number, number, number]] : [])];
   return <>{rects.map(([x0, x1, z0, z1], i) => <group key={i} position={[(x0 + x1) / 2, 2.6, (z0 + z1) / 2]}>
-    <mesh rotation-x={Math.PI / 2} raycast={() => null}><planeGeometry args={[x1 - x0, z1 - z0]} /><meshStandardMaterial color="#f1ede4" roughness={.97} /></mesh>
+    <mesh rotation-x={Math.PI / 2} raycast={() => null}><planeGeometry args={[x1 - x0, z1 - z0]} /><meshStandardMaterial color="#f1ede4" emissive="#e8e1d2" emissiveIntensity={.6} roughness={.97} /></mesh>
     <mesh rotation-x={Math.PI / 2} position={[0, -.012, 0]} raycast={() => null}><planeGeometry args={[Math.min(2.4, x1 - x0 - .6), Math.min(.5, z1 - z0 - .6)]} /><meshStandardMaterial color="#fffaf0" emissive="#fff1d0" emissiveIntensity={1.1} roughness={.5} /></mesh>
   </group>)}</>;
 }

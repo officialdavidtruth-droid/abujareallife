@@ -18,5 +18,5 @@ export function businessStatus(type: BusinessType, minute: number): BusinessStat
   const h = ((minute / 60) % 24 + 24) % 24;
   const open = start === end || (start < end ? h >= start && h < end : h >= start || h < end);
   const fmt = (n: number) => `${String(Math.floor(n) % 24).padStart(2, '0')}:00`;
-  return { open, label: open ? 'OPEN' : 'CLOSED', hours: `${fmt(start)}–${fmt(end)}` };
+  return { open, label: open ? 'OPEN' : 'CLOSED', hours: start === 0 && end === 24 ? 'Open 24 hours' : `${fmt(start)}–${fmt(end)}` };
 }

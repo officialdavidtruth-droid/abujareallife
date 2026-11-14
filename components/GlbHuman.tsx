@@ -51,6 +51,7 @@ function pick(state: HumanState, anim: string | undefined, speed: number, names:
     const c = direct || ACTION[anim];
     if (c && names.has(c)) return { clip: c, ts: 1 };
   }
+  if (state === 'walk' && speed >= 3) return { clip: 'Running', ts: Math.min(1.7, Math.max(.7, speed / 4.6)) };   // real m/s from the player: the Mixamo run covers ~4.6 m/s at normal speed, so the feet match the ground
   if (state === 'walk') return speed >= 1.8 ? { clip: 'Running', ts: Math.min(1.3, Math.max(.8, speed / 2.4)) } : { clip: names.has('Walking') ? 'Walking' : 'Strut_Walking', ts: Math.min(1.4, Math.max(.8, speed / 1.1)) };
   return { clip: 'Idle', ts: 1 };       // idle, and sit (no sit clip yet)
 }

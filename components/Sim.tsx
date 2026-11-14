@@ -479,7 +479,7 @@ function tick(dt: number) {
   if (TP.on && TP.dir) { // walking with the keys / stick: cancels whatever you were doing, steps out of seats and beds first
     const so = within(S.pos as P); if (so?.appr) S.pos = [so.appr[0], so.appr[1]];
     S.cur = null; S.q = []; S.prog = 0; S.pose = 'stand'; S.stuck = 0; TP.last = Date.now();
-    const mag = Math.min(1, Math.hypot(TP.dir[0], TP.dir[1])), sp = (TP.run ? 4.6 : 2.9) * mag * dt * S.speed, ang = Math.atan2(TP.dir[0], TP.dir[1]);
+    const mag = Math.min(1, Math.hypot(TP.dir[0], TP.dir[1])), sp = (TP.run ? 4.6 : 3) * mag * dt * S.speed, ang = Math.atan2(TP.dir[0], TP.dir[1]);
     let nx = S.pos[0] + Math.sin(ang) * sp, nz = S.pos[1] + Math.cos(ang) * sp;
     if (blocked(BL(), [nx, nz], undefined, HARD)) { if (!blocked(BL(), [nx, S.pos[1]], undefined, HARD)) nz = S.pos[1]; else if (!blocked(BL(), [S.pos[0], nz], undefined, HARD)) nx = S.pos[0]; else { nx = S.pos[0]; nz = S.pos[1]; } }
     S.pos[0] = nx; S.pos[1] = nz; S.rot = turn(S.rot, ang, Math.min(1, dt * 14));
@@ -673,7 +673,7 @@ function Avatar({ bubble, look }: { bubble: string; look: Look }) {
     const mat = plumb.current.material as THREE.MeshStandardMaterial; mat.color.set(col); mat.emissive.set(col);
   });
   return <group ref={g}>
-    <group ref={inner}><Human look={look} getState={() => S.pose !== 'stand' ? S.pose : (S.cur?.t === 'walk' || (TP.on && TP.dir)) && S.speed > 0 ? 'walk' : 'idle'} getAnim={() => (S.speed && S.cur?.t === 'act' ? S.cur.a.anim : undefined)} getSpeed={() => S.speed * (TP.on && TP.dir && TP.run ? 1.55 : 1)} /></group>
+    <group ref={inner}><Human look={look} getState={() => S.pose !== 'stand' ? S.pose : (S.cur?.t === 'walk' || (TP.on && TP.dir)) && S.speed > 0 ? 'walk' : 'idle'} getAnim={() => (S.speed && S.cur?.t === 'act' ? S.cur.a.anim : undefined)} getSpeed={() => TP.on && TP.dir ? (TP.run ? 4.6 : 3) * S.speed : S.speed} /></group>
     <group ref={pg}><mesh ref={plumb}><octahedronGeometry args={[.14]} /><meshStandardMaterial emissiveIntensity={.8} /></mesh></group>
     <Html position={[0, 2.9 * look.height + .2, 0]} center zIndexRange={[5, 0]}><div className="bubble">{bubble}</div></Html>
   </group>;

@@ -360,14 +360,15 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
     } else if (VEH.drv) {
       /* ── driving: arcade physics ── */
       const V = VEH, vmax = wantRun ? 34 : 25;
-      if (iy > .05) V.v += iy * (V.v < 0 ? 28 : wantRun ? 16 : 12) * dt;
+      DRV.st += (ix - DRV.st) * Math.min(1, dt * (Math.abs(ix) > .05 ? 5.5 : 8)); DRV.th += (iy - DRV.th) * Math.min(1, dt * 6);   // steering and pedals ease in and out instead of snapping
+      if (iy > .05) V.v += DRV.th * (V.v < 0 ? 28 : wantRun ? 16 : 12) * (1 - Math.max(0, V.v) / vmax * .45) * dt;
       else if (iy < -.05) V.v += iy * (V.v > 0 ? 26 : 9) * dt;
       else V.v -= Math.sign(V.v) * Math.min(Math.abs(V.v), 3.5 * dt);
       if (wantJump) V.v -= Math.sign(V.v) * Math.min(Math.abs(V.v), 34 * dt);
       V.v = THREE.MathUtils.clamp(V.v, -8, vmax);
       V.brake = (iy < -.05 && V.v > .5) || (wantJump && Math.abs(V.v) > .5);
       const auth = THREE.MathUtils.clamp(V.v / 4, -1, 1) * (1 - Math.min(.55, Math.abs(V.v) / 55));
-      V.r -= ix * 2.1 * auth * (wantJump ? 1.5 : 1) * dt;
+      V.r -= DRV.st * 2.1 * auth * (wantJump ? 1.5 : 1) * dt;
       V.x += Math.cos(V.r) * V.v * dt; V.z -= Math.sin(V.r) * V.v * dt;
       { const hf = driveH(V.x + Math.cos(V.r) * 2, V.z - Math.sin(V.r) * 2), hb = driveH(V.x - Math.cos(V.r) * 2, V.z + Math.sin(V.r) * 2); if (hf !== hb) V.v -= (hf - hb) / 4 * 5.5 * dt; }   // hills: slower uphill, quicker downhill (flat inside the city, so nothing changes there)
       if (WATER_Y - driveH(V.x, V.z) > .55) { V.x -= Math.cos(V.r) * V.v * dt; V.z += Math.sin(V.r) * V.v * dt; V.v *= -.25; const now = performance.now(); if (now - wmsg.current > 2500) { wmsg.current = now; GAME.notice = '🌊 Too deep to drive. Find a boat at a dock.'; } }
@@ -406,7 +407,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       const wd0 = Math.max(0, WATER_Y - groundFor(p.x, p.z, p.g)), swim0 = wd0 > SWIM_DEPTH && !GAME.jailed;   // wading slows you, deep water makes you swim
       if (moving.current) {
         if (wantRun && c.crouch && !swim0) c.crouch = false;
-        const sp = swim0 ? (wantRun ? 4.6 : 2.9) : (c.crouch ? 2.3 : wantRun ? 9 : 4.6) * (wd0 > .25 ? 1 - Math.min(.45, (wd0 - .25) * .55) : 1);
+        const sp = swim0 ? (wantRun ? 4.6 : 2.9) : (c.crouch ? 2.3 : wantRun ? 7 : 3.4) * (wd0 > .25 ? 1 - Math.min(.45, (wd0 - .25) * .55) : 1);
         // Resolve movement one axis at a time. This prevents diagonal movement from
         // pushing the player through thin corners and lets them slide along walls.
         const oldX = p.x, oldZ = p.z;
@@ -609,7 +610,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <ChopYards />
       <JailCell />
       <group ref={group}>
-        <Human look={look} getState={() => (moving.current || P.current.sw ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current || P.current.sw) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : undefined; }} getSpeed={() => (P.current.sw ? (moving.current ? 1.3 : .6) : running.current ? 2.4 : 1.1)} />
+        <Human look={look} getState={() => (moving.current || P.current.sw ? 'walk' : 'idle')} getAnim={() => { const m = NET.me; if (moving.current || P.current.sw) return undefined; return m.anim && Date.now() < m.animUntil ? m.anim : undefined; }} getSpeed={() => (P.current.sw ? (moving.current ? 1.3 : .6) : running.current ? 7 : 3.4)} />
         <Html position={[0, 2.8, 0]} center zIndexRange={[5, 0]}><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>{bub[look.name] && <div className="cwSay">{bub[look.name]}</div>}<div ref={el => { nameTag.current = el; }} className="cityNameTag" style={{ display: 'none' }}>{look.name}</div></div></Html>
       </group>
       <StreetNpcScene />
@@ -653,6 +654,8 @@ function handDoor(ms: number, fn: () => void) {
   NET.me.anim = 'door'; NET.me.animUntil = Date.now() + ms + 450;
   DOORP.v = { at: Date.now() + ms, fn };
 }
+const DRV = { st: 0, th: 0 };   // eased steering and throttle of the car you drive
+
 export default function CityWorld({ look, onNear, getMinute, onSocial, onOpenMap }: { look: Look; onNear: (b: any) => void; getMinute?: () => number; onSocial?: (a?: number) => void; onOpenMap?: () => void }) {
   useState(() => { // stepping out of the house: appear on a sidewalk, somewhere different each time and not on top of another player (building exits set GAME.tp instead)
     if (GAME.tp) { START.x = GAME.tp.x; START.z = GAME.tp.z; START.r = GAME.tp.r ?? 0; GAME.player.x = GAME.tp.x; GAME.player.z = GAME.tp.z; } // arriving from a building / jail / ride: start the camera right there, not at the old default

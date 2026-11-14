@@ -52,7 +52,7 @@ function Walls({ room }: { room: Room }) {
     <mesh rotation-x={-Math.PI / 2} position={[0, 0, d / 2 + .9]}><planeGeometry args={[2.2, 2]} /><meshStandardMaterial color="#d99a42" /></mesh>
   </group>;
 }
-const MODELS: Record<string, string> = { plant: '/models/props/potted_plant_01.glb', chair: '/models/furniture/GreenChair_01.glb', table: '/models/furniture/WoodenTable_03.glb', armchair: '/models/furniture/ArmChair_01.glb', register: '/models/props/CashRegister_01.glb', fridge: '/models/props/fridge.glb', sofa: '/models/furniture/sofa.glb' };
+const MODELS: Record<string, string> = { plant: '/models/props/potted_plant_01.glb', chair: '/models/furniture/GreenChair_01.glb', table: '/models/furniture/WoodenTable_03.glb', armchair: '/models/furniture/ArmChair_01.glb', register: '/models/props/CashRegister_01.glb', fridge: '/models/props/fridge.glb', sofa: '/models/furniture/sofa.glb', boombox: '/models/props/boombox.glb' };
 function Box({ i }: { i: Item }) {
   return <mesh position={[i.x, (i.y ?? 0) + i.h / 2, i.z]} castShadow>
     {i.round ? <cylinderGeometry args={[i.w / 2, i.w / 2, i.h, 20]} /> : <boxGeometry args={[i.w, i.h, i.d]} />}

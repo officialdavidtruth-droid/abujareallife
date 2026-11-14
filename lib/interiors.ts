@@ -66,7 +66,7 @@ export function buildInterior(b: Business): Interior {
     [-5, 0, 5].forEach(x => [0, 3.5].forEach(z => { items.push(F(x, z, 1.6, 1.6, .8, '#d6b98c', { round: true, m: 'table', mw: 1.7 })); [[-1.25, 0], [1.25, 0], [0, .85], [0, -.85]].forEach(([a, c]) => items.push(F(x + a, z + c, .5, .5, .5, '#6b3f2a', { solid: false, m: 'chair', mh: .92, ry: Math.atan2(-a, -c) }))); }));
     slot.shop = [0, -hz + 3.2]; slot.work = [-hx + 3.4, -hz + 3.2]; slot.quest = [hx - 3, 0];
   } else if (arch === 'club') {
-    items.push(F(0, 0, 8, 8, .05, '#7c3aed', { solid: false, glow: true }), F(0, -hz + 2, 8, 3, .6, '#222'), F(-hx + 1.5, -2, 1, 8, 1.1, '#3a2a55'), F(-6, -hz + 1.2, .8, .8, 2.4, '#111'), F(6, -hz + 1.2, .8, .8, 2.4, '#111'));
+    items.push(F(0, 0, 8, 8, .05, '#7c3aed', { solid: false, glow: true }), F(0, -hz + 2, 8, 3, .6, '#222'), F(-hx + 1.5, -2, 1, 8, 1.1, '#3a2a55'), F(-6, -hz + 1.2, .8, .8, 2.4, '#111'), F(-6, -hz + 1.2, .9, .6, .5, '#222', { y: 2.4, solid: false, m: 'boombox', mw: 1.0, ry: 0 }), F(6, -hz + 1.2, .8, .8, 2.4, '#111'), F(6, -hz + 1.2, .9, .6, .5, '#222', { y: 2.4, solid: false, m: 'boombox', mw: 1.0, ry: 0 }));
     slot.shop = [-hx + 3.4, -2]; slot.work = [0, -hz + 4.4]; slot.quest = [hx - 3, 2];
   } else if (arch === 'store') {
     // Retail floor plan: three separated gondola aisles with a clear central spine.

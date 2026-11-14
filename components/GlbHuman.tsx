@@ -10,12 +10,12 @@ import type { HumanState } from '../lib/humanRig';
 import type { Look } from '../lib/characterModels';
 
 export const CHAR_URL = '/models/characters/kara.glb';          // female
-export const CHAR_URL_M = '/models/characters/man.glb';         // male
+export const CHAR_URL_M = '/models/characters/remy.glb';         // male
 export const ANIM_URL = '/models/characters/animations.glb';
 export const WALK_URL = '/models/characters/walking.fbx';   // Mixamo "Walking" (without skin), used for the normal walk
 const TARGET_HEIGHT = 1.75;      // the game's human is ~1.75 m; Kara is ~1.66 m
 const MODEL_HEIGHT = 1.66;        // Kara
-const MODEL_HEIGHT_M = 1.78;      // Man In Suit
+const MODEL_HEIGHT_M = 3.78;      // Remy (Mixamo, exported through fbx2gltf at 2.1x)
 const FADE = 0.2;
 type Role = 'skin' | 'hair' | 'outfit' | 'pants' | 'accent';
 /** material name -> which part of the Look recolours it. Kara's textures are tinted by (wanted colour / texture average) so shading survives. */
@@ -24,7 +24,7 @@ const ROLE_F: Record<string, [Role, string]> = {
   Modelpart1_part1_hair1_Material: ['hair', '#201913'], Modelpart1_part1_ebrows_Materia: ['hair', '#6b6463'], Modelpart1_part1_elashes_Materi: ['hair', '#42362a'],
   Modelpart1_part1_jeans_Material: ['pants', '#27272a'], Modelpart1_part1_shirt1_Materia: ['outfit', '#424548'], Modelpart1_part1_top_Material01: ['outfit', '#453e3b'],
 };
-const ROLE_M: Record<string, Role> = { mat1mat: 'outfit', mat3mat: 'accent', mat4mat: 'pants', mat6mat: 'skin', mat11mat: 'skin', mat12mat: 'hair', mat14mat: 'hair' };
+const ROLE_M: Record<string, [Role, string]> = { Bodymat: ['skin', '#d9b49c'], Topmat: ['outfit', '#6b6b6b'], Bottommat: ['pants', '#7a7260'], Hairmat: ['hair', '#c8a060'] };
 /** The walk FBX is optional: if /models/characters/walking.fbx is missing or fails, the characters fall back to the 'Strut_Walking' clip instead of crashing the whole app. Loaded once, shared by every character. */
 let walkPromise: Promise<THREE.AnimationClip[]> | null = null;
 const loadWalk = () => walkPromise ??= new Promise<THREE.AnimationClip[]>(res => new FBXLoader().load(WALK_URL, g => res(g.animations), undefined, () => res([])));
@@ -80,7 +80,9 @@ export default function GlbHuman({ look, getState, getAnim, getSpeed }: { look: 
         const avg = new THREE.Color(r[1]), w = want[r[0]];
         mat.color.setRGB(Math.min(4, w.r / Math.max(avg.r, .02)), Math.min(4, w.g / Math.max(avg.g, .02)), Math.min(4, w.b / Math.max(avg.b, .02)));
       } else {
-        const r = ROLE_M[name]; if (r) mat.color.copy(want[r]);
+        const r = ROLE_M[name]; if (!r) return;
+        const avg = new THREE.Color(r[1]), w = want[r[0]];
+        mat.color.setRGB(Math.min(4, w.r / Math.max(avg.r, .02)), Math.min(4, w.g / Math.max(avg.g, .02)), Math.min(4, w.b / Math.max(avg.b, .02)));
       }
     });
   }, [model, female, look.skin, look.hairColor, look.outfit, look.pants]);

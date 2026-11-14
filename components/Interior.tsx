@@ -1,6 +1,7 @@
 'use client';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, Text } from '@react-three/drei';
+import { Post as GfxPost, ProceduralEnv } from './Graphics';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import Human from './Human';
@@ -364,7 +365,7 @@ export default function Interior({ bizId, look, profile, onExit, onFx, onCash, g
   return <div className={'inWrap' + (menu || store ? ' menuOpen' : '')}>
     <div className="inCanvas" onPointerDown={gDown} onPointerMove={gMove} onPointerUp={gUp} onPointerCancel={gUp} onPointerLeave={gUp} onWheel={e => { cam.current.dist = Math.min(17, Math.max(5, cam.current.dist + e.deltaY * .01)); }}>
     <Canvas shadows dpr={[1, 1.5]} camera={{ position: [0, 8.5, room.d / 2 + 6], fov: 50 }}>
-      <color attach="background" args={['#0b1210']} /><hemisphereLight args={['#ffffff', '#555566', 1.1]} /><directionalLight position={[4, 9, 5]} intensity={1.6} castShadow />
+      <ProceduralEnv intensity={.45} /><GfxPost /><color attach="background" args={['#0b1210']} /><hemisphereLight args={['#ffffff', '#555566', 1.1]} /><directionalLight position={[4, 9, 5]} intensity={1.6} castShadow />
       <pointLight position={[0, 2.6, 0]} intensity={14} distance={20} color={biz.type === 'Nightclub' ? '#a855f7' : '#fff1d6'} />
       <mesh rotation-x={-Math.PI / 2} receiveShadow onClick={e => { if (e.delta > 6) return; setMenu(null); walk(e.point.x, e.point.z); }}><planeGeometry args={[room.w, room.d]} /><meshStandardMaterial color={room.floor} roughness={.9} /></mesh>
       <Walls room={room} /><Furniture room={room} /><Decor room={room} />

@@ -7,6 +7,7 @@ import HouseStyle from './HouseStyle';
 import RuntimeStyle from './RuntimeStyle';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, RoundedBox, Html } from '@react-three/drei';
+import { Post, ProceduralEnv } from './Graphics';
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
 import Human from './Human';
@@ -1011,7 +1012,7 @@ function Lights() {
     (scene.background as THREE.Color).copy(night).lerp(day, s);
   });
   return <><color attach="background" args={['#bfdcf2']} /><hemisphereLight ref={amb} args={['#cfe6ff', '#6b5a48', 1]} />
-    <directionalLight ref={sun} position={[7, 12, 8]} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={11} shadow-camera-bottom={-11} shadow-camera-far={45} />
+    <directionalLight ref={sun} position={[7, 12, 8]} castShadow shadow-bias={-0.0004} shadow-normalBias={0.03} shadow-radius={3} shadow-mapSize={[2048, 2048]} shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={11} shadow-camera-bottom={-11} shadow-camera-far={45} />
     <pointLight ref={lamp} position={[0, 3.2, 0]} color="#ffd9a0" /><pointLight ref={lamp2} position={[8.9, 3.2, 0]} color="#ffe3b8" /><pointLight ref={lamp3} position={[0, 3.2, 6.9]} color="#ffe0b0" /></>;
 }
 
@@ -1028,6 +1029,16 @@ function OwnedFurniture({ item, editing, onSelect }: { item: typeof HOME_OWNED[n
   </group>;
 }
 
+// Third-person mode: a real ceiling, so the rooms are closed in. Single-sided (faces down) and not pickable, so the overview camera and clicks pass straight through it.
+function Ceiling({ ui, free, rooms }: { ui: UI; free: boolean; rooms: PlanRoom[] }) {
+  const rects: [number, number, number, number][] = free
+    ? rooms.map(r => [r.x, r.x + r.w, r.z, r.z + r.d])
+    : [[-6.2, ui.wing ? 11.4 : 6.2, -4.6, 4.6], ...(ui.south ? [[-6.2, 6.2, 4.6, 9.35] as [number, number, number, number]] : [])];
+  return <>{rects.map(([x0, x1, z0, z1], i) => <group key={i} position={[(x0 + x1) / 2, 2.6, (z0 + z1) / 2]}>
+    <mesh rotation-x={Math.PI / 2} raycast={() => null}><planeGeometry args={[x1 - x0, z1 - z0]} /><meshStandardMaterial color="#f1ede4" roughness={.97} /></mesh>
+    <mesh rotation-x={Math.PI / 2} position={[0, -.012, 0]} raycast={() => null}><planeGeometry args={[Math.min(2.4, x1 - x0 - .6), Math.min(.5, z1 - z0 - .6)]} /><meshStandardMaterial color="#fffaf0" emissive="#fff1d0" emissiveIntensity={1.1} roughness={.5} /></mesh>
+  </group>)}</>;
+}
 // Third-person mode closes the house in: the half-height cutaway walls are raised to full height and the missing front walls are added.
 const FW = ({ p, s, c = HL.w2 }: { p: V3; s: V3; c?: string }) => <mesh position={p} receiveShadow><boxGeometry args={s} /><meshStandardMaterial color={c} roughness={.95} /></mesh>;
 function TPWalls({ ui }: { ui: UI }) {
@@ -1133,6 +1144,9 @@ function World({ tpOn, kbd, ui, sel, setSel, look, editingHome, setHomeSel, home
   });
   return <>
     <Lights />
+    <ProceduralEnv intensity={.5} />
+    <Post />
+    {tpOn && <Ceiling ui={ui} free={free} rooms={PLANR.rooms} />}
     {tpOn && !free && <TPWalls ui={ui} />}
     {tpOn && near && !sel && !S.cur && <Html position={[near.p[0], 1.9, near.p[1]]} center zIndexRange={[18, 8]} style={{ pointerEvents: coarse ? 'auto' : 'none' }}><div className="tpPrompt" onClick={() => TP.interact?.()}>{coarse ? <b>👆</b> : <b>E</b>} {near.name}</div></Html>}
     <mesh rotation-x={-Math.PI / 2} position={[0, -.02, 0]} receiveShadow onClick={BUILDST.on ? (e: any) => { if (e.delta > 4) return; buildTap(e.point.x, e.point.z); } : undefined}><planeGeometry args={[80, 80]} /><meshStandardMaterial color="#4f7a4a" /></mesh>

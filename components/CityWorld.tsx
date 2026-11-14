@@ -23,6 +23,7 @@ import ChopYards from './ChopYards';
 import PlayerHouses from './PlayerHouses';
 import { HOUSES, nearDoor } from '../lib/houses';
 import { Atmosphere } from './CityAtmosphere';
+import { Post } from './Graphics';
 import { Graffiti, LookDriver, PowerLines, Puddles, ShopGlow, StreetClutter } from './CityLook';
 import { pushCrime } from '../lib/witness';
 import { sidewalkSpawn } from '../lib/roadRoute';
@@ -566,6 +567,7 @@ function Scene({ look, ctl, hud, setNear, getMinute, roster, ver, bub, onPick, f
       <directionalLight ref={sun} position={[40, 60, 25]} color="#fff3e0" intensity={2.8} castShadow shadow-mapSize={LOW_END ? [1024, 1024] : [2048, 2048]} shadow-camera-left={-46} shadow-camera-right={46} shadow-camera-top={46} shadow-camera-bottom={-46} shadow-camera-near={1} shadow-camera-far={190} shadow-bias={-0.0003} shadow-normalBias={0.035} />
       <primitive object={sunTarget} />
       <Atmosphere sun={sun} />
+      <Post ao={1.4} />
       <group ref={stars} visible={false}><Stars radius={250} depth={40} count={1500} factor={5} fade /></group>
       <CityTerrain />{/* the flat city floor, the hills, the river, the lake and the sea, plus docks and boats */}
       <Roads />
